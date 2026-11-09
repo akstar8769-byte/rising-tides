@@ -117,6 +117,7 @@ function recordToCsv(rec) {
     ['flood_from_destruction', () => rec.floodFromDestruction],
     ['seat', (p) => p.seat],
     ['player', (p) => p.name],
+    ['bot', (p) => p.bot || ''],
     ['biome', (p) => p.biome],
     ['walls', (p) => p.walls],
     ['protection', (p) => p.protection],

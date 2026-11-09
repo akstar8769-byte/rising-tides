@@ -353,6 +353,7 @@ function playersList(store) {
           ${chip(p.seat, p.name)}
           ${g.startingPlayer === p.seat ? '<span class="tag" title="Starting player">★ start</span>' : ''}
           ${member && !member.connected ? '<span class="tag warn">offline</span>' : ''}
+          ${member && member.bot ? `<span class="tag bot" title="Computer player">🤖 ${esc(member.bot)}</span>` : ''}
           <span class="grow"></span>${status}${skip}
         </div>
         <div class="row small wrap">

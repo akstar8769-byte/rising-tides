@@ -72,6 +72,13 @@ We use **Render** (free plan). You do this once; after that, Render updates the 
    - **Biomes:** random by default, or choose **Host picks** to set each player's biome.
 5. Each round the top bar shows the phase and who the game is waiting for. On phones, use the tabs at the bottom: **Play**, **Board**, **Trade**, **Log & chat**.
 
+**Testing on your own? Add bots.** In the lobby the host can press **🤖 Add bot** to fill empty seats (3 players minimum, so you plus 2 bots works). Each bot has a personality you can change in the lobby:
+- **cautious** — builds walls, rarely fights, donates to the seawall when the Flood gets close;
+- **balanced** — a mix;
+- **warlike** — raids, recruits big armies and attacks whenever it expects to win.
+
+Bots play every mode, answer your trade offers (they accept if they get at least as much as they give), follow or revolt against Empire commands, and only see what a human in their seat could see. Change **"Bot thinking time"** in the General settings to speed them up (0 = instant) or slow them down. The playtest CSV marks bot players in a `bot` column so you can filter them out.
+
 **Refreshed by accident or lost connection?** Open the link again. You'll usually be put straight back into your seat. If not, type the room code and **exactly the same name** as before.
 
 **Host controls** (the **Host ▾** button at the top during a game):
@@ -129,7 +136,8 @@ engine/              the rules — pure functions, no networking
   util.js            materials helpers, seeded dice, event log
 server/
   index.js           Express web server + Socket.IO
-  rooms.js           rooms, lobby, rejoining, host controls, loot timer
+  rooms.js           rooms, lobby, rejoining, host controls, loot timer, running bots
+  bots.js            computer players: decide(view) -> next action, with personalities
 public/              the web page (plain HTML/CSS/JS, no build step)
   js/app.js          connection, state, button handlers
   js/lobby.js, game.js, war-ui.js, board.js, dice.js, end.js, log.js, landing.js, ui.js

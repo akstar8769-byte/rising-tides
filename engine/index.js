@@ -187,6 +187,7 @@ module.exports = {
   production: war.production,
   attackTargets: war.attackTargets,
   defaultBiomeList,
+  BUILD_PHASES: base.BUILD_PHASES,
   playtestRecord,
   recordToCsv,
 };

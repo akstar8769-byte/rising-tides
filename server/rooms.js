@@ -13,6 +13,7 @@
  *   leaveRoom                         lobby { op, ... }      (host, lobby only)
  *   startGame                         action { type, ... }   (game actions)
  *   host { op, seat }                 chat { text }
+ *   (lobby ops include addBot / setBotPersonality / kick for computer players)
  * Messages to the browser:
  *   meta   (once, on connect): settings defaults, labels, limits
  *   state  (after every change): the room + your view of the game
@@ -23,6 +24,7 @@
 const crypto = require('crypto');
 const engine = require('../engine');
 const config = require('../config');
+const bots = require('./bots');
 
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O (look like 1 and 0)
 const MAX_PLAYERS = 5;
@@ -75,7 +77,13 @@ function attachRooms(io) {
     const out = {
       code: room.code,
       you: { id: member.id, name: member.name, seat, isHost: member.id === room.hostId },
-      members: room.members.map((m, i) => ({ seat: i, name: m.name, connected: m.sockets.size > 0, isHost: m.id === room.hostId })),
+      members: room.members.map((m, i) => ({
+        seat: i,
+        name: m.name,
+        connected: m.sockets.size > 0 || !!m.bot,
+        isHost: m.id === room.hostId,
+        bot: m.bot ? m.bot.personality : null,
+      })),
       lobby: {
         mode: room.mode,
         settings: room.settings,
@@ -101,6 +109,56 @@ function attachRooms(io) {
       const data = payloadFor(room, m);
       for (const sid of m.sockets) io.to(sid).emit('state', data);
     }
+    scheduleBots(room);
+  }
+
+  // ------------------------------------------------------------ bots
+  /** Give every bot that has something to do a turn, after a short "thinking" pause. */
+  function scheduleBots(room) {
+    const s = room.state;
+    if (!s || s.phase === 'ended' || room.paused) return;
+    room.members.forEach((m, seat) => {
+      if (!m.bot || room.botTimers[seat]) return;
+      const view = engine.viewFor(s, seat);
+      const offers = engine.BUILD_PHASES.includes(s.phase) && view.trades.some((t) => t.to === seat && !(m.bot.tried && m.bot.tried.has('trade-' + t.id)));
+      if (!view.waitingFor.includes(seat) && !offers) return;
+      room.botTimers[seat] = setTimeout(() => {
+        room.botTimers[seat] = null;
+        botTurn(room, seat);
+      }, s.settings.general.botThinkMs);
+      room.botTimers[seat].unref();
+    });
+  }
+
+  function botTurn(room, seat) {
+    const s = room.state;
+    const m = room.members[seat];
+    if (!s || s.phase === 'ended' || room.paused || !m || !m.bot) return;
+    const view = engine.viewFor(s, seat);
+    const idea = bots.decide(view, m.bot);
+    if (idea) {
+      try {
+        applyToRoom(room, seat, idea.action);
+      } catch (e) {
+        if (e.name !== 'RuleError') console.error(e);
+        m.bot.tried.add(idea.key); // try something else next time
+        m.bot.failures = (m.bot.failures || 0) + 1;
+      }
+    }
+    // A bot that has run out of ideas (or keeps failing) is moved along like a skipped player.
+    if ((!idea || m.bot.failures > 12) && room.state.phase !== 'ended' && engine.viewFor(room.state, seat).waitingFor.includes(seat)) {
+      try {
+        applyToRoom(room, 'host', { type: 'skip', seat });
+      } catch (e) {
+        if (e.name !== 'RuleError') console.error(e);
+      }
+    }
+    broadcast(room);
+  }
+
+  function clearBotTimers(room) {
+    for (const k of Object.keys(room.botTimers)) clearTimeout(room.botTimers[k]);
+    room.botTimers = {};
   }
 
   function systemChat(room, text) {
@@ -136,6 +194,8 @@ function attachRooms(io) {
     if (room.state.phase === 'ended' && !room.endedAt) {
       room.endedAt = Date.now();
       room.record = engine.playtestRecord(room.state, { startedAt: room.startedAt, endedAt: room.endedAt });
+      room.record.players.forEach((p, i) => (p.bot = room.members[i] && room.members[i].bot ? room.members[i].bot.personality : null));
+      room.record.botCount = room.members.filter((x) => x.bot).length;
     }
     syncLootTimer(room);
   }
@@ -195,6 +255,7 @@ function attachRooms(io) {
     if (member.id === room.hostId && !member.sockets.size) {
       clearTimeout(room.hostTimer);
       room.hostTimer = setTimeout(() => passHost(room), room.settings.general.hostHandoverSeconds * 1000);
+      room.hostTimer.unref(); // never keep the server process alive just for this
     }
     broadcast(room);
   }
@@ -242,6 +303,7 @@ function attachRooms(io) {
         record: null,
         chat: [],
         loot: { key: null, timer: null, deadline: null },
+        botTimers: {},
         lastActive: Date.now(),
       };
       rooms.set(code, room);
@@ -257,6 +319,7 @@ function attachRooms(io) {
       if (!member) {
         const clean = cleanName(name);
         member = room.members.find((m) => m.name.toLowerCase() === clean.toLowerCase());
+        if (member && member.bot) throw friendly('That name belongs to a bot. Please pick another name.');
         if (!member) {
           if (room.state) {
             const names = room.members.map((m) => m.name).join(', ');
@@ -334,6 +397,21 @@ function attachRooms(io) {
         case 'shuffleSeats':
           room.members = shuffled(room.members);
           break;
+        case 'addBot': {
+          if (room.members.length >= MAX_PLAYERS) throw friendly('The room is full (5 players).');
+          const name = bots.BOT_NAMES.find((n) => !room.members.some((m) => m.name === n));
+          const personality = bots.PERSONALITY_ORDER[room.members.filter((m) => m.bot).length % bots.PERSONALITY_ORDER.length];
+          room.members.push({ id: crypto.randomUUID(), name, sockets: new Set(), bot: { personality, tried: new Set(), phaseKey: null, failures: 0 } });
+          systemChat(room, `${name} (${personality} bot) joined.`);
+          break;
+        }
+        case 'setBotPersonality': {
+          const m = room.members[msg.seat];
+          if (!m || !m.bot) throw friendly('That player is not a bot.');
+          if (!bots.PERSONALITIES[msg.personality]) throw friendly('Unknown personality.');
+          m.bot.personality = msg.personality;
+          break;
+        }
         case 'kick': {
           const m = room.members[msg.seat];
           if (!m || m.id === member.id) throw friendly('Cannot remove that player.');
@@ -376,6 +454,7 @@ function attachRooms(io) {
       });
       room.startedAt = Date.now();
       room.endedAt = null;
+      for (const m of room.members) if (m.bot) Object.assign(m.bot, { tried: new Set(), phaseKey: null, failures: 0 });
       room.record = null;
       room.paused = false;
       systemChat(room, 'The game has started. Good luck!');
@@ -401,6 +480,7 @@ function attachRooms(io) {
         room.state = null;
         room.record = null;
         room.paused = false;
+        clearBotTimers(room);
         syncLootTimer(room);
         broadcast(room);
         return;
@@ -457,6 +537,7 @@ function attachRooms(io) {
       for (const room of rooms.values()) {
         clearTimeout(room.loot.timer);
         clearTimeout(room.hostTimer);
+        clearBotTimers(room);
       }
     },
   };

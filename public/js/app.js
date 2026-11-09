@@ -387,6 +387,8 @@ document.addEventListener('change', (e) => {
   if (el.dataset.setting) {
     const value = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : Number(el.value);
     send('lobby', { op: 'setSetting', path: el.dataset.setting, value }).then((r) => r.error && render());
+  } else if (el.dataset.botSeat !== undefined) {
+    send('lobby', { op: 'setBotPersonality', seat: +el.dataset.botSeat, personality: el.value });
   } else if (el.dataset.biomeMode !== undefined) {
     send('lobby', { op: 'setBiomeMode', biomeMode: el.value });
   } else if (el.dataset.biomeSeat !== undefined) {

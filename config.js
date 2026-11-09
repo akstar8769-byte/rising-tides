@@ -24,6 +24,7 @@ const DEFAULTS = {
     diceSides: 6,                // sides on each die (6 = normal die)
     lootPickSeconds: 30,         // seconds a winning raider has to pick loot before it is chosen at random (Q2)
     hostHandoverSeconds: 60,     // if the host is disconnected this long, another player becomes host
+    botThinkMs: 900,             // how long bots "think" before each move, in milliseconds
     hideOtherMaterials: false,   // true = you only see the TOTAL number of materials other players hold
     boardLayout: 'standard19',   // which board layout to use (see engine/layouts.js)
   },
@@ -107,6 +108,7 @@ const LABELS = {
   'general.diceSides': 'Sides on each die',
   'general.lootPickSeconds': 'Seconds to pick loot',
   'general.hostHandoverSeconds': 'Seconds before an absent host is replaced',
+  'general.botThinkMs': 'Bot thinking time (milliseconds)',
   'general.hideOtherMaterials': "Hide other players' exact materials",
   'general.boardLayout': 'Board layout',
 
@@ -179,6 +181,7 @@ const LIMITS = {
   'general.diceSides': [2, 20],
   'general.lootPickSeconds': [5, 600],
   'general.hostHandoverSeconds': [5, 3600],
+  'general.botThinkMs': [0, 10000],
   'base.rounds': [1, 50],
   'base.catastrophe.3': [1, 999],
   'base.catastrophe.4': [1, 999],

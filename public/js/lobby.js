@@ -43,6 +43,15 @@ export function renderLobby(store) {
         <span class="seatno">${i + 1}</span>
         ${chip(i, m.name)}
         ${m.isHost ? '<span class="tag">host</span>' : ''}
+        ${
+          m.bot
+            ? isHost
+              ? `<select data-bot-seat="${i}" aria-label="Personality of ${esc(m.name)}">${['cautious', 'balanced', 'warlike']
+                  .map((p) => `<option value="${p}" ${m.bot === p ? 'selected' : ''}>🤖 ${p}</option>`)
+                  .join('')}</select>`
+              : `<span class="tag bot">🤖 ${esc(m.bot)} bot</span>`
+            : ''
+        }
         ${m.connected ? '' : '<span class="tag warn">offline</span>'}
         ${m.name === d.you.name ? '<span class="tag you">you</span>' : ''}
         <span class="grow"></span>
@@ -83,6 +92,7 @@ export function renderLobby(store) {
         isHost
           ? `<div class="row wrap">
               <button class="btn" data-act="lobby" data-json="${j({ op: 'shuffleSeats' })}">Shuffle seats</button>
+              <button class="btn" data-act="lobby" data-json="${j({ op: 'addBot' })}" ${n >= meta.maxPlayers ? 'disabled' : ''}>🤖 Add bot</button>
               <span class="grow"></span>
               <label class="toggle">Biomes:
                 <select id="biome-mode" data-biome-mode aria-label="Biome assignment">
@@ -91,6 +101,7 @@ export function renderLobby(store) {
                 </select>
               </label>
             </div>
+            <p class="hint">Testing alone? Add bots to fill the seats — cautious bots build walls and rarely fight, warlike bots raid and attack, balanced ones are in between. Bots only see what a human in their seat would see.</p>
             <p class="hint">Seat 1 is the first starting player; play goes clockwise in seat order. Random biomes: one each of Forest, Quarry and Riverbank, Mixed from 4 players, and a random repeat with 5.</p>`
           : `<p class="hint">Biomes: ${lobby.biomeMode === 'random' ? 'random' : 'picked by the host'}. Seat 1 starts.</p>`
       }

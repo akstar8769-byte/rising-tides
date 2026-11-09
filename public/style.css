@@ -396,3 +396,7 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .move-grid { display: grid; gap: 8px; }
 .move-grid label, label.inline { font-weight: 600; margin: 0; display: grid; gap: 4px; }
 @media (min-width: 520px) { .move-grid { grid-template-columns: 1fr 1fr; align-items: end; } }
+
+/* ---------- Bots ---------- */
+.tag.bot { background: #e6f0ff; color: #1d4ed8; }
+.lobby-player select[data-bot-seat] { width: auto; min-height: 38px; }
