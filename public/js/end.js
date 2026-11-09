@@ -1,0 +1,77 @@
+// End screen: who survived, scores, winner, and the playtest record downloads.
+import { esc, chip } from './ui.js';
+import { renderBoard } from './board.js';
+import { renderLog, renderChat } from './log.js';
+
+export function renderEnd(store) {
+  const d = store.data;
+  const g = d.game;
+  const o = g.outcome;
+  const rec = d.record;
+
+  let headline;
+  if (o.catastrophe) headline = `<h1 class="bad">🌊 Catastrophe!</h1><p>The Flood reached ${o.finalFlood}. The whole village was lost — everyone loses.</p>`;
+  else if (!o.winners.length) headline = `<h1 class="bad">No home survived</h1><p>Final Flood ${o.finalFlood}. Nobody wins.</p>`;
+  else {
+    const names = o.winners.map((s) => esc(g.players[s].name)).join(' and ');
+    headline = `<h1 class="good">🏆 ${names} ${o.winners.length > 1 ? 'share the win' : 'wins'}!</h1><p>Final Flood ${o.finalFlood}.</p>`;
+  }
+  const reason = { rounds: 'All rounds played.', storm: 'The storm ended the game.', catastrophe: 'The catastrophe threshold was reached.', host: 'The host ended the game.' }[o.reason];
+
+  const rows = [...o.results]
+    .sort((a, b) => b.score - a.score || b.survived - a.survived)
+    .map(
+      (r) => `<tr class="${o.winners.includes(r.seat) ? 'winner' : ''}">
+        <td>${chip(r.seat, r.name)}${o.winners.includes(r.seat) ? ' 🏆' : ''}</td>
+        <td>${r.walls} (${r.protection})</td>
+        <td>${r.survived ? '<span class="ok">✔ saved</span>' : '<span class="warn">✖ flooded</span>'}</td>
+        <td>${r.spare}</td><td>${r.seawallPoints}</td><td><b>${r.survived ? r.score : '—'}</b></td>
+      </tr>`,
+    )
+    .join('');
+
+  const actionRows = rec
+    ? rec.players
+        .map((p) => `<tr><td>${esc(p.name)}</td><td>${p.actions.sustainable}</td><td>${p.actions.unsustainable}</td><td>${p.actions.raid}</td><td>${p.raidsWon}</td><td>${p.timesRaided}</td></tr>`)
+        .join('')
+    : '';
+
+  return `<div class="end">
+    <section class="card end-head">${headline}<p class="muted">${reason} ${rec ? `${rec.roundsPlayed} round${rec.roundsPlayed === 1 ? '' : 's'}, ${rec.lengthMinutes ?? '?'} minutes, ${rec.homesSaved} home${rec.homesSaved === 1 ? '' : 's'} saved.` : ''}</p></section>
+
+    <section class="card">
+      <h2>Results</h2>
+      <div class="table-wrap"><table class="results">
+        <thead><tr><th>Player</th><th>Walls (prot.)</th><th>Home</th><th>Spare</th><th>Seawall</th><th>Score</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <p class="hint">A home survives if wall protection ≥ final Flood (${o.finalFlood}). Score = spare materials + seawall points.</p>
+    </section>
+
+    ${
+      rec
+        ? `<section class="card">
+      <h2>Playtest record</h2>
+      <div class="table-wrap"><table class="results">
+        <thead><tr><th>Player</th><th>Sust.</th><th>Unsust.</th><th>Raids</th><th>Raids won</th><th>Raided</th></tr></thead>
+        <tbody>${actionRows}</tbody>
+      </table></div>
+      <div class="row wrap">
+        <button class="btn primary" data-act="download" data-kind="csv">Download CSV</button>
+        <button class="btn" data-act="download" data-kind="json">Download JSON</button>
+      </div>
+      <p class="hint">CSV opens in Excel / Google Sheets (one row per player). JSON includes every setting used.</p>
+    </section>`
+        : ''
+    }
+
+    <div class="row wrap end-actions">
+      ${d.you.isHost ? '<button class="btn primary big" data-act="host" data-op="backToLobby">New game (back to lobby)</button>' : '<p class="waiting">The host can start a new game from the lobby.</p>'}
+      <button class="btn" data-act="leave">Leave room</button>
+    </div>
+
+    <section class="card"><h2>Final board</h2>${renderBoard(g)}</section>
+    <section class="card"><h2>Chat</h2>${renderChat(store)}</section>
+    <section class="card"><details><summary>Full event log</summary>${renderLog(g)}</details></section>
+  </div>`;
+}
