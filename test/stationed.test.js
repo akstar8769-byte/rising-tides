@@ -144,8 +144,9 @@ test('clash: only the sent units fight; the winner moves in, the loser falls bac
 test('upkeep: disbanding takes units from your biggest stack first', () => {
   let s = place(stGame(), { 0: { C0: 4, I0: 2 } });
   s = allReady(chooseAll(allReady(s)));
+  s = chooseAll(allReady(s), { 0: attack('I5', 'I0', 1) });
   s = edit(s, (c) => (c.players[0].materials = { wood: 1, stone: 0, sandbag: 0 }));
-  s = allReady(chooseAll(allReady(s), { 0: attack('I5', 'I0', 1) })); // round 2 -> round 3 upkeep
+  s = allReady(s); // round 2 -> round 3 upkeep
   assert.equal(s.round, 3);
   assert.equal(at(s, 'C0', 0), 3);
   assert.equal(s.players[0].units, 5);

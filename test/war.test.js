@@ -22,6 +22,8 @@ function warGame(mode = 'war', tweak) {
     biomes: BIOMES,
     settings: (c) => {
       c.war.stationedUnits = false;
+      c.war.occupationFlood = 1; // the PDF's numbers, so these mechanics stay tested
+      c.war.capitalOpensAfter = 2;
       if (tweak) tweak(c);
     },
   });
@@ -89,30 +91,34 @@ test('war setup: 3 and 5 players get territories too', () => {
 });
 
 // ---------------------------------------------------------------- production
-test('production: Sustainable = 1 per tile of its own resource; Unsustainable = 2 per tile, Flood +1', () => {
+test('income: every tile gives 1 of its resource each round; Sustainable +2 home resource; Unsustainable +6 any mix, Flood +1', () => {
   let s = allReady(warGame());
   s = chooseAll(s, { 1: { action: 'unsustainable', mix: { wood: 2, stone: 2, sandbag: 2 } } });
-  assert.deepEqual(s.players[0].materials, { wood: 4, stone: 1, sandbag: 1 }); // 3 forest tiles
-  assert.deepEqual(s.players[1].materials, { wood: 3, stone: 3, sandbag: 3 });
+  assert.deepEqual(s.players[0].materials, { wood: 6, stone: 1, sandbag: 1 }); // 3 forest tiles + 2 wood
+  assert.deepEqual(s.players[1].materials, { wood: 3, stone: 6, sandbag: 3 }); // 3 quarry tiles + any 6
   assert.equal(s.flood, 3);
 });
 
-test('production: a Mixed player picks any 1 per Mixed tile', () => {
+test('income: a Mixed home picks its Sustainable bonus; Mixed tiles give what you hold least of', () => {
   let s = newGame({ n: 4, mode: 'war', biomes: ['forest', 'quarry', 'riverbank', 'mixed'] });
-  s = edit(s, (c) => c.board.tiles.filter((t) => t.owner === 3).forEach((t) => (t.biome = 'mixed')));
+  s = edit(s, (c) => {
+    c.board.tiles.filter((t) => t.owner === 3).forEach((t) => (t.biome = 'mixed'));
+    c.players[3].materials = { wood: 5, stone: 5, sandbag: 0 };
+  });
   const prod = engine.production(s, 3);
-  assert.equal(prod.free, 3);
+  assert.equal(prod.free, 2);
+  assert.deepEqual(prod.passive, { wood: 0, stone: 0, sandbag: 3 }); // fills the smallest pile
   s = allReady(s);
-  assert.throws(() => act(s, 3, 'choose', { action: 'sustainable', mix: { wood: 2 } }), /exactly 3/);
-  s = act(s, 3, 'choose', { action: 'sustainable', mix: { sandbag: 3 } });
+  assert.throws(() => act(s, 3, 'choose', { action: 'sustainable', mix: { wood: 3 } }), /exactly 2/);
+  s = act(s, 3, 'choose', { action: 'sustainable', mix: { stone: 2 } });
   s = chooseAll(s);
-  assert.equal(s.players[3].materials.sandbag, 4);
+  assert.deepEqual(s.players[3].materials, { wood: 5, stone: 7, sandbag: 3 });
 });
 
-test('attack: collects nothing and raises the Flood by 1, win or lose', () => {
+test('attack: you still get your tile income, and the Flood rises by 1, win or lose', () => {
   let s = forceDice(allReady(warGame()), [1, 6]);
   s = chooseAll(s, { 0: { action: 'attack', target: 'I1' } });
-  assert.deepEqual(s.players[0].materials, { wood: 1, stone: 1, sandbag: 1 });
+  assert.deepEqual(s.players[0].materials, { wood: 4, stone: 1, sandbag: 1 }); // 3 tiles x 1 wood
   assert.equal(s.flood, 3);
   assert.equal(tile(s, 'I1').controller, 1);
 });
@@ -143,11 +149,12 @@ test('upkeep: 1 material per 3 units, rounded down, from round 2', () => {
 test('upkeep: if you cannot pay, units are disbanded until you can', () => {
   let s = warGame();
   s = nextRound(chooseAll(allReady(s)));
+  s = chooseAll(allReady(s), { 0: { action: 'attack', target: 'I5' } });
   s = edit(s, (c) => {
     c.players[0].units = 6; // due 2
     c.players[0].materials = { wood: 1, stone: 0, sandbag: 0 };
   });
-  s = nextRound(chooseAll(allReady(s), { 0: { action: 'attack', target: 'I5' } }));
+  s = nextRound(s);
   assert.equal(s.players[0].units, 5); // 5 units -> due 1 -> paid with the 1 wood
   assert.equal(total(s.players[0].materials), 0);
   assert.equal(s.players[0].stats.unitsDisbanded, 1);
@@ -206,6 +213,7 @@ test('attack: losses carry over — units lost defending cannot attack later', (
   });
   s = forceDice(s, [6, 1]);
   s = chooseAll(s, { 0: { action: 'attack', target: 'I1' }, 1: { action: 'attack', target: 'E1' } });
+  if (s.phase === 'loot') s = act(s, 'system', 'lootTimeout'); // finish the first battle's loot
   assert.ok(s.log.some((l) => /fizzles: no units left/.test(l.text)));
 });
 
@@ -229,7 +237,7 @@ test('occupied tiles produce for the occupier', () => {
   s = nextRound(s);
   const before = { ...s.players[0].materials };
   s = chooseAll(allReady(s));
-  assert.equal(s.players[0].materials.wood, before.wood + 3); // 3 forest tiles
+  assert.equal(s.players[0].materials.wood, before.wood + 5); // 3 forest tiles + Sustainable 2
   assert.equal(s.players[0].materials.stone, before.stone + 1); // + seat 1's quarry province
 });
 
@@ -241,15 +249,30 @@ test('Damaged: collect 1 less on the next development; international aid gives 1
   s = allReady(s);
   s = act(s, 1, 'choose', { action: 'sustainable', aid: 'wood' });
   s = chooseAll(s);
-  // 2 tiles left (2 stone) − 1 Damaged + 1 aid wood
-  assert.equal(total(s.players[1].materials), before + 2);
+  // 2 tiles left (2 stone) + 2 stone − 1 Damaged + 1 aid wood
+  assert.equal(total(s.players[1].materials), before + 4);
   assert.equal(s.players[1].damaged, false);
 });
 
-test('Damaged lasts through an attack until the next development (Q14)', () => {
+test("Damaged applies to the next round's income, even in a round you attack", () => {
   let s = edit(allReady(warGame()), (c) => (c.players[0].damaged = true));
   s = chooseAll(s, { 0: { action: 'attack', target: 'I5' } });
-  assert.equal(s.players[0].damaged, true);
+  assert.equal(s.players[0].damaged, false);
+  assert.deepEqual(s.players[0].materials, { wood: 3, stone: 1, sandbag: 1 }); // 3 tile income − 1
+});
+
+test('capital: by default it can be attacked after just one province falls', () => {
+  let s = newGame({ n: 4, mode: 'war', biomes: BIOMES, settings: (c) => (c.war.stationedUnits = false) });
+  s = edit(allReady(s), (c) => (tile(c, 'I1').controller = 0));
+  assert.equal(s.settings.war.capitalOpensAfter, 1);
+  assert.ok(engine.attackTargets(s, 0).includes('C1'));
+});
+
+test('occupation adds no Flood by default', () => {
+  let s = newGame({ n: 4, mode: 'war', biomes: BIOMES, settings: (c) => (c.war.stationedUnits = false) });
+  s = edit(s, (c) => (tile(c, 'I1').controller = 0));
+  s = nextRound(chooseAll(allReady(s)));
+  assert.equal(s.flood, 2);
 });
 
 test('capital: can only be attacked once both provinces are occupied; defender gets +1 die; War never captures it', () => {
@@ -379,16 +402,16 @@ test('empire: capturing a capital makes a puppet, takes half the stockpile (roun
   assert.equal(s.players[1].puppetOf, 0);
   assert.equal(tile(s, 'I1').controller, 1);
   assert.equal(tile(s, 'E1').controller, 1);
-  // seat 1 had 3/3/3, collected 1 stone + 1 aid wood = 11 -> 5 taken
-  assert.equal(s.pendingLoot.count, 5);
-  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 1 } });
-  assert.equal(total(s.players[1].materials), 6);
+  // seat 1 had 3/3/3, collected 1 stone (tile) + 2 stone + 1 aid wood = 13 -> 6 taken
+  assert.equal(s.pendingLoot.count, 6);
+  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 2 } });
+  assert.equal(total(s.players[1].materials), 7);
   assert.equal(s.players[1].damaged, false);
 });
 
 test('empire: tribute is half of everything the puppet collects, rounded up; garrison 1 for one puppet; puppet counts as occupying', () => {
   let s = capture();
-  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 1 } });
+  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 2 } });
   const ovBefore = total(s.players[0].materials);
   const flood = s.flood;
   s = nextRound(s);
@@ -397,27 +420,27 @@ test('empire: tribute is half of everything the puppet collects, rounded up; gar
   assert.ok(s.log.some((l) => /paid .* garrison for 1 puppet/.test(l.text)));
   s = allReady(s);
   const pupBefore = total(s.players[1].materials);
-  const ovMid = total(s.players[0].materials);
-  s = act(s, 1, 'choose', { action: 'sustainable', aid: 'stone' }); // 3 stone + 1 aid = 4 -> tribute 2
+  s = act(s, 1, 'choose', { action: 'sustainable', aid: 'stone' }); // 3 tiles + 2 + 1 aid = 6 -> tribute 3
   s = chooseAll(s, { 0: { action: 'attack', target: 'I5' } });
-  assert.equal(total(s.players[1].materials), pupBefore + 2);
-  assert.equal(total(s.players[0].materials), ovMid + 2);
+  assert.equal(total(s.players[1].materials), pupBefore + 3);
+  assert.equal(s.players[0].stats.tributeReceived, 3);
 });
 
-test('empire: tribute rounds up (3 collected -> 2 paid)', () => {
+test('empire: tribute rounds up (5 collected -> 3 paid)', () => {
   let s = capture();
-  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 1 } });
+  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 2 } });
   s = nextRound(s);
   s = edit(allReady(s), (c) => (c.accordBroken = true)); // no aid this time
   const before = total(s.players[1].materials);
   s = act(s, 1, 'choose', { action: 'sustainable' });
   s = chooseAll(s, { 0: { action: 'attack', target: 'I5' } });
-  assert.equal(total(s.players[1].materials), before + 1);
+  assert.equal(total(s.players[1].materials), before + 2);
+  assert.equal(s.players[1].stats.tributePaid, 3);
 });
 
 test('empire: commands — a puppet must play its command or revolt', () => {
   let s = capture();
-  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 1 } });
+  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 2 } });
   s = nextRound(s);
   assert.throws(() => act(s, 2, 'setCommand', { puppet: 1, action: 'sustainable' }), /not your puppet/);
   s = act(s, 0, 'setCommand', { puppet: 1, action: 'unsustainable' });
@@ -429,7 +452,7 @@ test('empire: commands — a puppet must play its command or revolt', () => {
 
 test('empire: revolt — ties go to the rebel, overlord defends alone, winner is freed and takes up to 3', () => {
   let s = capture();
-  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 1 } });
+  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 2 } });
   s = nextRound(s);
   s = act(s, 1, 'recruit', { count: 1, materials: { stone: 2 } });
   s = forceDice(allReady(s), [5, 5, 1, 1]); // rebel 5 vs overlord 5,1 (+1 capital die): tie -> rebel
@@ -441,7 +464,7 @@ test('empire: revolt — ties go to the rebel, overlord defends alone, winner is
 
 test('empire: an unpaid garrison frees the puppet', () => {
   let s = capture();
-  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 1 } });
+  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 2 } });
   s = edit(s, (c) => (c.players[0].materials = { wood: 0, stone: 0, sandbag: 0 }));
   s = nextRound(s);
   assert.equal(s.players[1].puppetOf, null);
@@ -449,7 +472,7 @@ test('empire: an unpaid garrison frees the puppet', () => {
 
 test('empire: when an overlord is captured, its own puppets are freed first (a puppet cannot have puppets)', () => {
   let s = capture();
-  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 1 } });
+  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 2 } });
   s = nextRound(s);
   // Now seat 3 storms seat 0's capital.
   s = edit(allReady(s), (c) => {
@@ -468,11 +491,11 @@ test('empire: when an overlord is captured, its own puppets are freed first (a p
 
 test('empire: production access lets an overlord take puppet resource types', () => {
   let s = capture();
-  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 1 } });
+  s = act(s, 0, 'pickLoot', { materials: { wood: 4, stone: 2 } });
   const prod = engine.production(s, 0);
   assert.equal(prod.access, true);
   assert.deepEqual(prod.allowed, ['wood', 'stone']);
-  assert.equal(prod.free, 3);
+  assert.equal(prod.free, 2);
 });
 
 test('record: War stats appear in the playtest record', () => {

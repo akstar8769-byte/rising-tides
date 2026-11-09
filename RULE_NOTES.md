@@ -113,3 +113,26 @@ The team asked for units to be stationed on tiles, like Risk, instead of one arm
 - Overlords no longer add puppet units to their own attacks: units only fight where they stand.
 - An attack fizzles if the tile it was launched from was lost earlier in the same round.
 - In a clash, if the loser's starting tile is the one the winner just took, the loser's survivors retreat from it.
+
+## Making war tempting (added 9 November 2026)
+
+After a playtest where a full 8-round rush only took three tiles and pushed the Flood to 15, the team changed the War economy. Each change is a lobby setting.
+
+| Change | Was (PDF) | Now | Setting |
+|---|---|---|---|
+| **Tile income** | Sustainable 1 per tile, Unsustainable 2 per tile, Attack nothing | **Every tile you hold gives 1 of its resource every round, whatever you play** (Attack included) | `war.passivePerTile` |
+| **Sustainable** | 1 per tile | tile income **+2 of your home resource** | `war.sustainableBonus` |
+| **Unsustainable** | 2 per tile, any mix | tile income **+6, any mix**, Flood +1 | `war.unsustainableBonus` |
+| **Occupation Flood** | +1 per occupying player per round | **0** | `war.occupationFlood` |
+| **Capitals** | attackable once **both** provinces are occupied | once **one** province is occupied | `war.capitalOpensAfter` |
+| Attack Flood | +1 per attack | unchanged: +1 per attack | `war.attackFlood` |
+
+Example for a player with 3 tiles: Attack collects 3, Sustainable 5, Unsustainable 9. Every tile you conquer raises your income in every round, including rounds you attack.
+
+**Decided while building (please check)**
+- **Mixed tiles** give the material you currently hold least of. They no longer let you pick, because tile income now arrives even when you attack.
+- **A Mixed home** picks its 2-material Sustainable bonus freely.
+- **Damaged** now takes 1 off your next round's income, whatever you play. The old wording ("next development") stopped making sense now that attacks also collect. This replaces Q14.
+- **International aid** is still only paid when you develop (Sustainable or Unsustainable).
+- **Tribute** is half of everything a puppet collects, including tile income in rounds the puppet attacks.
+- **Production access** applies to the Sustainable bonus only. Tile income always matches each tile's own resource.

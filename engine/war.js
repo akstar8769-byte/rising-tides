@@ -52,10 +52,14 @@ function isOccupier(s, seat) {
 function hasOccupiedTile(s, seat) {
   return s.board.tiles.some((t) => t.owner === seat && t.controller !== seat);
 }
-/** A capital can be attacked once both of its provinces are occupied (by anyone, Q12). */
+/**
+ * A capital can be attacked once enough of its provinces are occupied, by anyone
+ * (setting war.capitalOpensAfter: 1 = after one province, 2 = the PDF's "both").
+ */
 function capitalOpen(s, t) {
   const provs = s.board.tiles.filter((x) => x.owner === t.owner && x.role === 'province');
-  return provs.length > 0 && provs.every((x) => x.controller !== t.owner);
+  const occupied = provs.filter((x) => x.controller !== t.owner).length;
+  return provs.length > 0 && occupied >= Math.min(W(s).capitalOpensAfter, provs.length);
 }
 function aidEligible(s, p) {
   return !s.accordBroken && (p.damaged || hasOccupiedTile(s, p.seat) || p.puppetOf != null);
@@ -91,38 +95,44 @@ function leastHeld(p) {
 // ---------------------------------------------------------------------------
 
 /**
- * What a player collects when developing.
- *   fixed:   materials that come automatically from single-resource tiles (Sustainable)
- *   free:    how many more they choose themselves (Mixed tiles, or production access)
- *   allowed: which materials the free part may be
- *   unsustainable: how many (any mix) Unsustainable gives
+ * What a player collects each round.
+ *   passive: every tile you hold gives passivePerTile of its own resource, whatever
+ *            you play — Attack included. (A Mixed tile gives what you hold least of.)
+ *   Sustainable adds a bonus of your home resource:
+ *     fixed:   the bonus when it is automatic (single-resource home)
+ *     free:    how much of it you pick yourself (Mixed home, or production access)
+ *     allowed: which materials the free part may be
+ *   Unsustainable adds `unsustainable` materials of any mix (Flood +1).
  */
 function production(s, seat) {
   const w = W(s);
+  const p = s.players[seat];
   const tiles = controlled(s, seat);
-  const fixed = emptyBag();
-  let free = 0;
+  const passive = emptyBag();
   for (const t of tiles) {
-    const res = BIOMES[t.biome].resource;
-    if (res) fixed[res] += w.sustainablePerTile;
-    else free += w.sustainablePerTile; // Mixed tile: any 1 (Q9)
+    let res = BIOMES[t.biome].resource;
+    if (!res) {
+      // Mixed tile: the material you hold least of (counting this round's income so far)
+      res = MATERIALS.reduce((best, m) => (p.materials[m] + passive[m] < p.materials[best] + passive[best] ? m : best), MATERIALS[0]);
+    }
+    passive[res] += w.passivePerTile;
   }
-  let allowed = MATERIALS.slice();
+  const homeRes = BIOMES[p.biome].resource;
+  const base = { passive, tiles: tiles.length, unsustainable: w.unsustainableBonus };
   const puppets = puppetsOf(s, seat);
   if (isEmpire(s) && E(s).productionAccess && puppets.length) {
-    // Production access (PDF W8.2, Q21): take any of your Sustainable income as
-    // your own or your puppets' resource types.
-    const types = new Set();
+    // Production access (PDF W8.2, Q21): take your Sustainable bonus as your own
+    // or your puppets' resource types.
+    const types = new Set(homeRes ? [homeRes] : MATERIALS);
     for (const t of [...tiles, ...puppets.flatMap((q) => controlled(s, q))]) {
       const res = BIOMES[t.biome].resource;
       if (res) types.add(res);
       else MATERIALS.forEach((m) => types.add(m));
     }
-    allowed = MATERIALS.filter((m) => types.has(m));
-    free += bagTotal(fixed);
-    return { fixed: emptyBag(), free, allowed, access: true, tiles: tiles.length, unsustainable: tiles.length * w.unsustainablePerTile };
+    return { ...base, fixed: emptyBag(), free: w.sustainableBonus, allowed: MATERIALS.filter((m) => types.has(m)), access: true };
   }
-  return { fixed, free, allowed, access: false, tiles: tiles.length, unsustainable: tiles.length * w.unsustainablePerTile };
+  if (homeRes) return { ...base, fixed: { ...emptyBag(), [homeRes]: w.sustainableBonus }, free: 0, allowed: [homeRes], access: false };
+  return { ...base, fixed: emptyBag(), free: w.sustainableBonus, allowed: MATERIALS.slice(), access: false }; // Mixed home: any
 }
 
 /** Tiles this player may attack with their own action. */
@@ -496,14 +506,17 @@ function reveal(s) {
     const p = s.players[i];
     const ch = p.choice;
     p.stats[ch.action] += 1;
-    if (ch.action === 'attack' || ch.action === 'revolt') {
-      rise += w.attackFlood;
-      continue;
-    }
+    const fight = ch.action === 'attack' || ch.action === 'revolt';
     const prod = production(s, i);
-    const bag = ch.action === 'sustainable' ? addBag({ ...prod.fixed }, ch.mix) : { ...ch.mix };
+    const bag = { ...prod.passive }; // passive income from every tile you hold
+    if (ch.action === 'sustainable') addBag(addBag(bag, prod.fixed), ch.mix);
+    if (ch.action === 'unsustainable') addBag(bag, ch.mix);
     const notes = [];
-    const getsAid = ch.aid && aidEligible(s, p); // checked before this round's Flood rises (Q16)
+    if (fight) {
+      rise += w.attackFlood;
+      notes.push(`${ch.action === 'revolt' ? 'revolting' : 'attacking'}: tile income only`);
+    }
+    const getsAid = !fight && ch.aid && aidEligible(s, p); // checked before this round's Flood rises (Q16)
     if (p.damaged) {
       const lost = takeLargest(bag, w.damagedPenalty);
       subBag(bag, lost);

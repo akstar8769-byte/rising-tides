@@ -83,6 +83,7 @@ export function warMyPanel(store) {
   return `<div class="war-box">
     ${me.puppetOf != null ? puppetBox(store) : ''}
     <div class="row wrap"><span>⚔ <b>${me.units}</b> militia unit${me.units === 1 ? '' : 's'}${g.stationed ? ` — ${unitSpread(g, g.you)}` : ''}</span>
+      ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}</span>` : ''}
       <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span></div>
     <details class="tool" ${canBuild ? 'open' : ''}>
       <summary>Recruit militia <span class="muted small">(${w.unitCost} materials each, any mix; upkeep 1 per ${w.upkeepUnitsPerMaterial} units)</span></summary>
@@ -248,16 +249,16 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
 
   const pool = me.units + (me.puppets || []).reduce((a, s) => a + g.players[s].units, 0);
   const susDesc = prod.access
-    ? `Collect any ${prod.free} (${prod.allowed.join('/')})`
+    ? `Tiles + any ${prod.free} (${prod.allowed.join('/')})`
     : prod.free
-      ? `Collect ${bagTotal(prod.fixed) ? bagText(prod.fixed) + ' + ' : ''}${prod.free} of your choice`
-      : `Collect ${bagText(prod.fixed)}`;
+      ? `Tiles + ${prod.free} of your choice`
+      : `Tiles + ${bagText(prod.fixed)}`;
   const cards = [];
   if (!puppet || cmd.action === 'sustainable') cards.push(actionCard('sustainable', 'Sustainable', susDesc, 'No Flood change'));
-  if (!puppet || cmd.action === 'unsustainable') cards.push(actionCard('unsustainable', 'Unsustainable', `Collect any ${prod.unsustainable}`, `Flood +${g.settings.base.unsustainableFlood}`));
+  if (!puppet || cmd.action === 'unsustainable') cards.push(actionCard('unsustainable', 'Unsustainable', `Tiles + any ${prod.unsustainable}`, `Flood +${g.settings.base.unsustainableFlood}`));
   if (!puppet) {
     const why = pool < 1 ? 'Needs 1 unit' : !g.attackTargets.length ? 'No targets' : g.stationed && !g.attackTargets.some((id) => (g.attackSources[id] || []).length) ? 'No units at the front' : '';
-    cards.push(actionCard('attack', 'Attack', 'Collect nothing', `Flood +${w.attackFlood}`, !!why, why));
+    cards.push(actionCard('attack', 'Attack', 'Tile income only', `Flood +${w.attackFlood}`, !!why, why));
   } else if (cmd.action === 'attack') {
     cards.push(actionCard('attack', 'Attack (ordered)', esc(tileLabel(g, cmd.target)), `Flood +${w.attackFlood}`));
   }
@@ -266,21 +267,22 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
   let extra = '';
   let canLock = false;
   const dev = c.action === 'sustainable' || c.action === 'unsustainable';
+  const tileIncome = `<p class="small">Your ${prod.tiles} tile${prod.tiles === 1 ? '' : 's'} give ${bagInline(prod.passive)} this round whatever you play.</p>`;
   if (c.action === 'sustainable') {
     if (prod.free > 0) {
       const lim = capped(c.mix, prod.free);
       for (const m of MATS) if (!prod.allowed.includes(m)) lim[m] = 0;
-      extra = `${bagTotal(prod.fixed) ? `<p>From your tiles: ${bagInline(prod.fixed)}</p>` : ''}<h3>Pick ${prod.free} more (${bagTotal(c.mix)}/${prod.free})</h3>${bagEditor('choice.mix', c.mix, lim)}`;
+      extra = `${tileIncome}<h3>Plus pick ${prod.free} (${bagTotal(c.mix)}/${prod.free})</h3>${bagEditor('choice.mix', c.mix, lim)}`;
       canLock = bagTotal(c.mix) === prod.free;
     } else {
-      extra = `<p>From your ${prod.tiles} tiles: ${bagInline(prod.fixed)}</p>`;
+      extra = `${tileIncome}<p>Plus: ${bagInline(prod.fixed)}</p>`;
       canLock = true;
     }
   } else if (c.action === 'unsustainable') {
-    extra = `<h3>Pick ${prod.unsustainable} materials (${bagTotal(c.mix)}/${prod.unsustainable})</h3>${bagEditor('choice.mix', c.mix, capped(c.mix, prod.unsustainable))}`;
+    extra = `${tileIncome}<h3>Plus pick ${prod.unsustainable} materials (${bagTotal(c.mix)}/${prod.unsustainable})</h3>${bagEditor('choice.mix', c.mix, capped(c.mix, prod.unsustainable))}`;
     canLock = bagTotal(c.mix) === prod.unsustainable;
   } else if (c.action === 'attack' && !puppet) {
-    extra = `<h3>Attack which tile?</h3><div class="target-list">${g.attackTargets
+    extra = `${tileIncome}<h3>Attack which tile?</h3><div class="target-list">${g.attackTargets
       .map(
         (id) =>
           `<button class="target ${c.target === id ? 'selected' : ''}" data-act="set" data-path="choice.target" data-value="${id}" aria-pressed="${c.target === id}">

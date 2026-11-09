@@ -76,9 +76,11 @@ const DEFAULTS = {
     capitalExtraDefenceDice: 1,
     maxLoot: 3,
     attackFlood: 1,
-    occupationFlood: 1,          // per occupying player per round
-    sustainablePerTile: 1,
-    unsustainablePerTile: 2,
+    occupationFlood: 0,          // Flood rise per occupying player per round (PDF: 1; team chose 0)
+    capitalOpensAfter: 1,        // provinces that must be occupied before a capital can be attacked (PDF: 2)
+    passivePerTile: 1,           // every tile you hold gives this much of its resource EVERY round, whatever you play
+    sustainableBonus: 2,         // Sustainable adds this much of your home resource on top
+    unsustainableBonus: 6,       // Unsustainable adds this much, any mix, on top (and Flood +1)
     damagedPenalty: 1,
     aidAmount: 1,
     sanctionRounds: 1,
@@ -148,8 +150,10 @@ const LABELS = {
   'war.maxLoot': 'Most tokens taken per win',
   'war.attackFlood': 'Flood rise per attack',
   'war.occupationFlood': 'Flood rise per occupying player',
-  'war.sustainablePerTile': 'Sustainable: materials per tile',
-  'war.unsustainablePerTile': 'Unsustainable: materials per tile',
+  'war.passivePerTile': 'Income from each tile you hold, every round',
+  'war.sustainableBonus': 'Sustainable: extra home resource',
+  'war.unsustainableBonus': 'Unsustainable: extra materials (any mix)',
+  'war.capitalOpensAfter': 'Capital can be attacked after this many provinces fall',
   'war.damagedPenalty': 'Damaged: materials lost',
   'war.aidAmount': 'International aid: extra materials',
   'war.sanctionRounds': 'Sanction length (rounds)',
@@ -182,6 +186,7 @@ const LIMITS = {
   'war.upkeepUnitsPerMaterial': [1, 99],
   'war.maxAttackDice': [1, 10],
   'war.maxDefenceDice': [1, 10],
+  'war.capitalOpensAfter': [1, 9],
   'empire.tributeDivisor': [1, 10],
   'empire.captureStockDivisor': [1, 10],
 };
