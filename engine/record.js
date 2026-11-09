@@ -56,6 +56,7 @@ function playtestRecord(state, meta = {}) {
       tributePaid: p.stats.tributePaid,
       tributeReceived: p.stats.tributeReceived,
       puppetAtEnd: p.puppetOf != null ? state.players[p.puppetOf].name : null,
+      armyFlood: p.stats.armyFlood,
     };
   });
   return {
@@ -79,6 +80,8 @@ function playtestRecord(state, meta = {}) {
     clashes: war ? state.clashCount : null,
     revolts: state.mode === 'empire' ? players.reduce((a, p) => a + p.revolts, 0) : null,
     accordBrokeRound: war ? state.accordBrokeRound : null, // null = the Accord held all game
+    floodFromArmies: war ? state.floodFromArmies : null,
+    floodFromDestruction: war ? state.floodFromDestruction : null,
     lengthMinutes: minutes,
     settings: state.settings,
     players,
@@ -110,6 +113,8 @@ function recordToCsv(rec) {
     ['revolts', () => rec.revolts],
     ['accord_broke_round', () => rec.accordBrokeRound],
     ['length_minutes', () => rec.lengthMinutes],
+    ['flood_from_armies', () => rec.floodFromArmies],
+    ['flood_from_destruction', () => rec.floodFromDestruction],
     ['seat', (p) => p.seat],
     ['player', (p) => p.name],
     ['biome', (p) => p.biome],
@@ -146,6 +151,7 @@ function recordToCsv(rec) {
     ['tribute_paid', (p) => p.tributePaid],
     ['tribute_received', (p) => p.tributeReceived],
     ['puppet_of_at_end', (p) => p.puppetAtEnd],
+    ['army_flood', (p) => p.armyFlood],
   ];
   const lines = [cols.map((c) => c[0]).join(',')];
   for (const p of rec.players) lines.push(cols.map((c) => csvCell(c[1](p))).join(','));

@@ -60,6 +60,9 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
     accordBrokeRound: null,
     clashCount: 0,
     battleQueue: [],
+    destroyedPool: 0, // units destroyed in battle that haven't added Flood yet
+    floodFromArmies: 0,
+    floodFromDestruction: 0,
     players: players.map((p, seat) => ({
       seat,
       name: p.name,
@@ -96,6 +99,7 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
         tributePaid: 0,
         tributeReceived: 0,
         sanctions: 0,
+        armyFlood: 0,
         sustainable: 0,
         unsustainable: 0,
         raid: 0,

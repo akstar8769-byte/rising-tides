@@ -367,15 +367,59 @@ function upkeep(s) {
     }
   }
 
-  // 4. Occupation pollutes: Flood +1 per occupying player (not per tile)
+  // 4. Occupation pollutes: Flood +N per occupying player (not per tile). 0 by default.
   const occupiers = s.players.filter((p) => isOccupier(s, p.seat));
-  if (occupiers.length) {
+  if (occupiers.length && w.occupationFlood > 0) {
     const rise = occupiers.length * w.occupationFlood;
     s.flood += rise;
     addLog(s, `Occupation: ${occupiers.map((p) => p.name).join(', ')} ${occupiers.length === 1 ? 'is' : 'are'} occupying. Flood +${rise} to ${s.flood}.`, { kind: 'flood' });
+  }
+
+  // 5. Armies pollute (militarisation): Flood +1 for every N units a player owns, rounded down.
+  if (w.armyFloodPerUnits > 0) {
+    const parts = [];
+    let rise = 0;
+    for (const p of s.players) {
+      const f = armyFlood(s, p);
+      if (!f) continue;
+      rise += f;
+      p.stats.armyFlood += f;
+      parts.push(`${p.name} (${p.units} units) +${f}`);
+    }
+    if (rise) {
+      s.flood += rise;
+      s.floodFromArmies += rise;
+      addLog(s, `Army emissions: ${parts.join(', ')}. Flood +${rise} to ${s.flood}.`, { kind: 'flood' });
+    }
+  }
+  if (s.phase !== 'ended') {
     checkAccord(s);
     base.checkCatastrophe(s);
   }
+}
+
+/** Flood this player's army will add at the next upkeep. */
+function armyFlood(s, p) {
+  const k = W(s).armyFloodPerUnits;
+  return k > 0 ? Math.floor(p.units / k) : 0;
+}
+
+/**
+ * Destruction pollutes: every N units destroyed in battle (any side) add Flood +1.
+ * Leftover losses carry over to the next battle.
+ */
+function destructionFlood(s, destroyed) {
+  const k = W(s).destructionFloodPerUnits;
+  if (!(k > 0) || destroyed <= 0) return;
+  s.destroyedPool += destroyed;
+  const rise = Math.floor(s.destroyedPool / k);
+  s.destroyedPool %= k;
+  if (!rise) return;
+  s.flood += rise;
+  s.floodFromDestruction += rise;
+  addLog(s, `Destruction: ${destroyed} unit${destroyed === 1 ? '' : 's'} destroyed. Flood +${rise} to ${s.flood}.`, { kind: 'flood' });
+  checkAccord(s);
+  base.checkCatastrophe(s);
 }
 
 // ---------------------------------------------------------------------------
@@ -582,7 +626,10 @@ function reveal(s) {
 function continueBattles(s) {
   while (s.battleQueue && s.battleQueue.length) {
     const b = s.battleQueue.shift();
+    const lostBefore = s.players.reduce((a, p) => a + p.stats.unitsLost, 0);
     const r = b.type === 'clash' ? resolveClash(s, b) : resolveAttack(s, b.e);
+    destructionFlood(s, s.players.reduce((a, p) => a + p.stats.unitsLost, 0) - lostBefore);
+    if (s.phase === 'ended') return; // the battle's destruction caused a catastrophe
     if (r === 'pick') {
       s.phase = 'loot';
       return;
@@ -810,7 +857,15 @@ function resolveClash(s, { a, b }) {
 
 function decorateView(v, s, seat) {
   const w = W(s);
-  v.war = { accordBroken: s.accordBroken, accordBrokeRound: s.accordBrokeRound, accordLine: w.accordLine, clashCount: s.clashCount };
+  v.war = {
+    accordBroken: s.accordBroken,
+    accordBrokeRound: s.accordBrokeRound,
+    accordLine: w.accordLine,
+    clashCount: s.clashCount,
+    destroyedPool: s.destroyedPool,
+    floodFromArmies: s.floodFromArmies,
+    floodFromDestruction: s.floodFromDestruction,
+  };
   for (const p of v.players) {
     const sp = s.players[p.seat];
     p.sanctioned = isSanctioned(s, sp);
@@ -819,6 +874,7 @@ function decorateView(v, s, seat) {
     p.aidEligible = aidEligible(s, sp);
     p.tilesHeld = controlled(s, p.seat).length;
     p.upkeepDue = s.round + 1 >= w.upkeepFromRound ? Math.floor(sp.units / w.upkeepUnitsPerMaterial) : 0;
+    p.armyFloodDue = armyFlood(s, sp);
     if (isEmpire(s) && p.puppets.length) {
       const t = E(s).garrisonCost;
       p.garrisonDue = t[p.puppets.length] !== undefined ? t[p.puppets.length] : t[Math.max(...Object.keys(t).map(Number))];

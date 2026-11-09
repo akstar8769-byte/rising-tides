@@ -84,9 +84,10 @@ export function warMyPanel(store) {
     ${me.puppetOf != null ? puppetBox(store) : ''}
     <div class="row wrap"><span>⚔ <b>${me.units}</b> militia unit${me.units === 1 ? '' : 's'}${g.stationed ? ` — ${unitSpread(g, g.you)}` : ''}</span>
       ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}</span>` : ''}
-      <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span></div>
+      <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span>
+      ${w.armyFloodPerUnits > 0 ? `<span class="small ${me.armyFloodDue ? 'warn' : 'muted'}">🏭 Army emissions next upkeep: Flood +${me.armyFloodDue} (1 per ${w.armyFloodPerUnits} units)</span>` : ''}</div>
     <details class="tool" ${canBuild ? 'open' : ''}>
-      <summary>Recruit militia <span class="muted small">(${w.unitCost} materials each, any mix; upkeep 1 per ${w.upkeepUnitsPerMaterial} units)</span></summary>
+      <summary>Recruit militia <span class="muted small">(${w.unitCost} materials each, any mix; upkeep 1 per ${w.upkeepUnitsPerMaterial} units${w.armyFloodPerUnits > 0 ? `; every ${w.armyFloodPerUnits} units add Flood +1 each round` : ''})</span></summary>
       <div class="row wrap">${stepper('recruit.count', count, { min: 1, max: maxUnits, label: 'Units' })}<span class="small muted">unit${count === 1 ? '' : 's'} — pay ${need}:</span></div>
       ${bagEditor('recruit.mix', r.mix, limit)}
       ${g.stationed ? `<label class="inline">Place on ${tileSelect('recruit.tile', g.board.tiles.filter((t) => t.controller === g.you).map((t) => t.id), r.tile || me.homeTile, g)}</label>` : ''}
@@ -289,7 +290,7 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
           <span>${esc(tileLabel(g, id))}</span><small>${esc(targetNote(g, id))}</small></button>`,
       )
       .join('')}</div>
-      <p class="hint">Targets are outlined on the Board tab too. You roll 1 die per unit${g.stationed ? ' sent' : ''} (max ${w.maxAttackDice}${!g.stationed && me.puppets && me.puppets.length ? ', puppets\' units included' : ''}); the defender up to ${w.maxDefenceDice}. Ties go to the defender. Win: occupy it and take up to ${w.maxLoot} tokens.</p>`;
+      <p class="hint">Targets are outlined on the Board tab too. You roll 1 die per unit${g.stationed ? ' sent' : ''} (max ${w.maxAttackDice}${!g.stationed && me.puppets && me.puppets.length ? ', puppets\' units included' : ''}); the defender up to ${w.maxDefenceDice}. Ties go to the defender. Win: occupy it and take up to ${w.maxLoot} tokens.${w.destructionFloodPerUnits > 0 ? ` Every ${w.destructionFloodPerUnits} units destroyed in battle (either side) add Flood +1.` : ''}</p>`;
     canLock = !!c.target;
     if (g.stationed && c.target) {
       const sp = sourcePicker(store, g.attackSources[c.target]);

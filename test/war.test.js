@@ -24,6 +24,8 @@ function warGame(mode = 'war', tweak) {
       c.war.stationedUnits = false;
       c.war.occupationFlood = 1; // the PDF's numbers, so these mechanics stay tested
       c.war.capitalOpensAfter = 2;
+      c.war.armyFloodPerUnits = 0; // army and destruction Flood are tested in war-flood.test.js
+      c.war.destructionFloodPerUnits = 0;
       if (tweak) tweak(c);
     },
   });

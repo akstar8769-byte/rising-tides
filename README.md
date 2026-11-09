@@ -87,6 +87,7 @@ If the host is away for more than 60 seconds, another player becomes host automa
 - To attack, choose **Attack**, pick a target (from the list, or tap an outlined tile on the Board tab), then pick which of your tiles to attack **from** and how many units to send. If you win a province, your surviving units move in.
 - **Income:** every tile you hold gives 1 of its resource every round, whatever you play — even when you attack. Sustainable adds +2 of your home resource; Unsustainable adds +6 of anything (Flood +1). So conquering tiles raises your income for the rest of the game.
 - Occupying tiles no longer raises the Flood; each attack still does (+1). A capital can be attacked once one of its provinces has fallen.
+- **War always pollutes:** big armies add Flood every round (+1 per 5 units you own), and every 2 units destroyed in battle add +1 more. The Play tab shows what your army will add next upkeep.
 - The Flood track shows the **Climate Accord** line (🤝 at 10). While it holds, attackers are sanctioned and victims get aid. Once it breaks (💔) it's gone for good.
 - Empire: overlords command their puppets in the Play tab (**Your puppets**). Puppets see their command and a **Revolt!** card.
 - Withdrawing from a tile and freeing a puppet are set up during Trade & Build and happen at the next upkeep.

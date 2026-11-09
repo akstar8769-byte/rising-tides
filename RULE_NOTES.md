@@ -136,3 +136,18 @@ Example for a player with 3 tiles: Attack collects 3, Sustainable 5, Unsustainab
 - **International aid** is still only paid when you develop (Sustainable or Unsustainable).
 - **Tribute** is half of everything a puppet collects, including tile income in rounds the puppet attacks.
 - **Production access** applies to the Sustainable bonus only. Tile income always matches each tile's own resource.
+
+## War can never be sustainable (added 9 November 2026)
+
+With tile income, a growing empire paid the same Flood per round as a small one, so war could become "sustainable". The team added two Flood costs that grow with the size of the war. Both are lobby settings, and 0 switches them off.
+
+| Rule | Real-world basis (PDF W10) | Default | Setting |
+|---|---|---|---|
+| **Army emissions:** at each upkeep, Flood +1 for every 5 units a player owns (rounded down). 1–4 units cost nothing; 11 units cost +2 every round. | Militaries ≈ 5.5% of global emissions | 1 per 5 units | `war.armyFloodPerUnits` |
+| **Destruction:** every 2 units destroyed in battle (either side) add Flood +1, on top of the attack's +1. Odd losses carry over to the next battle. | Fighting was 36% of the war's emissions | 1 per 2 units | `war.destructionFloodPerUnits` |
+
+**Decided while building (please check)**
+- Army emissions are counted **after** militia upkeep, so units disbanded for unpaid upkeep don't pollute.
+- Units count as "destroyed" whenever they're lost in battle, including defenders with nowhere to retreat and units on a captured capital. Units disbanded for unpaid upkeep don't count.
+- Destruction Flood is added right after each battle. If it causes a catastrophe, the game ends immediately and the remaining battles that round don't happen.
+- The playtest record now includes Flood from armies and from destruction, plus each player's army emissions.

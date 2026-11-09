@@ -77,6 +77,8 @@ const DEFAULTS = {
     maxLoot: 3,
     attackFlood: 1,
     occupationFlood: 0,          // Flood rise per occupying player per round (PDF: 1; team chose 0)
+    armyFloodPerUnits: 5,        // army emissions: Flood +1 per this many units a player owns, every upkeep (0 = off)
+    destructionFloodPerUnits: 2, // Flood +1 for every this many units destroyed in battle (0 = off)
     capitalOpensAfter: 1,        // provinces that must be occupied before a capital can be attacked (PDF: 2)
     passivePerTile: 1,           // every tile you hold gives this much of its resource EVERY round, whatever you play
     sustainableBonus: 2,         // Sustainable adds this much of your home resource on top
@@ -154,6 +156,8 @@ const LABELS = {
   'war.sustainableBonus': 'Sustainable: extra home resource',
   'war.unsustainableBonus': 'Unsustainable: extra materials (any mix)',
   'war.capitalOpensAfter': 'Capital can be attacked after this many provinces fall',
+  'war.armyFloodPerUnits': 'Army emissions: Flood +1 per this many units (0 = off)',
+  'war.destructionFloodPerUnits': 'Destruction: Flood +1 per this many units destroyed (0 = off)',
   'war.damagedPenalty': 'Damaged: materials lost',
   'war.aidAmount': 'International aid: extra materials',
   'war.sanctionRounds': 'Sanction length (rounds)',

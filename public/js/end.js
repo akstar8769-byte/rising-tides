@@ -48,7 +48,7 @@ export function renderEnd(store) {
     : '';
   const warLine =
     war && rec
-      ? ` Attacks: ${rec.attacks}, clashes: ${rec.clashes}${empire ? `, revolts: ${rec.revolts}` : ''}. Climate Accord: ${rec.accordBrokeRound ? `broke in round ${rec.accordBrokeRound}` : 'held all game'}.`
+      ? ` Attacks: ${rec.attacks}, clashes: ${rec.clashes}${empire ? `, revolts: ${rec.revolts}` : ''}. Climate Accord: ${rec.accordBrokeRound ? `broke in round ${rec.accordBrokeRound}` : 'held all game'}. Flood from armies: +${rec.floodFromArmies}, from destruction: +${rec.floodFromDestruction}.`
       : '';
 
   return `<div class="end">
