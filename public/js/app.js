@@ -34,6 +34,8 @@ function freshUi() {
     trade: { to: null, give: { wood: 0, stone: 0, sandbag: 0 }, get: { wood: 0, stone: 0, sandbag: 0 } },
     loot: { wood: 0, stone: 0, sandbag: 0 },
     walls: 1,
+    recruit: { count: 1, mix: { wood: 0, stone: 0, sandbag: 0 } },
+    cmdAttackFor: null, // Empire: which puppet we're picking an attack target for
     hostOpen: false,
     chatDraft: '',
   };
@@ -83,6 +85,7 @@ socket.on('state', (d) => {
   // Reset per-round drafts when a new choose phase starts
   if (d.game && prev?.game && prev.game.phase !== 'choose' && d.game.phase === 'choose') {
     store.ui.choice = { action: null, mix: { wood: 0, stone: 0, sandbag: 0 }, target: null };
+    store.ui.cmdAttackFor = null;
   }
   if (d.game?.phase === 'loot' && prev?.game?.phase !== 'loot') store.ui.loot = { wood: 0, stone: 0, sandbag: 0 };
   diceOnState(d);
@@ -282,8 +285,9 @@ const actions = {
   lockIn: () => {
     const c = store.ui.choice;
     const msg = { type: 'choose', action: c.action };
-    if (c.action === 'raid') msg.target = c.target;
-    else msg.mix = c.mix;
+    if (c.action === 'raid' || c.action === 'attack') msg.target = c.target;
+    else if (c.action !== 'revolt') msg.mix = c.mix;
+    if (c.aid) msg.aid = c.aid;
     act(msg).then((r) => {
       if (r.ok) {
         c.editing = false;
@@ -292,6 +296,39 @@ const actions = {
     });
   },
   pickLoot: () => act({ type: 'pickLoot', materials: store.ui.loot }),
+
+  // War / Empire
+  recruit: () => {
+    const r = store.ui.recruit;
+    act({ type: 'recruit', count: r.count, materials: r.mix }).then((res) => {
+      if (res.ok) {
+        store.ui.recruit = { count: 1, mix: emptyBag() };
+        render();
+      }
+    });
+  },
+  pickTile: (ds) => {
+    // Tapped an outlined tile on the board.
+    if (store.ui.cmdAttackFor != null) {
+      actions.setCommand({ puppet: String(store.ui.cmdAttackFor), action: 'attack', target: ds.tile });
+      return;
+    }
+    store.ui.choice.target = ds.tile;
+    toast('Target chosen — lock in on the Play tab.');
+    render();
+  },
+  setCommand: (ds) => {
+    const msg = { type: 'setCommand', puppet: +ds.puppet, action: ds.action };
+    if (ds.target) msg.target = ds.target;
+    act(msg).then((r) => {
+      if (r.ok) {
+        store.ui.cmdAttackFor = null;
+        render();
+      }
+    });
+  },
+  planWithdraw: (ds) => act({ type: 'planWithdraw', tile: ds.tile }),
+  planRelease: (ds) => act({ type: 'planRelease', puppet: +ds.puppet }),
 
   // Host controls
   host: (ds) => {

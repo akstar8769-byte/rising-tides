@@ -30,14 +30,29 @@ export function renderEnd(store) {
     )
     .join('');
 
+  const war = g.mode !== 'base';
+  const empire = g.mode === 'empire';
+  const actionHead = war
+    ? `<th>Player</th><th>Sust.</th><th>Unsust.</th><th>Attacks</th><th>Won</th><th>Attacked</th><th>Units lost</th><th>Sanctions</th>${empire ? '<th>Revolts</th><th>Captures</th><th>Puppet of</th>' : ''}`
+    : '<th>Player</th><th>Sust.</th><th>Unsust.</th><th>Raids</th><th>Raids won</th><th>Raided</th>';
   const actionRows = rec
     ? rec.players
-        .map((p) => `<tr><td>${esc(p.name)}</td><td>${p.actions.sustainable}</td><td>${p.actions.unsustainable}</td><td>${p.actions.raid}</td><td>${p.raidsWon}</td><td>${p.timesRaided}</td></tr>`)
+        .map((p) =>
+          war
+            ? `<tr><td>${esc(p.name)}</td><td>${p.actions.sustainable}</td><td>${p.actions.unsustainable}</td><td>${p.attacks}</td><td>${p.attacksWon}</td><td>${p.timesAttacked}</td><td>${p.unitsLost}</td><td>${p.sanctions}</td>${
+                empire ? `<td>${p.revolts}</td><td>${p.captures}</td><td>${esc(p.puppetAtEnd || '—')}</td>` : ''
+              }</tr>`
+            : `<tr><td>${esc(p.name)}</td><td>${p.actions.sustainable}</td><td>${p.actions.unsustainable}</td><td>${p.actions.raid}</td><td>${p.raidsWon}</td><td>${p.timesRaided}</td></tr>`,
+        )
         .join('')
     : '';
+  const warLine =
+    war && rec
+      ? ` Attacks: ${rec.attacks}, clashes: ${rec.clashes}${empire ? `, revolts: ${rec.revolts}` : ''}. Climate Accord: ${rec.accordBrokeRound ? `broke in round ${rec.accordBrokeRound}` : 'held all game'}.`
+      : '';
 
   return `<div class="end">
-    <section class="card end-head">${headline}<p class="muted">${reason} ${rec ? `${rec.roundsPlayed} round${rec.roundsPlayed === 1 ? '' : 's'}, ${rec.lengthMinutes ?? '?'} minutes, ${rec.homesSaved} home${rec.homesSaved === 1 ? '' : 's'} saved.` : ''}</p></section>
+    <section class="card end-head">${headline}<p class="muted">${reason} ${rec ? `${rec.roundsPlayed} round${rec.roundsPlayed === 1 ? '' : 's'}, ${rec.lengthMinutes ?? '?'} minutes, ${rec.homesSaved} home${rec.homesSaved === 1 ? '' : 's'} saved.${warLine}` : ''}</p></section>
 
     <section class="card">
       <h2>Results</h2>
@@ -53,7 +68,7 @@ export function renderEnd(store) {
         ? `<section class="card">
       <h2>Playtest record</h2>
       <div class="table-wrap"><table class="results">
-        <thead><tr><th>Player</th><th>Sust.</th><th>Unsust.</th><th>Raids</th><th>Raids won</th><th>Raided</th></tr></thead>
+        <thead><tr>${actionHead}</tr></thead>
         <tbody>${actionRows}</tbody>
       </table></div>
       <div class="row wrap">

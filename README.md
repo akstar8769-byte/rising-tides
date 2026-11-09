@@ -3,7 +3,7 @@
 An online version of **Rising Tides**, our JA Company Programme board game, for 3–5 players on phones or laptops. It's for our own playtesting only, not for sale.
 
 - The host creates a room and shares a 4-letter code or link. Everyone else opens the link, types a name and joins. No accounts, no installs.
-- **Modes:** Base is ready now. War and War + Empire come in the next build steps.
+- **Modes:** Base, War (territories, militia, the Climate Accord) and War + Empire (puppets, tribute, revolts). The host picks one in the lobby.
 - **Every number in the rules** can be changed in the lobby before a game starts (defaults live in `config.js`).
 
 ---
@@ -81,6 +81,13 @@ We use **Render** (free plan). You do this once; after that, Render updates the 
 
 If the host is away for more than 60 seconds, another player becomes host automatically.
 
+**War and War + Empire, quickly:**
+- Each player has a capital and two provinces. The **Board** tab shows who owns and who holds every tile (⚑P2 = held by player 2), plus units ⚔, Damaged 🩹, sanctioned ⛔, puppet ⛓ and overlord 👑.
+- Recruit militia in the Play tab during Talk & Build. To attack, choose **Attack** and pick a target from the list, or tap an outlined tile on the Board tab.
+- The Flood track shows the **Climate Accord** line (🤝 at 10). While it holds, attackers are sanctioned and victims get aid. Once it breaks (💔) it's gone for good.
+- Empire: overlords command their puppets in the Play tab (**Your puppets**). Puppets see their command and a **Revolt!** card.
+- Withdrawing from a tile and freeing a puppet are set up during Trade & Build and happen at the next upkeep.
+
 **After the game**, the end screen shows who survived, the scores and the winner. Press **Download CSV** to save the playtest record (opens in Excel or Google Sheets, one row per player) or **Download JSON** (also includes every setting used).
 
 ---
@@ -93,13 +100,25 @@ If the host is away for more than 60 seconds, another player becomes host automa
 
 ---
 
-## 5. For the programmers on the team
+## 5. Updating the online version
+
+When the code changes (like adding War and Empire), upload the changed files to GitHub again:
+1. On your repository page, click **Add file → Upload files**.
+2. Drag in everything inside `rising-tides` again (folders included, not `node_modules`). GitHub replaces files with the same name.
+3. Click **Commit changes**.
+
+If you connected Render through **Git Provider → GitHub**, it redeploys by itself in a few minutes. If you used **Public Git Repository**, open your service on Render and click **Manual Deploy → Deploy latest commit**.
+
+---
+
+## 6. For the programmers on the team
 
 ```
 config.js            every number + lobby labels and limits
 engine/              the rules — pure functions, no networking
   index.js           createGame, applyAction (state + action -> new state), viewFor (what one player may see)
   base.js            Base rules: phases, walls, market, seawall, trades, raids, scoring, host skip
+  war.js             War + Empire: upkeep, militia, attacks, clashes, Accord, puppets, revolts
   board.js           biomes, home tiles, territories
   layouts.js         board layouts as data (hex coordinates)
   record.js          playtest record (JSON + CSV)
@@ -109,11 +128,11 @@ server/
   rooms.js           rooms, lobby, rejoining, host controls, loot timer
 public/              the web page (plain HTML/CSS/JS, no build step)
   js/app.js          connection, state, button handlers
-  js/lobby.js, game.js, board.js, dice.js, end.js, log.js, landing.js, ui.js
+  js/lobby.js, game.js, war-ui.js, board.js, dice.js, end.js, log.js, landing.js, ui.js
 test/                unit tests (node:test) + an end-to-end server test
 ```
 
-- **Run the tests:** `npm test`. Run them after changing any rule.
+- **Run the tests:** `npm test` (about a minute). Run them after changing any rule. The random-games test plays 15 random games per mode; run more with `RANDOM_GAMES=100 npm test` (Mac/Linux) before a big playtest.
 - **The server is the referee.** The browser only sends requests like `{ type: 'buildWall' }`. The engine checks every one and throws a `RuleError` if it isn't allowed, so editing the web page can't cheat.
 - **Dice** are rolled on the server from a seeded random generator stored in the game state. Players never receive the seed, so they can't predict rolls.
 - **Secret choices** are removed from other players' views (`viewFor`) until everyone has chosen.

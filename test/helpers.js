@@ -13,7 +13,7 @@ function newGame(opts = {}) {
   if (opts.settings) opts.settings(settings);
   const biomes = opts.biomes || BIOMES4.slice(0, n);
   return engine.createGame({
-    mode: 'base',
+    mode: opts.mode || 'base',
     settings,
     players: biomes.map((b, i) => ({ name: NAMES[i], biome: b })),
     seed: opts.seed || 42,

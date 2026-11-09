@@ -33,7 +33,7 @@ const {
 const { BIOMES } = require('./board');
 
 const BUILD_PHASES = ['talk', 'trade'];
-const ACTION_NAMES = { sustainable: 'Sustainable', unsustainable: 'Unsustainable', raid: 'Raid' };
+const ACTION_NAMES = { sustainable: 'Sustainable', unsustainable: 'Unsustainable', raid: 'Raid', attack: 'Attack' };
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -85,6 +85,13 @@ function requireBuildPhase(state) {
   if (!BUILD_PHASES.includes(state.phase)) fail('You can only do that during a Talk & Build or Trade & Build phase.');
 }
 
+/** War: sanctioned players can't trade, give, receive or use the market (PDF W6 + prompt). */
+function requireUnsanctioned(state, p, who = 'You are') {
+  if (p.sanctionedThrough != null && p.sanctionedThrough >= state.round) {
+    fail(`${who === 'You are' ? who : p.name + ' is'} under sanctions until the end of round ${p.sanctionedThrough}: no trading, gifts or market.`);
+  }
+}
+
 function requireHost(actor) {
   if (actor !== 'host') fail('Only the host can do that.');
 }
@@ -129,6 +136,7 @@ function market(state, actor, { give, get, times = 1 } = {}) {
   if (!MATERIALS.includes(give) || !MATERIALS.includes(get)) fail('Pick materials to give and get.');
   if (give === get) fail('Pick two different materials.');
   if (!Number.isInteger(times) || times < 1 || times > 50) fail('Invalid number of market trades.');
+  requireUnsanctioned(state, p);
   const c = cfg(state);
   const pay = c.marketGive * times;
   if (p.materials[give] < pay) fail(`You need ${pay} ${give} for that.`);
@@ -162,6 +170,8 @@ function gift(state, actor, { to, materials } = {}) {
   const bag = cleanBag(materials);
   if (bagTotal(bag) === 0) fail('Choose some materials to give.');
   if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
+  requireUnsanctioned(state, p);
+  requireUnsanctioned(state, q, 'them');
   subBag(p.materials, bag);
   addBag(q.materials, bag);
   p.stats.gifts += 1;
@@ -176,6 +186,8 @@ function proposeTrade(state, actor, { to, give, get } = {}) {
   const w = cleanBag(get, 'request');
   if (bagTotal(g) === 0 || bagTotal(w) === 0) fail('A trade needs materials on both sides. Use Give for a gift.');
   if (!hasBag(p.materials, g)) fail("You don't have what you're offering.");
+  requireUnsanctioned(state, p);
+  requireUnsanctioned(state, q, 'them');
   if (state.trades.filter((t) => t.from === actor).length >= 10) fail('You have too many open offers. Cancel some first.');
   const id = state.nextTradeId++;
   state.trades.push({ id, from: actor, to: q.seat, give: g, get: w });
@@ -196,6 +208,8 @@ function acceptTrade(state, actor, { id } = {}) {
   const to = state.players[t.to];
   if (!hasBag(from.materials, t.give)) fail(`${from.name} no longer has what they offered.`);
   if (!hasBag(to.materials, t.get)) fail("You don't have what they asked for.");
+  requireUnsanctioned(state, to);
+  requireUnsanctioned(state, from, 'them');
   subBag(from.materials, t.give);
   addBag(to.materials, t.give);
   subBag(to.materials, t.get);
@@ -436,7 +450,8 @@ function finishLoot(state, bag, why) {
   addLog(state, `${A.name} took ${describeBag(bag)} from ${D.name}${why}.`);
   state.pendingLoot = null;
   state.phase = 'raids';
-  continueRaids(state);
+  if (state.mode === 'base') continueRaids(state);
+  else require('./war').continueBattles(state);
 }
 
 function lootTimeout(state, actor) {
@@ -479,6 +494,7 @@ function endRound(state) {
   state.startingPlayer = (state.startingPlayer + 1) % state.players.length;
   state.phase = 'talk';
   addLog(state, `Round ${state.round} begins. Starting player: ${state.players[state.startingPlayer].name}.`, { kind: 'round' });
+  if (state.mode !== 'base') require('./war').upkeep(state); // War: upkeep at the start of each round
 }
 
 /**
@@ -533,10 +549,14 @@ function skip(state, actor, { seat } = {}) {
     maybeAdvanceBuildPhase(state);
   } else if (state.phase === 'choose') {
     if (p.choice) fail(`${p.name} has already chosen.`);
-    addLog(state, `The host skipped ${p.name}'s turn: they play Sustainable.`);
-    p.choice = { action: 'sustainable' };
-    if (p.biome === 'mixed') p.choice.mix = evenMix(cfg(state).sustainableCollect);
-    if (state.players.every((x) => x.choice)) reveal(state);
+    if (state.mode === 'base') {
+      p.choice = { action: 'sustainable' };
+      if (p.biome === 'mixed') p.choice.mix = evenMix(cfg(state).sustainableCollect);
+    } else {
+      p.choice = require('./war').defaultChoice(state, p);
+    }
+    addLog(state, `The host skipped ${p.name}'s turn: they play ${ACTION_NAMES[p.choice.action] || p.choice.action}.`);
+    if (state.players.every((x) => x.choice)) (state.mode === 'base' ? reveal : require('./war').reveal)(state);
   } else if (state.phase === 'loot') {
     if (state.pendingLoot.raider !== seat) fail(`${p.name} is not picking loot.`);
     randomLoot(state, ' (skipped by the host, picked at random)');
@@ -569,4 +589,4 @@ const handlers = {
   endGame,
 };
 
-module.exports = { handlers, threshold, seawallBonus, protection, wallCost, clockwise, scoreGame, BUILD_PHASES };
+module.exports = { handlers, threshold, seawallBonus, protection, wallCost, clockwise, scoreGame, checkCatastrophe, startTradePhase, BUILD_PHASES };

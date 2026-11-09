@@ -29,7 +29,7 @@ test('server: create, join, start, play a full Base game, rejoin by name', async
     assert.match((await b.call('lobby', { op: 'setSetting', path: 'base.rounds', value: 2 })).error, /Only the host/);
     assert.ok((await a.call('lobby', { op: 'setSetting', path: 'base.rounds', value: 2 })).ok);
     assert.match((await a.call('lobby', { op: 'setSetting', path: 'base.rounds', value: -1 })).error, /whole number/);
-    assert.match((await a.call('lobby', { op: 'setMode', mode: 'war' })).error, /not built/);
+    assert.match((await a.call('lobby', { op: 'setMode', mode: 'nuclear' })).error, /Unknown mode/);
     assert.ok((await a.call('startGame')).ok);
     await tick();
     assert.equal(a.last.game.phase, 'talk');

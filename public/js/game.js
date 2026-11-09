@@ -3,6 +3,7 @@
 import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
 import { renderBoard } from './board.js';
 import { renderLog, renderChat } from './log.js';
+import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel } from './war-ui.js';
 
 const BUILD = ['talk', 'trade'];
 const j = (o) => esc(JSON.stringify(o));
@@ -20,7 +21,7 @@ export function renderGame(store) {
   ${floodBanner(g)}
   <main class="game-grid tab-${tab}">
     <section class="col col-board" data-tab="board">
-      <div class="card board-card">${renderBoard(g)}</div>
+      <div class="card board-card">${renderBoard(g, boardOptions(store))}</div>
       <div class="card"><h2>Players</h2>${playersList(store)}</div>
     </section>
     <section class="col col-play" data-tab="play">
@@ -44,6 +45,16 @@ export function renderGame(store) {
   </nav>`;
 }
 
+/** Which tiles to outline on the board (attack targets while choosing / commanding). */
+function boardOptions(store) {
+  const g = store.data.game;
+  if (!g.war) return {};
+  const ui = store.ui;
+  if (ui.cmdAttackFor != null && g.commandTargets[ui.cmdAttackFor]) return { highlight: g.commandTargets[ui.cmdAttackFor], selected: null };
+  if (g.phase === 'choose' && ui.choice.action === 'attack' && g.players[g.you].puppetOf == null) return { highlight: g.attackTargets, selected: ui.choice.target };
+  return {};
+}
+
 function tabButton(id, label, icon, current, badge = 0) {
   return `<button class="tabbtn ${current === id ? 'active' : ''}" data-act="tab" data-tab="${id}" aria-pressed="${current === id}">
     <span aria-hidden="true">${icon}</span>${label}${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
@@ -62,6 +73,7 @@ function topBar(store) {
       <span class="round">Round ${g.round} of ${rounds}${g.settings.base.stormEnabled && g.mode === 'base' ? '*' : ''}</span>
       <span class="phase">${PHASE_LABEL[g.phase] || g.phase}</span>
       <span class="flood-pill ${dangerClass(g)}" title="Flood / catastrophe threshold">🌊 ${g.flood}/${g.threshold}</span>
+      ${accordPill(g)}
     </div>
     <div class="wait-line ${youWaited ? 'you' : ''}">${youWaited ? '<b>Your move.</b> ' : ''}${waitText}</div>
     <div class="top-actions">
@@ -85,7 +97,7 @@ function hostMenu(store) {
     ${d.paused ? '<button class="btn small" data-act="host" data-op="resume">▶ Resume</button>' : '<button class="btn small" data-act="host" data-op="pause">⏸ Pause</button>'}
     ${skips}
     <button class="btn small danger" data-act="host" data-op="endGame">End game</button>
-    <p class="hint">Skip: marks a player Ready, plays Sustainable for them, or picks their loot at random.</p>
+    <p class="hint">Skip: marks a player Ready, plays Sustainable for them (puppets: their command), or picks their loot at random.</p>
   </div>`;
 }
 
@@ -97,7 +109,7 @@ function dangerClass(g) {
 function floodBanner(g) {
   const gap = g.threshold - g.flood;
   if (gap > 2) return '';
-  return `<div class="banner ${gap <= 1 ? 'critical' : 'danger'}">⚠️ The Flood is ${g.flood}. ${gap === 1 ? 'One more' : 'Two more'} Unsustainable action${gap === 1 ? '' : 's'} and the whole village is lost!</div>`;
+  return `<div class="banner ${gap <= 1 ? 'critical' : 'danger'}">⚠️ The Flood is ${g.flood}. ${gap === 1 ? 'One more' : 'Two more'} Flood rise${gap === 1 ? '' : 's'} and the whole village is lost!</div>`;
 }
 
 // ------------------------------------------------------------------ flood track
@@ -105,20 +117,23 @@ function floodTrack(g, me) {
   const max = g.threshold;
   const cells = [];
   for (let i = 0; i <= max; i++) {
-    const cls = [i <= g.flood ? 'filled' : '', i === max ? 'cata' : '', i === g.flood ? 'current' : '', i === me.protection ? 'mine' : ''].join(' ');
-    cells.push(`<div class="fcell ${cls}"><span>${i === max ? '☠' : i}</span></div>`);
+    const accord = g.war && i === g.war.accordLine;
+    const cls = [i <= g.flood ? 'filled' : '', i === max ? 'cata' : '', i === g.flood ? 'current' : '', i === me.protection ? 'mine' : '', accord ? (g.war.accordBroken ? 'accord broken' : 'accord') : ''].join(' ');
+    cells.push(`<div class="fcell ${cls}" ${accord ? 'title="Climate Accord line"' : ''}><span>${i === max ? '☠' : i}</span></div>`);
   }
   const safe = me.protection >= g.flood;
   const seawall = g.settings.base;
   const toNext = seawall.seawallPerStep - (g.seawall % seawall.seawallPerStep);
   const capped = g.seawallBonus >= seawall.seawallMaxSteps;
   return `<h2>Flood</h2>
-    <div class="flood-track" role="img" aria-label="Flood ${g.flood}, catastrophe at ${max}">${cells.join('')}</div>
+    <div class="flood-track ${max > 14 ? 'dense' : ''}" role="img" aria-label="Flood ${g.flood}, catastrophe at ${max}">${cells.join('')}</div>
     <div class="flood-key">
       <span><i class="k filled"></i>Flood ${g.flood}</span>
       <span><i class="k cata"></i>Catastrophe at ${max}${g.seawallBonus ? ` (incl. +${g.seawallBonus} seawall)` : ''}</span>
       <span><i class="k mine"></i>Your protection ${me.protection}</span>
+      ${g.war ? `<span><i class="k accord"></i>Accord line ${g.war.accordLine}</span>` : ''}
     </div>
+    ${accordCard(g)}
     <p class="${safe ? 'ok' : 'warn'} small">${safe ? `✔ Your home is safe at Flood ${g.flood}.` : `✖ Your home would flood at Flood ${g.flood}. You need ${g.flood - me.protection} more protection.`}
     Seawall: ${g.seawall} donated${capped ? ' (bonus maxed)' : `, ${toNext} more for +1`}.</p>`;
 }
@@ -128,11 +143,11 @@ function phasePanel(store) {
   const g = store.data.game;
   const me = g.players[g.you];
   if (BUILD.includes(g.phase)) {
-    const title = g.phase === 'talk' ? '1. Talk & build' : '5. Trade & build again';
+    const title = g.war ? (g.phase === 'talk' ? '2. Talk & build' : '6. Trade & build again') : g.phase === 'talk' ? '1. Talk & build' : '5. Trade & build again';
     const next = g.phase === 'talk' ? 'When everyone is Ready, you choose actions secretly.' : 'When everyone is Ready, the round ends and the starting player moves clockwise.';
     return `<div class="card phase-card">
       <h2>${title}</h2>
-      <p class="hint">Trade, give, build walls, use the market, donate to the seawall. ${next}</p>
+      <p class="hint">Trade, give, build walls, use the market, donate to the seawall${g.war ? ', recruit militia' : ''}${g.mode === 'empire' ? ', command your puppets' : ''}. ${next}</p>
       ${
         me.ready
           ? `<button class="btn big ready-done" data-act="unready">✔ Ready — tap to undo</button>`
@@ -141,7 +156,7 @@ function phasePanel(store) {
       ${lastReveal(g)}
     </div>`;
   }
-  if (g.phase === 'choose') return choosePanel(store);
+  if (g.phase === 'choose') return g.war ? warChoosePanel(store, { choiceLabel, capped, actionCard: makeCard(store.ui.choice) }) : choosePanel(store);
   if (g.phase === 'loot') return lootPanel(store);
   return '';
 }
@@ -152,8 +167,16 @@ function lastReveal(g) {
   return items.length ? `<h3>This round's actions</h3><ul class="reveal-list">${items.join('')}</ul>` : '';
 }
 
+function makeCard(c) {
+  return (action, title, desc, flood, disabled = false, why = '') =>
+    `<button class="action-card ${action} ${c.action === action ? 'selected' : ''}" data-act="pickAction" data-value="${action}" ${disabled ? 'disabled' : ''} aria-pressed="${c.action === action}">
+      <b>${title}</b><span>${desc}</span><em>${flood}</em>${why ? `<small>${why}</small>` : ''}</button>`;
+}
+
 function choiceLabel(g, c) {
   if (!c) return '';
+  if (c.action === 'attack') return `<span class="act raid">Attack → ${esc(tileLabel(g, c.target))}</span>`;
+  if (c.action === 'revolt') return `<span class="act unsus">Revolt!</span>`;
   if (c.action === 'raid') return `<span class="act raid">Raid → ${esc(g.players[c.target].name)}</span>`;
   if (c.action === 'unsustainable') return `<span class="act unsus">Unsustainable</span>`;
   return `<span class="act sus">Sustainable</span>`;
@@ -178,9 +201,7 @@ function choosePanel(store) {
     </div>`;
   }
 
-  const card = (action, title, desc, flood, disabled = false, why = '') =>
-    `<button class="action-card ${action} ${c.action === action ? 'selected' : ''}" data-act="pickAction" data-value="${action}" ${disabled ? 'disabled' : ''} aria-pressed="${c.action === action}">
-      <b>${title}</b><span>${desc}</span><em>${flood}</em>${why ? `<small>${why}</small>` : ''}</button>`;
+  const card = makeCard(c);
 
   const susDesc = homeRes ? `Collect ${b.sustainableCollect} ${homeRes === 'sandbag' ? 'sandbags' : homeRes}` : `Collect any ${b.sustainableCollect}`;
   const noWood = me.materials.wood < b.raidCostWood;
@@ -274,6 +295,8 @@ function myPanel(store) {
     <h2>${chip(me.seat, me.name)} <span class="muted small">${biome.glyph} ${biome.label} home${biome.res ? ` — collects ${biome.res === 'sandbag' ? 'sandbags' : biome.res}` : ' — collects any'}</span></h2>
     <div class="my-mats">${MATS.map((m) => `<div class="mat-tile">${matIcon(m, 34)}<b>${me.materials[m]}</b><span>${MAT_LABEL[m]}</span></div>`).join('')}</div>
     <div class="walls-line">🧱 <b>${me.walls}</b> wall${me.walls === 1 ? '' : 's'} = <b>${me.protection}</b> protection · Seawall donated: ${me.donated}</div>
+    ${g.war ? `<div class="row wrap small">${warTags(g, me)}</div>` : ''}
+    ${warMyPanel(store)}
 
     <details class="tool" ${canBuild ? 'open' : ''}>
       <summary>Build walls <span class="muted small">(${bagText(cost)} each)</span></summary>
@@ -290,7 +313,7 @@ function myPanel(store) {
         <div><span class="small muted">Give ${b.marketGive * Math.min(mk.times, marketMax)}</span>${matPicker('market.give', mk.give)}</div>
         <div><span class="small muted">Get ${b.marketGet * Math.min(mk.times, marketMax)}</span>${matPicker('market.get', mk.get)}</div>
         <div class="row">${stepper('market.times', Math.min(mk.times, marketMax), { min: 1, max: marketMax, label: 'Times' })}<span class="small muted">times</span></div>
-        <button class="btn" data-act="market" ${canBuild && mk.give !== mk.get && me.materials[mk.give] >= b.marketGive ? '' : 'disabled'}>Trade at market</button>
+        <button class="btn" data-act="market" ${canBuild && !me.sanctioned && mk.give !== mk.get && me.materials[mk.give] >= b.marketGive ? '' : 'disabled'}>Trade at market</button>
       </div>
     </details>
 
@@ -338,6 +361,7 @@ function playersList(store) {
           <span>🧱 ${p.walls} (${p.protection}) <span class="${safe ? 'ok' : 'warn'}">${safe ? 'safe' : 'at risk'}</span></span>
           ${g.phase === 'trade' && p.choice ? choiceLabel(g, p.choice) : ''}
         </div>
+        ${g.war ? `<div class="row small wrap">${warTags(g, p)}</div>` : ''}
       </li>`;
     })
     .join('')}</ul>`;
@@ -381,6 +405,8 @@ function tradePanel(store) {
   return `<div class="card">
     <h2>Trade offers</h2>
     ${open ? '' : '<p class="warn small">Trading is closed until the next Trade & Build phase.</p>'}
+    ${me.sanctioned ? `<p class="warn small">⛔ You are sanctioned until the end of round ${me.sanctionedThrough}: no trading, gifts or market.</p>` : ''}
+    ${g.war && others.some((p) => p.sanctioned) ? `<p class="hint">Sanctioned (nobody may trade with them): ${others.filter((p) => p.sanctioned).map((p) => esc(p.name)).join(', ')}.</p>` : ''}
     <ul class="offers">${incomingHtml}</ul>
     ${outgoingHtml ? `<h3>Your open offers</h3><ul class="offers">${outgoingHtml}</ul>` : ''}
   </div>

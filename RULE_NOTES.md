@@ -39,7 +39,7 @@ Any number mentioned here can be changed in `config.js` (defaults) or in the lob
 - **Q9 — Mixed player in War.** Their two home tiles each produce any 1 material.
 - **Q10 — Thresholds.** War catastrophe threshold: 20 for 4 players (from the PDF). 19 for 3 players and 21 for 5 are placeholders. *Settings:* `war.catastrophe.3/4/5`.
 
-## War mode (build step 4)
+## War mode
 
 - **Q11** The player currently holding a tile defends it. If an occupier loses a tile, they lose the loot and become Damaged.
 - **Q12** A capital can be attacked once both of its provinces are occupied by anyone, not only the attacker.
@@ -50,7 +50,7 @@ Any number mentioned here can be changed in `config.js` (defaults) or in the lob
 - **Q17** A clash happens only when two players attack each other. Three-way loops are resolved one by one, clockwise. The clash winner gets the normal win effects (occupy, loot, Damaged).
 - **Q18** An attacker with 0 units when their battle comes up (they lost units defending earlier) fizzles. Their +1 Flood still counts.
 
-## Empire mode (build step 5)
+## Empire mode
 
 - **Q19** Capturing a capital takes **half the stockpile (rounded down)** *instead of* 3 tokens. The puppet is not Damaged. Anyone occupying the puppet's provinces loses them, including third parties.
 - **Q20** Tribute is half of everything the puppet collects (aid included), **rounded up**. The overlord gets the material types the puppet just collected, largest pile first.
@@ -59,3 +59,30 @@ Any number mentioned here can be changed in `config.js` (defaults) or in the lob
 - **Q23** Revolts ignore adjacency but need at least 1 unit. If the overlord has 0 units, the rebel wins.
 - **Q24** For a commanded attack, the **overlord** is sanctioned, not the puppet. When the overlord adds units, the **puppet's units are lost first**. (The PDF says the overlord chooses which units are lost; this keeps the game moving.)
 - **Q25** Garrison costs are 1 / 3 / 6 for 1 / 2 / 3 puppets, and **10** for 4. If the overlord can't pay, the most recently captured puppet is freed first. *Settings:* `empire.garrisonCost.*`.
+
+## Decisions made while building War and Empire (not in the original list)
+
+These came up during the build. Each one is the simplest reading I could find; change any you disagree with.
+
+**Upkeep and occupation**
+- **Withdrawing and freeing are planned ahead.** During a Talk & Build or Trade & Build phase you can mark an occupied tile "withdraw at next upkeep" (or a puppet "free at upkeep"). It happens at the start of the next round, *before* the occupation Flood is counted, so withdrawing saves the +1. This avoids an extra phase where everyone has to press Ready.
+- **Upkeep order:** planned withdrawals and releases → militia upkeep → garrison → Flood +1 per occupying player → check the Accord and catastrophe. Because militia is paid first, a big army can leave you unable to pay the garrison, and then a puppet goes free.
+- **Damaged** takes the lost material from the largest pile of what you collect.
+- Sanctioned players can still recruit, build walls and donate to the seawall. Only trading, gifts and the market are blocked.
+
+**Battles**
+- A **sanction** applies whether the attack wins or loses. An attack that fizzles (no units, target already yours) is not sanctioned.
+- **Retaking your own tile** works like any province win, as in Q11: the occupier loses up to 3 tokens and becomes Damaged. You are not sanctioned.
+- **A tile someone has claimed** from the open tiles can be attacked like a province. That *is* sanctioned, since a player is being invaded.
+- **Clashes:** each side is treated as an attacker for sanctions. The winner gets the normal win effects for the tile they targeted.
+- **The capital's extra defence die also applies in a revolt.** The PDF calls a revolt "a normal attack" on the capital.
+
+**Empire**
+- **Commanded militia is automatic.** An overlord's attacks and defences always include their puppets' units (puppets' units are lost first). A puppet defending in a proxy war automatically gets its overlord's units too.
+- A **commanded attack** uses only the puppet's own units. The puppet can't be commanded to attack its overlord or the overlord's other puppets, and an overlord can't attack its own puppets.
+- If a command can't be carried out when choosing (for example, the puppet has no units left), the puppet plays Sustainable.
+- **Production access** (Q21): an overlord's Sustainable income can be taken as any mix of the materials their own tiles *or* their puppets' tiles produce. The total stays the same.
+- **Tribute** is taken after Damaged and aid, from what the puppet just collected (largest pile first).
+- A puppet with 0 units can't revolt.
+
+**Game end:** the optional Storm ending (Base settings) also works in War modes. The PDF leaves the War ending open.

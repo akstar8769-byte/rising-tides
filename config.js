@@ -13,8 +13,8 @@
  *  - Settings are grouped: "general" applies to every mode, "base" to the base
  *    game, "war" to War mode, "empire" to War + Empire mode.
  *
- * War and Empire values are here already so the file is complete, but those
- * modes are built in later steps (see RULE_NOTES.md).
+ * War values are used in War and War + Empire modes; Empire values only in
+ * War + Empire mode. How unclear rules were decided: see RULE_NOTES.md.
  */
 'use strict';
 
@@ -62,7 +62,7 @@ const DEFAULTS = {
     stormEndMax: 2,              // the game ends if the storm die shows this number or lower (2 = "1-2 ends it")
   },
 
-  // ---- Used from build step 4 (War mode) ----
+  // ---- War and War + Empire modes ----
   war: {
     rounds: 8,
     catastrophe: { 3: 19, 4: 20, 5: 21 }, // 4p from the PDF; 3p and 5p are guesses (Q10)
@@ -85,7 +85,7 @@ const DEFAULTS = {
     openTilesClaimable: true,    // false = open tiles are impassable (Q8)
   },
 
-  // ---- Used from build step 5 (Empire mode) ----
+  // ---- War + Empire mode only ----
   empire: {
     garrisonCost: { 1: 1, 2: 3, 3: 6, 4: 10 }, // total upkeep for holding N puppets
     tributeDivisor: 2,           // overlord gets 1/this of puppet income, rounded UP

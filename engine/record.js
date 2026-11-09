@@ -13,6 +13,7 @@ const { BIOMES } = require('./board');
 function playtestRecord(state, meta = {}) {
   const o = state.outcome || { results: [], winners: [] };
   const rounds = state.mode === 'base' ? state.settings.base.rounds : state.settings.war.rounds;
+  const war = state.mode !== 'base';
   const minutes = meta.startedAt && meta.endedAt ? Math.round((meta.endedAt - meta.startedAt) / 6000) / 10 : null;
   const players = state.players.map((p) => {
     const r = o.results.find((x) => x.seat === p.seat) || {};
@@ -37,6 +38,24 @@ function playtestRecord(state, meta = {}) {
       marketTrades: p.stats.marketTrades,
       tradesCompleted: p.stats.tradesCompleted,
       gifts: p.stats.gifts,
+      // War / Empire (zero in Base)
+      attacks: p.stats.attack,
+      attacksWon: p.stats.attacksWon,
+      claims: p.stats.claims,
+      clashes: p.stats.clashes,
+      timesAttacked: p.stats.timesAttacked,
+      unitsFinal: p.units,
+      unitsRecruited: p.stats.unitsRecruited,
+      unitsLost: p.stats.unitsLost,
+      unitsDisbanded: p.stats.unitsDisbanded,
+      sanctions: p.stats.sanctions,
+      aidReceived: p.stats.aidReceived,
+      revolts: p.stats.revolt,
+      revoltsWon: p.stats.revoltsWon,
+      captures: p.stats.captures,
+      tributePaid: p.stats.tributePaid,
+      tributeReceived: p.stats.tributeReceived,
+      puppetAtEnd: p.puppetOf != null ? state.players[p.puppetOf].name : null,
     };
   });
   return {
@@ -56,10 +75,10 @@ function playtestRecord(state, meta = {}) {
     winners: players.filter((p) => p.winner).map((p) => p.name),
     raids: players.reduce((a, p) => a + p.actions.raid, 0),
     raidsWon: players.reduce((a, p) => a + p.raidsWon, 0),
-    attacks: null, // War mode (step 4)
-    clashes: null,
-    revolts: null, // Empire mode (step 5)
-    accordBrokeRound: null,
+    attacks: war ? players.reduce((a, p) => a + p.attacks, 0) : null,
+    clashes: war ? state.clashCount : null,
+    revolts: state.mode === 'empire' ? players.reduce((a, p) => a + p.revolts, 0) : null,
+    accordBrokeRound: war ? state.accordBrokeRound : null, // null = the Accord held all game
     lengthMinutes: minutes,
     settings: state.settings,
     players,
@@ -110,6 +129,23 @@ function recordToCsv(rec) {
     ['market_trades', (p) => p.marketTrades],
     ['trades_completed', (p) => p.tradesCompleted],
     ['gifts', (p) => p.gifts],
+    ['attacks', (p) => p.attacks],
+    ['attacks_won', (p) => p.attacksWon],
+    ['claims', (p) => p.claims],
+    ['clash_battles', (p) => p.clashes],
+    ['times_attacked', (p) => p.timesAttacked],
+    ['units_final', (p) => p.unitsFinal],
+    ['units_recruited', (p) => p.unitsRecruited],
+    ['units_lost', (p) => p.unitsLost],
+    ['units_disbanded', (p) => p.unitsDisbanded],
+    ['sanctions', (p) => p.sanctions],
+    ['aid_received', (p) => p.aidReceived],
+    ['revolts', (p) => p.revolts],
+    ['revolts_won', (p) => p.revoltsWon],
+    ['captures', (p) => p.captures],
+    ['tribute_paid', (p) => p.tributePaid],
+    ['tribute_received', (p) => p.tributeReceived],
+    ['puppet_of_at_end', (p) => p.puppetAtEnd],
   ];
   const lines = [cols.map((c) => c[0]).join(',')];
   for (const p of rec.players) lines.push(cols.map((c) => csvCell(c[1](p))).join(','));

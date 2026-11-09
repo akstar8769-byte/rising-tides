@@ -29,15 +29,33 @@ function randomAction(s, rnd) {
     () => [s.pendingLoot ? s.pendingLoot.raider : seat, { type: 'pickLoot', materials: mix(s.pendingLoot ? s.pendingLoot.count : 3) }],
     () => ['system', { type: 'lootTimeout' }],
   ];
+  if (s.mode !== 'base') {
+    const tiles = s.board.tiles.filter((t) => t.kind === 'land').map((t) => t.id);
+    options.push(
+      () => [seat, { type: 'recruit', count: 1, materials: mix(s.settings.war.unitCost) }],
+      () => [seat, { type: 'recruit', count: 1, materials: mix(s.settings.war.unitCost) }],
+      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles) }],
+      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles) }],
+      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles) }],
+      () => [seat, { type: 'choose', action: 'revolt' }],
+      () => [seat, { type: 'choose', action: 'sustainable', mix: mix(3) }],
+      () => [seat, { type: 'choose', action: 'unsustainable', mix: mix(6) }],
+      () => [seat, { type: 'setCommand', puppet: Math.floor(rnd() * n), action: pick(['sustainable', 'unsustainable', 'attack']), target: pick(tiles) }],
+      () => [seat, { type: 'planWithdraw', tile: pick(tiles) }],
+      () => [seat, { type: 'planRelease', puppet: Math.floor(rnd() * n) }],
+    );
+  }
   return pick(options)();
 }
 
-test('random games: no crashes, no negative materials, always finishes', () => {
+// Set RANDOM_GAMES=100 (for example) to run more games per mode.
+const PER_MODE = Number(process.env.RANDOM_GAMES) || 15;
+for (const [mode, games] of [['base', PER_MODE], ['war', PER_MODE], ['empire', PER_MODE]]) test(`random ${mode} games: no crashes, no negative materials or units, always finishes`, () => {
   let seed = 1;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let g = 0; g < 300; g++) {
+  for (let g = 0; g < games; g++) {
     const n = 3 + (g % 3);
-    let s = newGame({ n, seed: g + 1, settings: (c) => (c.base.stormEnabled = g % 2 === 0) });
+    let s = newGame({ n, mode, seed: g + 1, settings: (c) => (c.base.stormEnabled = g % 2 === 0) });
     let steps = 0;
     while (s.phase !== 'ended' && steps < 5000) {
       const [actor, action] = randomAction(s, rnd);
@@ -47,7 +65,12 @@ test('random games: no crashes, no negative materials, always finishes', () => {
         if (e.name !== 'RuleError') throw e; // only rule errors are allowed
       }
       // Invariants
-      for (const p of s.players) for (const m of ['wood', 'stone', 'sandbag']) assert.ok(p.materials[m] >= 0, 'negative material');
+      for (const p of s.players) {
+        for (const m of ['wood', 'stone', 'sandbag']) assert.ok(p.materials[m] >= 0, 'negative material');
+        assert.ok(p.units >= 0, 'negative units');
+        if (p.puppetOf != null) assert.equal(s.players[p.puppetOf].puppetOf, null, 'a puppet has a puppet');
+      }
+      for (const t of s.board.tiles) if (t.role === 'capital') assert.equal(t.controller, t.owner, 'capital changed hands');
       assert.ok(s.flood >= 2);
       steps++;
       // Unstick: if a build phase drags on, the host skips everyone

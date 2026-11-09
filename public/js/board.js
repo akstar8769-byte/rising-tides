@@ -1,5 +1,9 @@
 // SVG hex board. Tile positions come from the board data the server sends
 // (engine/layouts.js), so a new layout needs no changes here.
+//
+// Each tile shows:  biome colour + glyph; the OWNER as a coloured border with
+// their pattern; in War modes, an OCCUPIER's flag (⚑P2) when someone else holds it;
+// on capitals: name, walls, units and markers (🩹 Damaged, ⛔ sanctioned, ⛓ puppet, 👑 overlord).
 import { esc, BIOME, PLAYER_STYLE } from './ui.js';
 
 const SIZE = 50; // hex radius in SVG units
@@ -19,7 +23,13 @@ function hexPoints(cx, cy, r) {
   return pts.join(' ');
 }
 
-export function renderBoard(game) {
+/**
+ * opts.highlight: tile ids to outline as possible targets (clickable)
+ * opts.selected:  the currently chosen target
+ */
+export function renderBoard(game, opts = {}) {
+  const war = !!game.war;
+  const highlight = new Set(opts.highlight || []);
   const tiles = game.board.tiles;
   const cs = tiles.map(center);
   const xs = cs.map((c) => c.x);
@@ -43,27 +53,58 @@ export function renderBoard(game) {
     }
     const b = BIOME[t.biome];
     const owner = t.owner != null ? game.players[t.owner] : null;
-    const isHome = owner && t.role === 'capital';
-    const faded = !owner ? ' open' : '';
+    const isCapital = owner && t.role === 'capital';
+    const occupier = war && t.controller != null && t.controller !== t.owner ? t.controller : null;
+    const unheld = !owner && occupier == null;
     let inner = `<polygon points="${hexPoints(x, y, SIZE - 2)}" fill="${b.color}" stroke="#ffffff" stroke-width="2"/>`;
     if (owner) {
       const st = PLAYER_STYLE[t.owner];
       inner += `<polygon points="${hexPoints(x, y, SIZE - 7)}" fill="url(#pat-${t.owner})" stroke="${st.color}" stroke-width="7" opacity=".95"/>`;
     }
-    inner += `<text x="${x}" y="${y - (isHome ? 22 : 2)}" class="glyph">${b.glyph}</text>`;
-    if (isHome) {
+    if (occupier != null) {
+      // Occupied: the holder's colour fills the middle, with a flag label.
+      const oc = PLAYER_STYLE[occupier];
+      inner += `<polygon points="${hexPoints(x, y, SIZE - 16)}" fill="${oc.color}" opacity=".55"/>
+        <polygon points="${hexPoints(x, y, SIZE - 16)}" fill="url(#pat-${occupier})"/>
+        <rect x="${x - 25}" y="${y + 3}" width="50" height="20" rx="6" fill="${oc.color}" stroke="#000" stroke-width="1.5"/>
+        <text x="${x}" y="${y + 18}" class="tname small" fill="${oc.ink}">⚑${oc.label}</text>`;
+    }
+    inner += `<text x="${x}" y="${y - (isCapital ? 22 : occupier != null ? 12 : 2)}" class="glyph">${b.glyph}</text>`;
+    if (isCapital) {
       const st = PLAYER_STYLE[t.owner];
       const short = owner.name.length > 7 ? owner.name.slice(0, 6) + '…' : owner.name;
+      let sub = `🧱${owner.walls}`;
+      if (war) sub += ` ⚔${owner.units}`;
+      if (t.owner === game.you) sub += ' · you';
+      let marks = '';
+      if (owner.damaged) marks += '🩹';
+      if (owner.sanctioned) marks += '⛔';
+      if (owner.puppetOf != null) marks += `⛓${PLAYER_STYLE[owner.puppetOf].label}`;
+      if (owner.puppets && owner.puppets.length) marks += '👑';
       inner += `<rect x="${x - 42}" y="${y - 9}" width="84" height="25" rx="7" fill="${st.color}" stroke="${t.owner === game.you ? '#000' : '#0004'}" stroke-width="${t.owner === game.you ? 2.5 : 1}"/>
         <text x="${x}" y="${y + 9}" class="tname" fill="${st.ink}">${st.label} ${esc(short)}</text>
-        <text x="${x}" y="${y + 33}" class="tsub strong">🧱${owner.walls}${t.owner === game.you ? ' · you' : ''}</text>`;
+        <text x="${x}" y="${y + 33}" class="tsub strong">${sub}</text>
+        ${marks ? `<text x="${x + 30}" y="${y - 26}" class="marks">${marks}</text>` : ''}`;
     }
-    const title = owner ? `${owner.name}'s home — ${b.label}` : `Open tile — ${b.label}`;
-    return `<g class="tile${faded}"><title>${esc(title)}</title>${inner}</g>`;
+    if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
+    let cls = 'tile';
+    if (unheld) cls += ' open';
+    let act = '';
+    if (highlight.has(t.id)) {
+      cls += opts.selected === t.id ? ' target selected' : ' target';
+      act = ` data-act="pickTile" data-tile="${t.id}" role="button" tabindex="0"`;
+      inner += `<polygon points="${hexPoints(x, y, SIZE - 4)}" class="target-ring"/>`;
+    }
+    const title = `${owner ? `${owner.name}'s ${t.role}` : 'Open tile'} ${t.id} — ${b.label}${occupier != null ? `, held by ${game.players[occupier].name}` : ''}`;
+    return `<g class="${cls}"${act}><title>${esc(title)}</title>${inner}</g>`;
   });
 
+  const legendExtra = war
+    ? `<span>⚑P2 = occupied by P2</span><span>⚔ units</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
+    : '';
   return `<svg class="board" viewBox="${minX.toFixed(0)} ${minY.toFixed(0)} ${w.toFixed(0)} ${h.toFixed(0)}" role="img" aria-label="Game board">${parts.join('')}</svg>
   <div class="legend">${Object.values(BIOME)
     .map((b) => `<span><i style="background:${b.color}"></i>${b.glyph} ${b.label}${b.res ? ` (${b.res === 'sandbag' ? 'sandbags' : b.res})` : ' (any)'}</span>`)
-    .join('')}</div>`;
+    .join('')}${legendExtra}</div>
+  ${highlight.size ? '<p class="hint">Tap an outlined tile to choose it.</p>' : ''}`;
 }

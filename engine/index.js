@@ -15,10 +15,18 @@
 const { fail, RuleError, addLog, bagTotal } = require('./util');
 const { BIOMES, buildBoard, defaultBiomeList } = require('./board');
 const base = require('./base');
+const war = require('./war');
 const { playtestRecord, recordToCsv } = require('./record');
 
 const MODES = ['base', 'war', 'empire'];
-const BUILT_MODES = ['base']; // War and Empire arrive in build steps 4 and 5
+const BUILT_MODES = ['base', 'war', 'empire'];
+
+// Which actions exist in each mode. War modes add/replace some Base actions.
+const HANDLERS = {
+  base: base.handlers,
+  war: { ...base.handlers, ...war.handlers },
+  empire: { ...base.handlers, ...war.handlers },
+};
 
 /**
  * Start a new game.
@@ -27,7 +35,6 @@ const BUILT_MODES = ['base']; // War and Empire arrive in build steps 4 and 5
  */
 function createGame({ mode = 'base', settings, players, seed = 1 }) {
   if (!MODES.includes(mode)) fail(`Unknown mode "${mode}".`);
-  if (!BUILT_MODES.includes(mode)) fail('War and Empire modes are not built yet.');
   if (!Array.isArray(players) || players.length < 3 || players.length > 5) fail('Rising Tides needs 3 to 5 players.');
   for (const p of players) if (!BIOMES[p.biome]) fail(`Unknown biome "${p.biome}".`);
   const b = settings.base;
@@ -48,6 +55,11 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
     pendingLoot: null,
     outcome: null,
     log: [],
+    // War modes
+    accordBroken: false,
+    accordBrokeRound: null,
+    clashCount: 0,
+    battleQueue: [],
     players: players.map((p, seat) => ({
       seat,
       name: p.name,
@@ -57,7 +69,33 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
       donated: 0,
       ready: false,
       choice: null,
+      // War modes
+      units: mode === 'base' ? 0 : settings.war.startUnits,
+      damaged: false,
+      sanctionedThrough: null, // sanctioned until the end of this round number
+      puppetOf: null, // Empire: seat of overlord
+      puppetSince: null,
+      command: null, // Empire: what the overlord ordered this puppet to do
+      plans: { withdraw: [], release: [] }, // carried out at the next upkeep
       stats: {
+        attack: 0,
+        revolt: 0,
+        attacksWon: 0,
+        attacksLost: 0,
+        revoltsWon: 0,
+        claims: 0,
+        captures: 0,
+        clashes: 0,
+        timesAttacked: 0,
+        unitsRecruited: 0,
+        unitsLost: 0,
+        unitsDisbanded: 0,
+        upkeepPaid: 0,
+        garrisonPaid: 0,
+        aidReceived: 0,
+        tributePaid: 0,
+        tributeReceived: 0,
+        sanctions: 0,
         sustainable: 0,
         unsustainable: 0,
         raid: 0,
@@ -73,7 +111,8 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
     })),
   };
   state.board = buildBoard(state, settings.general.boardLayout, mode !== 'base');
-  addLog(state, `Game started: ${players.length} players, ${mode === 'base' ? 'Base' : mode} mode. Flood starts at ${state.flood}; catastrophe at ${base.threshold(state)}.`, { kind: 'round' });
+  const modeName = { base: 'Base', war: 'War', empire: 'War + Empire' }[mode];
+  addLog(state, `Game started: ${players.length} players, ${modeName} mode. Flood starts at ${state.flood}; catastrophe at ${base.threshold(state)}${mode === 'base' ? '' : `; the Climate Accord breaks at ${settings.war.accordLine}`}.`, { kind: 'round' });
   addLog(state, `Round 1 begins. Starting player: ${state.players[0].name}. Talk & build, then press Ready.`, { kind: 'round' });
   return state;
 }
@@ -82,7 +121,8 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
 function applyAction(state, actor, action) {
   if (!action || typeof action.type !== 'string') fail('Invalid action.');
   if (state.phase === 'ended') fail('The game is over.');
-  const handler = Object.prototype.hasOwnProperty.call(base.handlers, action.type) && base.handlers[action.type];
+  const table = HANDLERS[state.mode];
+  const handler = Object.prototype.hasOwnProperty.call(table, action.type) && table[action.type];
   if (!handler) fail(`Unknown action "${action.type}".`);
   const next = structuredClone(state);
   handler(next, actor, action);
@@ -121,6 +161,7 @@ function viewFor(state, seat) {
     if (hide) p.materials = null;
   }
   v.trades = v.trades.filter((t) => t.from === seat || t.to === seat);
+  if (state.mode !== 'base') war.decorateView(v, state, seat);
   return v;
 }
 
@@ -134,6 +175,9 @@ module.exports = {
   viewFor,
   waitingFor,
   threshold: base.threshold,
+  compareDice: war.compareDice,
+  production: war.production,
+  attackTargets: war.attackTargets,
   defaultBiomeList,
   playtestRecord,
   recordToCsv,
