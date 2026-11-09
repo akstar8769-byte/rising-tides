@@ -151,6 +151,7 @@ function effectiveCommand(s, p) {
   const c = p.command;
   if (!c) return { action: 'sustainable', fallback: true };
   if (c.action === 'attack' && (p.units < 1 || !attackTargets(s, p.seat).includes(c.target))) return { action: 'sustainable', fallback: true };
+  if (c.action === 'attack' && ST(s) && !attackSources(s, p.seat, c.target).length) return { action: 'sustainable', fallback: true };
   return c;
 }
 
@@ -212,7 +213,7 @@ function me(s, actor) {
 }
 
 /** Recruit militia: { count, materials } — any materials, unitCost each. */
-function recruit(s, actor, { count = 1, materials } = {}) {
+function recruit(s, actor, { count = 1, materials, tile } = {}) {
   requireBuild(s);
   const p = me(s, actor);
   if (!Number.isInteger(count) || count < 1 || count > 50) fail('Invalid number of units.');
@@ -220,10 +221,18 @@ function recruit(s, actor, { count = 1, materials } = {}) {
   const need = W(s).unitCost * count;
   if (bagTotal(bag) !== need) fail(`${count === 1 ? 'A unit costs' : count + ' units cost'} ${need} materials (any mix).`);
   if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
+  let where = '';
+  if (ST(s)) {
+    // Stationed units: new units appear on a tile you control (default: your capital).
+    const T = getTile(s, tile || p.homeTile);
+    if (T.controller !== actor) fail('Recruit onto a tile you control.');
+    addUnitsAt(T, actor, count);
+    where = ` on ${tileName(s, T)}`;
+  }
   subBag(p.materials, bag);
   p.units += count;
   p.stats.unitsRecruited += count;
-  addLog(s, `${p.name} recruited ${count} unit${count === 1 ? '' : 's'} (army ${p.units}).`);
+  addLog(s, `${p.name} recruited ${count} unit${count === 1 ? '' : 's'}${where} (army ${p.units}).`);
 }
 
 /** Overlord sets a puppet's action, publicly. { puppet, action, target } */
@@ -237,6 +246,7 @@ function setCommand(s, actor, { puppet, action, target } = {}) {
   if (action === 'attack') {
     if (q.units < 1) fail(`${q.name} has no units to attack with.`);
     if (!attackTargets(s, puppet).includes(target)) fail(`${q.name} can't attack that tile.`);
+    if (ST(s) && !attackSources(s, puppet, target).length) fail(`${q.name} has no units next to that tile.`);
     cmd.target = target;
   } else if (action !== 'sustainable' && action !== 'unsustainable') fail('Command Sustainable, Unsustainable or Attack.');
   q.command = cmd;
@@ -285,6 +295,8 @@ function freePuppet(s, seat, text) {
   q.puppetSince = null;
   q.command = null;
   addLog(s, text, { kind: 'good' });
+  // Stationed: the old overlord's units can't stay on the freed player's tiles.
+  if (ST(s)) for (const t of controlled(s, seat)) clearTile(s, t, 'home');
 }
 
 function upkeep(s) {
@@ -295,6 +307,7 @@ function upkeep(s) {
       const t = s.board.tiles.find((x) => x.id === id);
       if (t && t.controller === p.seat && t.owner !== p.seat) {
         t.controller = t.owner;
+        if (ST(s)) clearTile(s, t, 'home'); // units there go back to your capital
         addLog(s, `${p.name} withdraws from ${tileName(s, t)}.`);
       }
     }
@@ -310,6 +323,7 @@ function upkeep(s) {
       const due = () => Math.floor(p.units / w.upkeepUnitsPerMaterial);
       let disbanded = 0;
       while (due() > bagTotal(p.materials)) {
+        if (ST(s)) removeFromLargest(s, p.seat, 1); // biggest stack first
         p.units--;
         disbanded++;
       }
@@ -389,7 +403,7 @@ const ACTION_LABEL = { sustainable: 'Sustainable', unsustainable: 'Unsustainable
  * { action: 'attack', target: tileId }
  * { action: 'revolt' }                    puppets only: attack your overlord's capital
  */
-function choose(s, actor, { action, mix, target, aid } = {}) {
+function choose(s, actor, { action, mix, target, aid, from, count } = {}) {
   if (s.phase !== 'choose') fail('It is not time to choose an action.');
   const p = me(s, actor);
   const ch = { action };
@@ -410,10 +424,21 @@ function choose(s, actor, { action, mix, target, aid } = {}) {
     if (bagTotal(ch.mix) !== n) fail(`Pick exactly ${n} materials.`);
   } else if (action === 'attack') {
     if (p.puppetOf == null && !attackTargets(s, actor).includes(target)) fail("You can't attack that tile.");
-    if (poolUnits(s, attackPool(s, { seat: actor, kind: 'attack' })) < 1) fail('You need at least 1 unit to attack.');
+    if (ST(s)) {
+      const src = s.board.tiles.find((x) => x.id === from);
+      if (!src || src.controller !== actor || !areAdjacent(src, getTile(s, target))) fail('Attack from one of your tiles next to the target.');
+      checkSend(src, actor, count);
+      Object.assign(ch, { from, count });
+    } else if (poolUnits(s, attackPool(s, { seat: actor, kind: 'attack' })) < 1) fail('You need at least 1 unit to attack.');
     ch.target = target;
   } else if (action === 'revolt') {
     if (p.units < 1) fail('You need at least 1 unit to revolt.');
+    if (ST(s)) {
+      const src = s.board.tiles.find((x) => x.id === from);
+      if (!src || src.controller !== actor) fail('Revolt from one of your own tiles.');
+      checkSend(src, actor, count);
+      Object.assign(ch, { from, count });
+    }
   } else {
     fail('Choose Sustainable, Unsustainable or Attack.');
   }
@@ -434,7 +459,13 @@ function defaultChoice(s, p) {
   let action = 'sustainable';
   if (p.puppetOf != null) action = effectiveCommand(s, p).action;
   const ch = { action };
-  if (action === 'attack') ch.target = effectiveCommand(s, p).target;
+  if (action === 'attack') {
+    ch.target = effectiveCommand(s, p).target;
+    if (ST(s)) {
+      const best = attackSources(s, p.seat, ch.target).sort((a, b) => b.units - a.units)[0];
+      Object.assign(ch, { from: best.tile, count: best.units });
+    }
+  }
   else if (action === 'sustainable') {
     const prod = production(s, p.seat);
     ch.mix = evenOf(prod.free, prod.allowed);
@@ -513,7 +544,8 @@ function reveal(s) {
     .filter((i) => ['attack', 'revolt'].includes(s.players[i].choice.action))
     .map((i) => {
       const p = s.players[i];
-      return p.choice.action === 'revolt' ? { seat: i, kind: 'revolt' } : { seat: i, kind: 'attack', tile: p.choice.target };
+      const ch = p.choice;
+      return ch.action === 'revolt' ? { seat: i, kind: 'revolt', from: ch.from, count: ch.count } : { seat: i, kind: 'attack', tile: ch.target, from: ch.from, count: ch.count };
     });
   const ctrl = (id) => s.board.tiles.find((t) => t.id === id).controller;
   const inClash = new Set();
@@ -580,6 +612,13 @@ function capture(s, overlord, victim) {
   V.command = null;
   V.plans = { withdraw: V.plans.withdraw, release: [] };
   for (const t of s.board.tiles) if (t.owner === victim && t.role === 'province') t.controller = victim;
+  if (ST(s)) {
+    // Units on the fallen capital are destroyed; occupiers of its provinces go home.
+    const cap = getTile(s, V.homeTile);
+    for (const [k, n] of Object.entries(cap.units || {})) s.players[k].stats.unitsLost += n;
+    cap.units = {};
+    for (const t of s.board.tiles) if (t.owner === victim && t.role === 'province') clearTile(s, t, 'home');
+  }
   O.stats.captures += 1;
   addLog(
     s,
@@ -615,6 +654,7 @@ function applyWin(s, { e, taker, D, T }) {
 }
 
 function resolveAttack(s, e) {
+  if (ST(s)) return resolveAttackST(s, e);
   const w = W(s);
   const A = s.players[e.seat];
   const revolt = e.kind === 'revolt';
@@ -702,6 +742,7 @@ function resolveAttack(s, e) {
 
 /** Two players attacked each other: one battle, both roll as attackers, ties cost both. */
 function resolveClash(s, { a, b }) {
+  if (ST(s)) return resolveClashST(s, { a, b });
   const w = W(s);
   const A = s.players[a.seat];
   const B = s.players[b.seat];
@@ -777,9 +818,349 @@ function decorateView(v, s, seat) {
   v.commandTargets = {};
   if (mine) for (const q of puppetsOf(s, seat)) v.commandTargets[q] = attackTargets(s, q);
   delete v.battleQueue;
+  if (ST(s)) {
+    v.stationed = true;
+    v.attackSources = {};
+    const targets = [...v.attackTargets];
+    if (mine && mine.puppetOf != null) {
+      const c = effectiveCommand(s, mine);
+      if (c.action === 'attack') targets.push(c.target);
+    }
+    for (const id of targets) v.attackSources[id] = attackSources(s, seat, id);
+    v.revoltSources = mine && mine.puppetOf != null ? controlled(s, seat).filter((t) => unitsAt(t, seat) > 0).map((t) => ({ tile: t.id, units: unitsAt(t, seat) })) : [];
+    v.standTiles = mine ? s.board.tiles.filter((t) => canStand(s, seat, t)).map((t) => t.id) : [];
+  }
 }
 
-const handlers = { choose, recruit, setCommand, planWithdraw, planRelease };
+// ===========================================================================
+// STATIONED UNITS (setting war.stationedUnits, on by default)
+// Units live on tiles, like Risk: tile.units = { seat: count }.
+// p.units is always kept equal to the player's total, so upkeep and the
+// screens work the same either way.
+// ===========================================================================
+
+function ST(s) {
+  return !!W(s).stationedUnits;
+}
+function unitsAt(t, seat) {
+  return (t.units && t.units[seat]) || 0;
+}
+function addUnitsAt(t, seat, n) {
+  if (!t.units) t.units = {};
+  t.units[seat] = unitsAt(t, seat) + n;
+  if (t.units[seat] <= 0) delete t.units[seat];
+}
+function syncUnits(s) {
+  if (!ST(s)) return;
+  for (const p of s.players) p.units = 0;
+  for (const t of s.board.tiles) for (const [k, n] of Object.entries(t.units || {})) s.players[k].units += n;
+}
+function capitalOf(s, seat) {
+  return getTile(s, s.players[seat].homeTile);
+}
+/** Where a player's units may stand and travel: their own tiles, plus (Empire) their puppets' tiles. */
+function canStand(s, seat, t) {
+  if (t.kind !== 'land' || t.controller == null) return false;
+  if (t.controller === seat) return true;
+  return isEmpire(s) && s.players[t.controller].puppetOf === seat;
+}
+function checkSend(src, seat, count) {
+  if (!Number.isInteger(count) || count < 1) fail('Send at least 1 unit.');
+  if (unitsAt(src, seat) < count) fail(`You only have ${unitsAt(src, seat)} unit${unitsAt(src, seat) === 1 ? '' : 's'} on that tile.`);
+}
+function sendHome(s, seat, n) {
+  if (n > 0) addUnitsAt(capitalOf(s, seat), seat, n);
+}
+/** Units that can't stay where they are step to an adjacent tile they may stand on, or are lost. */
+function retreat(s, from, seat, n) {
+  if (n <= 0) return;
+  const p = s.players[seat];
+  const to = s.board.tiles.filter((x) => x !== from && areAdjacent(x, from) && canStand(s, seat, x)).sort((a, b) => unitsAt(b, seat) - unitsAt(a, seat))[0];
+  if (to) {
+    addUnitsAt(to, seat, n);
+    addLog(s, `${p.name}'s ${n} unit${n === 1 ? '' : 's'} retreat${n === 1 ? 's' : ''} to ${tileName(s, to)}.`);
+  } else {
+    p.stats.unitsLost += n;
+    addLog(s, `${p.name}'s ${n} unit${n === 1 ? '' : 's'} had nowhere to retreat and ${n === 1 ? 'is' : 'are'} lost.`, { kind: 'bad' });
+  }
+}
+/** Move off tile t everyone who may no longer stand there: 'home' (to capital) or 'retreat' (next door). */
+function clearTile(s, t, how) {
+  for (const [k, n] of Object.entries(t.units || {})) {
+    const seat = Number(k);
+    if (canStand(s, seat, t)) continue;
+    delete t.units[k];
+    if (how === 'home') sendHome(s, seat, n);
+    else retreat(s, t, seat, n);
+  }
+}
+function removeFromLargest(s, seat, n) {
+  for (let i = 0; i < n; i++) {
+    const t = s.board.tiles.filter((x) => unitsAt(x, seat) > 0).sort((a, b) => unitsAt(b, seat) - unitsAt(a, seat))[0];
+    if (!t) return;
+    addUnitsAt(t, seat, -1);
+  }
+}
+/** Your tiles next to `targetId` that have units on them. */
+function attackSources(s, seat, targetId) {
+  const T = s.board.tiles.find((x) => x.id === targetId);
+  if (!T) return [];
+  return s.board.tiles
+    .filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && areAdjacent(t, T))
+    .map((t) => ({ tile: t.id, units: unitsAt(t, seat) }));
+}
+/** Units on a tile that defend it: the holder's first, then helpers (e.g. an overlord). Revolt: overlord only. */
+function tileDefenders(T, revolt) {
+  const seats = Object.keys(T.units || {})
+    .map(Number)
+    .filter((k) => unitsAt(T, k) > 0)
+    .sort((a, b) => (b === T.controller) - (a === T.controller));
+  return revolt ? seats.filter((k) => k === T.controller) : seats;
+}
+function removeFromTile(s, T, seats, n) {
+  let left = n;
+  for (const k of seats) {
+    const x = Math.min(left, unitsAt(T, k));
+    addUnitsAt(T, k, -x);
+    s.players[k].stats.unitsLost += x;
+    left -= x;
+    if (!left) break;
+  }
+}
+/** Surviving attackers go back to the tile they came from (or retreat if it's no longer theirs). */
+function returnStrike(s, seat, src, n) {
+  if (n <= 0) return;
+  if (canStand(s, seat, src)) addUnitsAt(src, seat, n);
+  else retreat(s, src, seat, n);
+}
+
+/** Move units between your tiles (any distance, through tiles you may stand on). */
+function moveUnits(s, actor, { from, to, count = 1 } = {}) {
+  requireBuild(s);
+  if (!ST(s)) fail('Units are not stationed in this game.');
+  const p = me(s, actor);
+  const A = getTile(s, from);
+  const B = getTile(s, to);
+  if (A === B) fail('Pick two different tiles.');
+  checkSend(A, actor, count);
+  if (!canStand(s, actor, B)) fail("Your units can't go there.");
+  const seen = new Set([A.id]);
+  const queue = [A];
+  let found = false;
+  while (queue.length) {
+    const t = queue.shift();
+    if (t === B) {
+      found = true;
+      break;
+    }
+    for (const n of s.board.tiles) {
+      if (!seen.has(n.id) && areAdjacent(t, n) && canStand(s, actor, n)) {
+        seen.add(n.id);
+        queue.push(n);
+      }
+    }
+  }
+  if (!found) fail('No route: units can only travel through your own tiles.');
+  addUnitsAt(A, actor, -count);
+  addUnitsAt(B, actor, count);
+  addLog(s, `${p.name} moved ${count} unit${count === 1 ? '' : 's'} from ${tileName(s, A)} to ${tileName(s, B)}.`);
+}
+
+/** Winning a non-revolt battle for tile T (shared by attacks and clashes). */
+function conquerST(s, e, taker, D, T, src, strike) {
+  const Dp = s.players[D];
+  if (T.role === 'capital') {
+    returnStrike(s, e.seat, src, strike); // capitals are never occupied
+    if (isEmpire(s) && T.owner === D) {
+      capture(s, taker, D);
+      return grantLoot(s, taker, D, Math.floor(bagTotal(Dp.materials) / E(s).captureStockDivisor));
+    }
+    Dp.damaged = true;
+    addLog(s, `${Dp.name}'s capital holds, but ${Dp.name} is Damaged.`);
+    return grantLoot(s, taker, D, W(s).maxLoot);
+  }
+  const name = tileName(s, T);
+  const retake = T.owner === taker;
+  T.controller = taker;
+  Dp.damaged = true;
+  clearTile(s, T, 'retreat'); // defenders still standing fall back next door
+  let moved = '';
+  if (taker === e.seat && strike > 0) {
+    addUnitsAt(T, e.seat, strike);
+    moved = ` with ${strike} unit${strike === 1 ? '' : 's'}`;
+  } else returnStrike(s, e.seat, src, strike); // a puppet's units go home; the tile is the overlord's
+  addLog(s, `${s.players[taker].name} ${retake ? 'retakes' : 'occupies'} ${name}${moved}. ${Dp.name} is Damaged.`);
+  return grantLoot(s, taker, D, W(s).maxLoot);
+}
+
+function resolveAttackST(s, e) {
+  const w = W(s);
+  const A = s.players[e.seat];
+  const revolt = e.kind === 'revolt';
+  if (revolt && A.puppetOf == null) {
+    addLog(s, `${A.name}'s revolt fizzles: they are already free.`);
+    return;
+  }
+  const T = revolt ? capitalOf(s, A.puppetOf) : getTile(s, e.tile);
+  const taker = !revolt && A.puppetOf != null ? A.puppetOf : e.seat;
+  const name = tileName(s, T);
+  const src = getTile(s, e.from);
+  const sent = src.controller === e.seat ? Math.min(e.count, unitsAt(src, e.seat)) : 0;
+  if (sent < 1) {
+    addLog(s, `${A.name}'s attack on ${name} fizzles: no units left on ${tileName(s, src)}.`);
+    return;
+  }
+  if (!revolt) {
+    const ctrlP = T.controller != null ? s.players[T.controller] : null;
+    if (T.controller === taker || T.controller === e.seat || (ctrlP && ctrlP.puppetOf === taker)) {
+      addLog(s, `${A.name}'s attack on ${name} fizzles: it is already on their side.`);
+      return;
+    }
+    if (T.role === 'capital' && !capitalOpen(s, T)) {
+      addLog(s, `${A.name}'s attack on ${name} fizzles: its provinces are no longer both occupied.`);
+      return;
+    }
+  }
+  addUnitsAt(src, e.seat, -sent); // the attacking units leave their tile
+  let strike = sent;
+  const from = ` from ${tileName(s, src)} with ${sent} unit${sent === 1 ? '' : 's'}`;
+
+  if (T.controller == null) {
+    if (!w.openTilesClaimable) {
+      returnStrike(s, e.seat, src, strike);
+      addLog(s, `${A.name}'s attack fizzles: open tiles can't be claimed.`);
+      return;
+    }
+    T.controller = taker;
+    A.stats.claims += 1;
+    if (taker === e.seat) addUnitsAt(T, e.seat, strike);
+    else returnStrike(s, e.seat, src, strike);
+    addLog(s, `${A.name} claims ${name}${from}${taker === e.seat ? '' : ` for ${s.players[taker].name}`}.`);
+    syncUnits(s);
+    return;
+  }
+
+  const D = T.controller;
+  const Dp = s.players[D];
+  const resistance = T.owner === e.seat || T.owner === taker;
+  applySanction(s, e, T, resistance);
+  Dp.stats.timesAttacked += 1;
+  const defenders = tileDefenders(T, revolt);
+  const dUnits = defenders.reduce((a, k) => a + unitsAt(T, k), 0);
+  const verb = revolt ? 'revolted against' : 'attacked';
+  let won;
+  let text;
+  let dice = null;
+  if (dUnits === 0) {
+    won = true;
+    text = `${A.name} ${verb} ${name}${from}. Nobody was defending it — ${A.name} wins automatically.`;
+  } else {
+    const dN = Math.min(dUnits, w.maxDefenceDice) + (T.role === 'capital' ? w.capitalExtraDefenceDice : 0);
+    const r = compareDice(roll(s, Math.min(strike, w.maxAttackDice)), roll(s, dN), revolt || resistance ? 'attacker' : 'defender');
+    strike -= r.dWon;
+    A.stats.unitsLost += r.dWon;
+    removeFromTile(s, T, defenders, r.aWon);
+    won = r.aWon > r.dWon;
+    const tieNote = revolt ? ' (ties go to the rebel)' : resistance ? ' (ties go to the owner)' : '';
+    text =
+      `${A.name} ${verb} ${name}${from}: ${r.a.join(', ')} vs ${r.d.join(', ')}${tieNote}. ` +
+      (won ? `${A.name} wins` : `${Dp.name} holds`) +
+      ` (${A.name} loses ${r.dWon}, defenders lose ${r.aWon}).`;
+    dice = {
+      title: `${revolt ? 'Revolt' : 'Attack'}: ${A.name} → ${Dp.name}`,
+      sides: [
+        { seat: e.seat, rolls: r.a },
+        { seat: D, rolls: r.d },
+      ],
+      winner: won ? e.seat : D,
+    };
+  }
+  addLog(s, text, { kind: 'battle', dice });
+  let res;
+  if (!won) {
+    A.stats.attacksLost += 1;
+    returnStrike(s, e.seat, src, strike);
+    if (revolt) addLog(s, `${A.name} stays ${Dp.name}'s puppet.`);
+  } else {
+    A.stats.attacksWon += 1;
+    if (revolt) {
+      A.stats.revoltsWon += 1;
+      returnStrike(s, e.seat, src, strike);
+      freePuppet(s, e.seat, `${A.name}'s revolt succeeds — ${A.name} is free!`);
+      res = grantLoot(s, e.seat, D, E(s).revoltLoot);
+    } else {
+      res = conquerST(s, e, taker, D, T, src, strike);
+    }
+  }
+  syncUnits(s);
+  return res;
+}
+
+function resolveClashST(s, { a, b }) {
+  const w = W(s);
+  const A = s.players[a.seat];
+  const B = s.players[b.seat];
+  const TA = getTile(s, a.tile);
+  const TB = getTile(s, b.tile);
+  const srcA = getTile(s, a.from);
+  const srcB = getTile(s, b.from);
+  let sa = srcA.controller === a.seat ? Math.min(a.count, unitsAt(srcA, a.seat)) : 0;
+  let sb = srcB.controller === b.seat ? Math.min(b.count, unitsAt(srcB, b.seat)) : 0;
+  s.clashCount += 1;
+  A.stats.clashes += 1;
+  B.stats.clashes += 1;
+  applySanction(s, a, TA, TA.owner === a.seat || TA.owner === A.puppetOf);
+  applySanction(s, b, TB, TB.owner === b.seat || TB.owner === B.puppetOf);
+  addUnitsAt(srcA, a.seat, -sa);
+  addUnitsAt(srcB, b.seat, -sb);
+  let aWins;
+  let text;
+  let dice = null;
+  if (!sa || !sb) {
+    aWins = sa > sb ? true : sb > sa ? false : null;
+    text =
+      `CLASH between ${A.name} and ${B.name}. ` +
+      (aWins === null ? 'Neither had units to send — nothing happens.' : `${aWins ? B.name : A.name} had no units to send — ${aWins ? A.name : B.name} wins.`);
+  } else {
+    const r = compareDice(roll(s, Math.min(sa, w.maxAttackDice)), roll(s, Math.min(sb, w.maxAttackDice)), 'both');
+    text =
+      `CLASH! ${A.name} (${sa} from ${srcA.id}) and ${B.name} (${sb} from ${srcB.id}) attacked each other: ${r.a.join(', ')} vs ${r.d.join(', ')}. ` +
+      (r.aWon === r.dWon ? 'An even split — nothing changes hands' : `${r.aWon > r.dWon ? A.name : B.name} wins`) +
+      ` (${A.name} loses ${r.dWon + r.ties}, ${B.name} loses ${r.aWon + r.ties}).`;
+    sa -= r.dWon + r.ties;
+    sb -= r.aWon + r.ties;
+    A.stats.unitsLost += r.dWon + r.ties;
+    B.stats.unitsLost += r.aWon + r.ties;
+    aWins = r.aWon > r.dWon ? true : r.dWon > r.aWon ? false : null;
+    dice = {
+      title: `Clash: ${A.name} ⚔ ${B.name}`,
+      sides: [
+        { seat: a.seat, rolls: r.a },
+        { seat: b.seat, rolls: r.d },
+      ],
+      winner: aWins === null ? null : aWins ? a.seat : b.seat,
+    };
+  }
+  addLog(s, text, { kind: 'battle', dice });
+  let res;
+  if (aWins === null) {
+    returnStrike(s, a.seat, srcA, sa);
+    returnStrike(s, b.seat, srcB, sb);
+  } else {
+    const [win, lose, T, wSrc, lSrc, wN, lN] = aWins ? [a, b, TA, srcA, srcB, sa, sb] : [b, a, TB, srcB, srcA, sb, sa];
+    const Wp = s.players[win.seat];
+    Wp.stats.attacksWon += 1;
+    s.players[lose.seat].stats.attacksLost += 1;
+    const taker = Wp.puppetOf != null ? Wp.puppetOf : win.seat;
+    res = conquerST(s, win, taker, T.controller, T, wSrc, wN);
+    returnStrike(s, lose.seat, lSrc, lN); // after the tile changed hands, so they retreat if needed
+  }
+  syncUnits(s);
+  return res;
+}
+
+const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits };
+
 
 module.exports = {
   handlers,
@@ -793,4 +1174,6 @@ module.exports = {
   compareDice,
   isSanctioned,
   tileName,
+  attackSources,
+  unitsAt,
 };

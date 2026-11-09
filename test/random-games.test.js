@@ -34,10 +34,13 @@ function randomAction(s, rnd) {
     options.push(
       () => [seat, { type: 'recruit', count: 1, materials: mix(s.settings.war.unitCost) }],
       () => [seat, { type: 'recruit', count: 1, materials: mix(s.settings.war.unitCost) }],
-      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles) }],
-      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles) }],
-      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles) }],
-      () => [seat, { type: 'choose', action: 'revolt' }],
+      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles), from: pick(tiles), count: 1 + Math.floor(rnd() * 3) }],
+      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles), from: pick(tiles), count: 1 + Math.floor(rnd() * 3) }],
+      () => [seat, { type: 'choose', action: 'attack', target: pick(tiles), from: pick(tiles), count: 1 }],
+      () => [seat, { type: 'choose', action: 'revolt', from: pick(tiles), count: 1 }],
+      () => [seat, { type: 'moveUnits', from: pick(tiles), to: pick(tiles), count: 1 + Math.floor(rnd() * 2) }],
+      () => [seat, { type: 'moveUnits', from: pick(tiles), to: pick(tiles), count: 1 }],
+      () => [seat, { type: 'recruit', count: 1, materials: mix(s.settings.war.unitCost), tile: pick(tiles) }],
       () => [seat, { type: 'choose', action: 'sustainable', mix: mix(3) }],
       () => [seat, { type: 'choose', action: 'unsustainable', mix: mix(6) }],
       () => [seat, { type: 'setCommand', puppet: Math.floor(rnd() * n), action: pick(['sustainable', 'unsustainable', 'attack']), target: pick(tiles) }],
@@ -49,13 +52,29 @@ function randomAction(s, rnd) {
 }
 
 // Set RANDOM_GAMES=100 (for example) to run more games per mode.
-const PER_MODE = Number(process.env.RANDOM_GAMES) || 15;
-for (const [mode, games] of [['base', PER_MODE], ['war', PER_MODE], ['empire', PER_MODE]]) test(`random ${mode} games: no crashes, no negative materials or units, always finishes`, () => {
+const PER_MODE = Number(process.env.RANDOM_GAMES) || 12;
+const VARIANTS = [
+  ['base', false],
+  ['war', true],
+  ['empire', true],
+  ['war', false], // PDF rules: one army everywhere
+  ['empire', false],
+];
+for (const [mode, stationed] of VARIANTS) test(`random ${mode}${mode === 'base' ? '' : stationed ? ' (stationed units)' : ' (one army)'} games: no crashes, no negative materials or units, always finishes`, () => {
+  const games = PER_MODE;
   let seed = 1;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   for (let g = 0; g < games; g++) {
     const n = 3 + (g % 3);
-    let s = newGame({ n, mode, seed: g + 1, settings: (c) => (c.base.stormEnabled = g % 2 === 0) });
+    let s = newGame({
+      n,
+      mode,
+      seed: g + 1,
+      settings: (c) => {
+        c.base.stormEnabled = g % 2 === 0;
+        c.war.stationedUnits = stationed;
+      },
+    });
     let steps = 0;
     while (s.phase !== 'ended' && steps < 5000) {
       const [actor, action] = randomAction(s, rnd);
@@ -71,6 +90,18 @@ for (const [mode, games] of [['base', PER_MODE], ['war', PER_MODE], ['empire', P
         if (p.puppetOf != null) assert.equal(s.players[p.puppetOf].puppetOf, null, 'a puppet has a puppet');
       }
       for (const t of s.board.tiles) if (t.role === 'capital') assert.equal(t.controller, t.owner, 'capital changed hands');
+      if (stationed) {
+        const totals = s.players.map(() => 0);
+        for (const t of s.board.tiles) {
+          for (const [k, n] of Object.entries(t.units)) {
+            assert.ok(n > 0, 'zero or negative stack');
+            const ctrl = t.controller;
+            assert.ok(ctrl === Number(k) || (ctrl != null && s.players[ctrl].puppetOf === Number(k)), `units of ${k} stranded on ${t.id}`);
+            totals[k] += n;
+          }
+        }
+        s.players.forEach((p, i) => assert.equal(p.units, totals[i], 'unit total out of sync'));
+      }
       assert.ok(s.flood >= 2);
       steps++;
       // Unstick: if a build phase drags on, the host skips everyone

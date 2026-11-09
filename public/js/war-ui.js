@@ -82,14 +82,16 @@ export function warMyPanel(store) {
 
   return `<div class="war-box">
     ${me.puppetOf != null ? puppetBox(store) : ''}
-    <div class="row wrap"><span>⚔ <b>${me.units}</b> militia unit${me.units === 1 ? '' : 's'}</span>
+    <div class="row wrap"><span>⚔ <b>${me.units}</b> militia unit${me.units === 1 ? '' : 's'}${g.stationed ? ` — ${unitSpread(g, g.you)}` : ''}</span>
       <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span></div>
     <details class="tool" ${canBuild ? 'open' : ''}>
       <summary>Recruit militia <span class="muted small">(${w.unitCost} materials each, any mix; upkeep 1 per ${w.upkeepUnitsPerMaterial} units)</span></summary>
       <div class="row wrap">${stepper('recruit.count', count, { min: 1, max: maxUnits, label: 'Units' })}<span class="small muted">unit${count === 1 ? '' : 's'} — pay ${need}:</span></div>
       ${bagEditor('recruit.mix', r.mix, limit)}
+      ${g.stationed ? `<label class="inline">Place on ${tileSelect('recruit.tile', g.board.tiles.filter((t) => t.controller === g.you).map((t) => t.id), r.tile || me.homeTile, g)}</label>` : ''}
       <button class="btn primary" data-act="recruit" ${canBuild && have === need ? '' : 'disabled'}>Recruit ${count} (${have}/${need})</button>
     </details>
+    ${g.stationed ? movePanel(store, canBuild) : ''}
     ${occHtml}
     ${overlordBox(store)}
   </div>`;
@@ -137,6 +139,72 @@ function overlordBox(store) {
     .join('')}</ul><p class="hint">Garrison next upkeep: ${me.garrisonDue} materials. Unpaid puppets are freed (most recent first). Holding any puppet counts as occupying (+1 Flood a round). You may add puppets' units to your attack and defence dice.</p>`;
 }
 
+// ------------------------------------------------------------------ stationed units
+
+/** Units a player has on a tile. */
+export function unitsOn(t, seat) {
+  return (t.units && t.units[seat]) || 0;
+}
+
+/** "C0 ×2, I0 ×1" */
+function unitSpread(g, seat) {
+  const parts = g.board.tiles.filter((t) => unitsOn(t, seat) > 0).map((t) => `${t.id} ×${unitsOn(t, seat)}`);
+  return parts.length ? parts.join(', ') : 'none placed';
+}
+
+function tileSelect(path, ids, value, g) {
+  return `<select data-model="${path}">${ids.map((id) => `<option value="${id}" ${id === value ? 'selected' : ''}>${esc(tileLabel(g, id))}</option>`).join('')}</select>`;
+}
+
+/** Move units between your tiles (like Risk's fortify), during Talk & Build. */
+function movePanel(store, canBuild) {
+  const g = store.data.game;
+  const mv = store.ui.move;
+  const sources = g.board.tiles.filter((t) => unitsOn(t, g.you) > 0).map((t) => t.id);
+  if (!sources.length) return '';
+  const from = sources.includes(mv.from) ? mv.from : sources[0];
+  const dests = (g.standTiles || []).filter((id) => id !== from);
+  const to = dests.includes(mv.to) ? mv.to : dests[0];
+  const max = unitsOn(g.board.tiles.find((t) => t.id === from), g.you);
+  const count = Math.min(Math.max(1, mv.count), max);
+  mv.from = from;
+  mv.to = to;
+  mv.count = count;
+  return `<details class="tool" ${canBuild ? 'open' : ''}>
+    <summary>Move units <span class="muted small">(through your own tiles, as often as you like)</span></summary>
+    <div class="move-grid">
+      <label>From ${tileSelect('move.from', sources, from, g)}</label>
+      <label>To ${dests.length ? tileSelect('move.to', dests, to, g) : '<span class="muted">nowhere else</span>'}</label>
+      <div class="row">${stepper('move.count', count, { min: 1, max, label: 'Units to move' })}<span class="small muted">of ${max}</span></div>
+      <button class="btn" data-act="moveUnits" ${canBuild && dests.length ? '' : 'disabled'}>Move ${count}</button>
+    </div>
+    <p class="hint">Only units on a tile defend it. An empty tile is lost to any attack.</p>
+  </details>`;
+}
+
+/** "Attack from" picker: which of your tiles, and how many units. */
+function sourcePicker(store, sources) {
+  const g = store.data.game;
+  const c = store.ui.choice;
+  if (!sources || !sources.length) return { html: '<p class="warn small">None of your units are next to that tile. Move some there during Talk & Build.</p>', ok: false };
+  if (!sources.some((x) => x.tile === c.from)) {
+    const best = sources.reduce((a, b) => (b.units > a.units ? b : a));
+    c.from = best.tile;
+    c.count = best.units;
+  }
+  const max = sources.find((x) => x.tile === c.from).units;
+  c.count = Math.min(Math.max(1, c.count || max), max);
+  const html = `<h3>Attack from</h3><div class="target-list">${sources
+    .map(
+      (x) =>
+        `<button class="target ${c.from === x.tile ? 'selected' : ''}" data-act="set" data-path="choice.from" data-value="${x.tile}" aria-pressed="${c.from === x.tile}"><span>${esc(tileLabel(g, x.tile))}</span><small>⚔ ${x.units} there</small></button>`,
+    )
+    .join('')}</div>
+    <div class="row wrap">${stepper('choice.count', c.count, { min: 1, max, label: 'Units to send' })}<span class="small">unit${c.count === 1 ? '' : 's'} sent (${Math.min(c.count, g.settings.war.maxAttackDice)} di${Math.min(c.count, g.settings.war.maxAttackDice) === 1 ? "e" : "ce"}) — ${max - c.count} stay${max - c.count === 1 ? 's' : ''} behind</span></div>
+    <p class="hint">If you win, the surviving attackers move into the captured province. If you lose, survivors come back.</p>`;
+  return { html, ok: true };
+}
+
 // ------------------------------------------------------------------ choose panel
 function targetNote(g, id) {
   const t = g.board.tiles.find((x) => x.id === id);
@@ -146,6 +214,10 @@ function targetNote(g, id) {
   else if (t.owner === g.you) notes.push('retake your land — ties go to you');
   else if (t.role === 'capital') notes.push(`capital — defender +${g.settings.war.capitalExtraDefenceDice} die${g.mode === 'empire' ? '; win = they become your puppet' : '; win = loot, no capture'}`);
   else notes.push('province');
+  if (g.stationed && t.controller != null) {
+    const d = Object.values(t.units || {}).reduce((a, b) => a + b, 0);
+    notes.push(d ? `defended by ${d}` : 'undefended!');
+  }
   if (!g.war.accordBroken && !exempt) notes.push('⛔ you will be sanctioned');
   return notes.join(' · ');
 }
@@ -162,7 +234,7 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
   if (me.choice && !c.editing) {
     const ch = me.choice;
     let detail = '';
-    if (ch.action === 'attack') detail = `on ${esc(tileLabel(g, ch.target))}`;
+    if (ch.action === 'attack') detail = `on ${esc(tileLabel(g, ch.target))}${ch.from ? ` from ${ch.from} with ${ch.count}` : ''}`;
     else if (ch.action === 'revolt') detail = `against ${esc(g.players[me.puppetOf].name)}`;
     else if (ch.mix && bagTotal(ch.mix)) detail = `(${bagText(ch.mix)}${ch.action === 'sustainable' && bagTotal(prod.fixed) ? ' + ' + bagText(prod.fixed) : ''})`;
     else if (ch.action === 'sustainable') detail = `(${bagText(prod.fixed)})`;
@@ -184,7 +256,7 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
   if (!puppet || cmd.action === 'sustainable') cards.push(actionCard('sustainable', 'Sustainable', susDesc, 'No Flood change'));
   if (!puppet || cmd.action === 'unsustainable') cards.push(actionCard('unsustainable', 'Unsustainable', `Collect any ${prod.unsustainable}`, `Flood +${g.settings.base.unsustainableFlood}`));
   if (!puppet) {
-    const why = pool < 1 ? 'Needs 1 unit' : !g.attackTargets.length ? 'No targets' : '';
+    const why = pool < 1 ? 'Needs 1 unit' : !g.attackTargets.length ? 'No targets' : g.stationed && !g.attackTargets.some((id) => (g.attackSources[id] || []).length) ? 'No units at the front' : '';
     cards.push(actionCard('attack', 'Attack', 'Collect nothing', `Flood +${w.attackFlood}`, !!why, why));
   } else if (cmd.action === 'attack') {
     cards.push(actionCard('attack', 'Attack (ordered)', esc(tileLabel(g, cmd.target)), `Flood +${w.attackFlood}`));
@@ -215,14 +287,30 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
           <span>${esc(tileLabel(g, id))}</span><small>${esc(targetNote(g, id))}</small></button>`,
       )
       .join('')}</div>
-      <p class="hint">Targets are outlined on the Board tab too. You roll 1 die per unit (max ${w.maxAttackDice}${me.puppets && me.puppets.length ? ', puppets\' units included' : ''}); the defender up to ${w.maxDefenceDice}. Ties go to the defender. Win: occupy it and take up to ${w.maxLoot} tokens.</p>`;
+      <p class="hint">Targets are outlined on the Board tab too. You roll 1 die per unit${g.stationed ? ' sent' : ''} (max ${w.maxAttackDice}${!g.stationed && me.puppets && me.puppets.length ? ', puppets\' units included' : ''}); the defender up to ${w.maxDefenceDice}. Ties go to the defender. Win: occupy it and take up to ${w.maxLoot} tokens.</p>`;
     canLock = !!c.target;
+    if (g.stationed && c.target) {
+      const sp = sourcePicker(store, g.attackSources[c.target]);
+      extra += sp.html;
+      canLock = sp.ok;
+    }
   } else if (c.action === 'attack' && puppet) {
     extra = `<p>Your overlord ordered this attack. If you win, the tile and spoils go to ${esc(g.players[me.puppetOf].name)}.</p>`;
     canLock = true;
+    if (g.stationed) {
+      c.target = cmd.target;
+      const sp = sourcePicker(store, g.attackSources[cmd.target]);
+      extra += sp.html;
+      canLock = sp.ok;
+    }
   } else if (c.action === 'revolt') {
-    extra = `<p>You attack ${esc(g.players[me.puppetOf].name)}'s capital with your ${me.units} unit${me.units === 1 ? '' : 's'}. Ties go to you. Win: you're free and take up to ${g.settings.empire.revoltLoot} tokens. Lose: you stay a puppet and lost units stay lost.</p>`;
+    extra = `<p>You attack ${esc(g.players[me.puppetOf].name)}'s capital${g.stationed ? '' : ` with your ${me.units} unit${me.units === 1 ? '' : 's'}`}. Ties go to you. Win: you're free and take up to ${g.settings.empire.revoltLoot} tokens. Lose: you stay a puppet and lost units stay lost.</p>`;
     canLock = true;
+    if (g.stationed) {
+      const sp = sourcePicker(store, g.revoltSources);
+      extra += sp.html.replace('Attack from', 'Revolt from (any of your tiles)');
+      canLock = sp.ok;
+    }
   }
   if (dev && me.damaged) extra += `<p class="warn small">🩹 You're Damaged: you'll collect ${w.damagedPenalty} less this time.</p>`;
   if (dev && me.aidEligible) {

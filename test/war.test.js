@@ -11,9 +11,20 @@ const { engine, newGame, act, allReady, forceDice } = require('./helpers');
 
 const BIOMES = ['forest', 'quarry', 'riverbank', 'forest']; // no Mixed: keeps production simple
 
-/** A War/Empire game where every territory tile has its owner's biome (no random odd tile). */
+/**
+ * A War/Empire game where every territory tile has its owner's biome (no random odd tile).
+ * These tests use the PDF's "one army everywhere" rules; stationed units are in stationed.test.js.
+ */
 function warGame(mode = 'war', tweak) {
-  let s = newGame({ n: 4, mode, biomes: BIOMES, settings: tweak });
+  let s = newGame({
+    n: 4,
+    mode,
+    biomes: BIOMES,
+    settings: (c) => {
+      c.war.stationedUnits = false;
+      if (tweak) tweak(c);
+    },
+  });
   s = structuredClone(s);
   for (const t of s.board.tiles) if (t.kind === 'land') t.biome = t.owner != null ? s.players[t.owner].biome : 'quarry';
   return s;

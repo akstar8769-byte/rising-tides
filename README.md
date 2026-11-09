@@ -83,7 +83,8 @@ If the host is away for more than 60 seconds, another player becomes host automa
 
 **War and War + Empire, quickly:**
 - Each player has a capital and two provinces. The **Board** tab shows who owns and who holds every tile (⚑P2 = held by player 2), plus units ⚔, Damaged 🩹, sanctioned ⛔, puppet ⛓ and overlord 👑.
-- Recruit militia in the Play tab during Talk & Build. To attack, choose **Attack** and pick a target from the list, or tap an outlined tile on the Board tab.
+- **Units are stationed on tiles** (like Risk): the board shows ⚔N on each tile. Recruit in the Play tab during Talk & Build and pick where the new units go; use **Move units** to shift them between your tiles (as often as you like). Only units on a tile defend it — an empty tile falls to any attack. The host can turn this off in the lobby ("Units are stationed on tiles") to play with one army that defends everywhere.
+- To attack, choose **Attack**, pick a target (from the list, or tap an outlined tile on the Board tab), then pick which of your tiles to attack **from** and how many units to send. If you win a province, your surviving units move in.
 - The Flood track shows the **Climate Accord** line (🤝 at 10). While it holds, attackers are sanctioned and victims get aid. Once it breaks (💔) it's gone for good.
 - Empire: overlords command their puppets in the Play tab (**Your puppets**). Puppets see their command and a **Revolt!** card.
 - Withdrawing from a tile and freeing a puppet are set up during Trade & Build and happen at the next upkeep.

@@ -86,3 +86,30 @@ These came up during the build. Each one is the simplest reading I could find; c
 - A puppet with 0 units can't revolt.
 
 **Game end:** the optional Storm ending (Base settings) also works in War modes. The PDF leaves the War ending open.
+
+## Stationed units (added 9 November 2026, on by default)
+
+The team asked for units to be stationed on tiles, like Risk, instead of one army that defends everywhere. Setting: `war.stationedUnits` (lobby: "Units are stationed on tiles"). Turn it off to play the PDF's rules.
+
+**Agreed with the team**
+- Every unit stands on a tile you control. Starting units stand on your capital.
+- **Moving:** during either Trade & Build phase, move units between your tiles as often as you like, any distance. They can only travel through tiles you control (in Empire, also your puppets' tiles). Moves are public.
+- **Attacking:** choose the target, one of your tiles next to it, and how many units to send from that tile. **Nobody has to stay behind.** You roll 1 die per unit sent (max 3).
+- **Defending:** only the units on the attacked tile defend (max 2 dice, +1 on a capital). **An empty tile loses automatically.**
+- **Winning a province:** the surviving attackers move into it. **Losing:** survivors go back to the tile they came from.
+- Clashes: only the units each side sent fight.
+- Claiming an open tile needs at least 1 unit sent, and those units stay there.
+- Withdrawing from a tile sends the units on it back to your capital.
+- Disbanding (unpaid upkeep) removes units from your biggest stack first.
+
+**Decided while building (please check)**
+- **Recruiting:** you choose which of your tiles the new units appear on (default: your capital).
+- **Surviving defenders retreat.** If a province is lost while some of its defenders survive (e.g. 1 attack die beats the higher of 2 defence dice), they step to an adjacent tile their owner controls. If there is none, they are lost.
+- **Capitals are never occupied.** Attackers who win at a capital go back to the tile they came from. In War, the capital's owner keeps any surviving defenders.
+- **Empire capture:** units on the fallen capital are destroyed. A third player's units occupying its provinces go back to their own capital. The new overlord's units may stay, because overlords may stand on puppet tiles.
+- **Proxy-war help:** an overlord can move units onto a puppet's tile, and they defend it alongside the puppet's units (puppet's units are lost first). When the puppet is freed, those units go back to the overlord's capital.
+- **Commanded attacks** use the puppet's units. If they win a province, it goes to the overlord *empty*: the puppet's units go back home, and the overlord has to move units in to hold it.
+- **Revolts** are launched from any one of the puppet's tiles (adjacency is still ignored). The overlord defends with their own units on their capital only.
+- Overlords no longer add puppet units to their own attacks: units only fight where they stand.
+- An attack fizzles if the tile it was launched from was lost earlier in the same round.
+- In a clash, if the loser's starting tile is the one the winner just took, the loser's survivors retreat from it.

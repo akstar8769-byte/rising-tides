@@ -23,6 +23,20 @@ function hexPoints(cx, cy, r) {
   return pts.join(' ');
 }
 
+/** Stationed units: a dark badge like "⚔3" (or "⚔2+1" when an overlord helps defend). */
+function unitBadge(t, x, y) {
+  const stacks = Object.entries(t.units || {}).filter(([, n]) => n > 0);
+  if (!stacks.length) return '';
+  stacks.sort(([a], [b]) => (Number(b) === t.controller) - (Number(a) === t.controller));
+  const label = '⚔' + stacks.map(([, n]) => n).join('+');
+  const w = 16 + label.length * 9;
+  const bx = x - 38;
+  const by = y - 34;
+  const ring = PLAYER_STYLE[Number(stacks[0][0])].color;
+  return `<g class="unit-badge"><rect x="${bx}" y="${by}" width="${w}" height="23" rx="11" fill="#1c2833" stroke="${ring}" stroke-width="3"/>
+    <text x="${bx + w / 2}" y="${by + 16.5}" class="ubadge">${label}</text></g>`;
+}
+
 /**
  * opts.highlight: tile ids to outline as possible targets (clickable)
  * opts.selected:  the currently chosen target
@@ -74,7 +88,7 @@ export function renderBoard(game, opts = {}) {
       const st = PLAYER_STYLE[t.owner];
       const short = owner.name.length > 7 ? owner.name.slice(0, 6) + '…' : owner.name;
       let sub = `🧱${owner.walls}`;
-      if (war) sub += ` ⚔${owner.units}`;
+      if (war && !game.stationed) sub += ` ⚔${owner.units}`;
       if (t.owner === game.you) sub += ' · you';
       let marks = '';
       if (owner.damaged) marks += '🩹';
@@ -87,6 +101,7 @@ export function renderBoard(game, opts = {}) {
         ${marks ? `<text x="${x + 30}" y="${y - 26}" class="marks">${marks}</text>` : ''}`;
     }
     if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
+    if (game.stationed) inner += unitBadge(t, x, y);
     let cls = 'tile';
     if (unheld) cls += ' open';
     let act = '';
@@ -100,7 +115,7 @@ export function renderBoard(game, opts = {}) {
   });
 
   const legendExtra = war
-    ? `<span>⚑P2 = occupied by P2</span><span>⚔ units</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
+    ? `<span>⚑P2 = occupied by P2</span><span>⚔ units${game.stationed ? ' on that tile' : ''}</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
     : '';
   return `<svg class="board" viewBox="${minX.toFixed(0)} ${minY.toFixed(0)} ${w.toFixed(0)} ${h.toFixed(0)}" role="img" aria-label="Game board">${parts.join('')}</svg>
   <div class="legend">${Object.values(BIOME)

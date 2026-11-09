@@ -34,7 +34,8 @@ function freshUi() {
     trade: { to: null, give: { wood: 0, stone: 0, sandbag: 0 }, get: { wood: 0, stone: 0, sandbag: 0 } },
     loot: { wood: 0, stone: 0, sandbag: 0 },
     walls: 1,
-    recruit: { count: 1, mix: { wood: 0, stone: 0, sandbag: 0 } },
+    recruit: { count: 1, mix: { wood: 0, stone: 0, sandbag: 0 }, tile: null },
+    move: { from: null, to: null, count: 1 }, // stationed units: the "Move units" form
     cmdAttackFor: null, // Empire: which puppet we're picking an attack target for
     hostOpen: false,
     chatDraft: '',
@@ -279,6 +280,8 @@ const actions = {
     const c = store.ui.choice;
     c.action = ds.value;
     if (ds.value !== 'raid') c.target = null;
+    c.from = null;
+    c.count = null;
     c.mix = emptyBag();
     render();
   },
@@ -287,6 +290,7 @@ const actions = {
     const msg = { type: 'choose', action: c.action };
     if (c.action === 'raid' || c.action === 'attack') msg.target = c.target;
     else if (c.action !== 'revolt') msg.mix = c.mix;
+    if (store.data.game.stationed && (c.action === 'attack' || c.action === 'revolt')) Object.assign(msg, { from: c.from, count: c.count });
     if (c.aid) msg.aid = c.aid;
     act(msg).then((r) => {
       if (r.ok) {
@@ -300,9 +304,11 @@ const actions = {
   // War / Empire
   recruit: () => {
     const r = store.ui.recruit;
-    act({ type: 'recruit', count: r.count, materials: r.mix }).then((res) => {
+    const msg = { type: 'recruit', count: r.count, materials: r.mix };
+    if (store.data.game.stationed) msg.tile = r.tile || store.data.game.players[store.data.game.you].homeTile;
+    act(msg).then((res) => {
       if (res.ok) {
-        store.ui.recruit = { count: 1, mix: emptyBag() };
+        store.ui.recruit = { count: 1, mix: emptyBag(), tile: r.tile };
         render();
       }
     });
@@ -328,6 +334,15 @@ const actions = {
     });
   },
   planWithdraw: (ds) => act({ type: 'planWithdraw', tile: ds.tile }),
+  moveUnits: () => {
+    const mv = store.ui.move;
+    act({ type: 'moveUnits', from: mv.from, to: mv.to, count: mv.count }).then((r) => {
+      if (r.ok) {
+        mv.count = 1;
+        render();
+      }
+    });
+  },
   planRelease: (ds) => act({ type: 'planRelease', puppet: +ds.puppet }),
 
   // Host controls

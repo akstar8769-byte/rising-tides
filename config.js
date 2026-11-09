@@ -83,6 +83,8 @@ const DEFAULTS = {
     aidAmount: 1,
     sanctionRounds: 1,
     openTilesClaimable: true,    // false = open tiles are impassable (Q8)
+    stationedUnits: true,        // true = units stand on tiles and fight only where they are (like Risk);
+                                 // false = one army that defends everywhere at once (the PDF's rules)
   },
 
   // ---- War + Empire mode only ----
@@ -152,6 +154,7 @@ const LABELS = {
   'war.aidAmount': 'International aid: extra materials',
   'war.sanctionRounds': 'Sanction length (rounds)',
   'war.openTilesClaimable': 'Open tiles can be claimed (off = impassable)',
+  'war.stationedUnits': 'Units are stationed on tiles (off = one army everywhere)',
 
   'empire.garrisonCost.1': 'Garrison cost: 1 puppet',
   'empire.garrisonCost.2': 'Garrison cost: 2 puppets',

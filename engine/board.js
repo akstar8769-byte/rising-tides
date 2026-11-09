@@ -55,6 +55,7 @@ function buildBoard(state, layoutName, withTerritories) {
     owner: null, // seat that owns it (home territory), or null for open tiles
     role: null, // 'capital' | 'province' | null
     controller: null, // seat currently holding it (differs from owner when occupied)
+    units: {}, // War with stationed units: { seat: number of units on this tile }
   }));
   const byId = Object.fromEntries(tiles.map((t) => [t.id, t]));
 
