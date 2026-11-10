@@ -407,3 +407,7 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .offer.treaty { gap: 4px; }
 .toggle-btn { white-space: normal; text-align: left; }
 .chat-list li.bot-line b { color: #1d4ed8; }
+
+/* ---------- Important events ---------- */
+.log-entry.notice { border-left-color: #7c3aed; font-weight: 700; }
+.toast.event { background: #5b21b6; }

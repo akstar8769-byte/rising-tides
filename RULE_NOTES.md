@@ -180,3 +180,23 @@ With tile income, a growing empire paid the same Flood per round as a small one,
 - Pacts and treaties are handled during Trade & Build phases only, the same as trading.
 
 **Bots and diplomacy.** Bots answer pact offers and treaty invitations based on personality and trust. They trust players who broke pacts or attacked them less. They offer pacts: cautious and balanced bots seek peace with the strongest neighbour, and warlike bots seek alliances against the leader. They usually honour pacts (cautious about 98% of the time, warlike about 60%). They send trade offers when they need a material, and they chat: reacting to attacks, broken pacts and a dangerous Flood, and answering simple messages that mention them or "everyone" (keywords: pact/peace, trade, attack, flood, hello).
+
+## Puppets going free (fixed 10 November 2026)
+
+A playtest saw a puppet "suddenly" go free with no revolt. That was the Empire rule working as written (Q25): **if the overlord can't pay the garrison at the start of a round, the puppet is freed**, and any overlord units on its tiles go home. But bot overlords spent everything and almost never kept a garrison (333 of 344 freed puppets in 150 test games), and the one log line was easy to miss. Now:
+- Bots keep enough materials back for next round's militia upkeep and garrison.
+- A freed puppet, a broken pact or a broken treaty pops up on everyone's screen and is highlighted in the log.
+- A puppet's panel shows whether its overlord can afford the garrison ("not enough: you will go free unless they get more!"). Gifting materials to the puppet doesn't help, but draining the overlord's materials does.
+
+## Smarter bots: treaties judged on the situation (10 November 2026)
+
+Bots, warlike ones included, now decide on treaties from the state of the game, not just their personality:
+- **"No Unsustainable"**: signed when the Flood is within 5 of catastrophe or the bot's own walls can't hold the current Flood. A safe warlike bot may still refuse, because Unsustainable funds its army.
+- **Militia limits / no attacks**: refused only when the bot has **expansion plans**, meaning a winnable target next to its units (open tile, under-defended tile). With no conquest in reach, warlike bots sign. "No attacks on each other" is refused only if one of the signatories is the bot's target.
+- When the village is about to drown (within 3), bots sign green treaties even from players they distrust.
+- Warlike bots break a militia treaty only when a real conquest appears, and never when the Flood is dangerous.
+- Any bot, not just cautious ones, proposes a "Green Pledge" (no Unsustainable for 2 rounds) when the Flood threatens its own home.
+- Allies prefer attacking and raiding their alliance's named enemy.
+- Bots skip Unsustainable when their own home is at risk, and warlike bots stop growing their army past the army-emissions size once the Flood is within 8 of catastrophe.
+
+In 60 bot-only War games this cut catastrophes from about 15–20 to 8 (3 with treaties on), and warlike bots survived about 18% of the time instead of 1–4%.

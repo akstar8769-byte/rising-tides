@@ -77,6 +77,17 @@ function pickFrom(g, me, from, n) {
   return take;
 }
 
+/**
+ * Materials to keep for the start of next round: militia upkeep (after recruiting
+ * `extraUnits` more) plus the garrison for our puppets. Spend nothing below this,
+ * or puppets go free and units are disbanded.
+ */
+function reserve(g, me, extraUnits = 0) {
+  if (!g.war) return 0;
+  const upkeep = Math.floor((me.units + extraUnits) / g.settings.war.upkeepUnitsPerMaterial);
+  return upkeep + (me.garrisonDue || 0);
+}
+
 /** Pay n materials from the biggest piles. */
 function payFromLargest(me, n) {
   const left = { ...me.materials };
@@ -136,7 +147,7 @@ function buildStep(g, me, P, mem, fresh) {
     mem.wallsThisRound = 0;
   }
   const wallKey = `wall-${me.walls}`;
-  if (has(me.materials, cost) && fresh(wallKey) && mem.wallsThisRound < P.wallsPerRound && me.protection < wallTarget(g, P)) {
+  if (has(me.materials, cost) && total(me.materials) - total(cost) >= reserve(g, me) && fresh(wallKey) && mem.wallsThisRound < P.wallsPerRound && me.protection < wallTarget(g, P)) {
     mem.wallsThisRound++;
     return { key: wallKey, action: { type: 'buildWall', count: 1 } };
   }
@@ -146,9 +157,12 @@ function buildStep(g, me, P, mem, fresh) {
     // 3. Recruit up to the personality's army size — but walls come first unless warlike,
     //    and cautious/balanced bots stay under the army-emissions limit.
     let target = P.army;
-    if (w.armyFloodPerUnits > 0 && P !== PERSONALITIES.warlike) target = Math.min(target, w.armyFloodPerUnits - 1);
+    // Big armies pollute (army emissions). Careful bots always stay under that size;
+    // warlike bots too once the Flood is getting high or their own home is at risk.
+    const armyPollutes = w.armyFloodPerUnits > 0 && (P !== PERSONALITIES.warlike || g.threshold - g.flood <= 8 || floodDanger(g, me));
+    if (armyPollutes) target = Math.min(target, w.armyFloodPerUnits - 1);
     const wallsOk = me.protection >= g.flood + 1 || P === PERSONALITIES.warlike;
-    if (me.units < target && wallsOk && total(me.materials) >= w.unitCost && fresh(`recruit-${me.units}`)) {
+    if (me.units < target && wallsOk && total(me.materials) - w.unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
       const action = { type: 'recruit', count: 1, materials: payFromLargest(me, w.unitCost) };
       if (g.stationed) action.tile = frontier(g)[0] || me.homeTile;
       return { key: `recruit-${me.units}`, action };
@@ -171,7 +185,7 @@ function buildStep(g, me, P, mem, fresh) {
     const b = g.settings.base;
     const need = MATS.filter((m) => me.materials[m] < cost[m]);
     const spare = MATS.filter((m) => me.materials[m] >= b.marketGive + cost[m]);
-    if (need.length && spare.length) return { key: 'market', action: { type: 'market', give: spare[0], get: need[0] } };
+    if (need.length && spare.length && total(me.materials) - b.marketGive + b.marketGet >= reserve(g, me)) return { key: 'market', action: { type: 'market', give: spare[0], get: need[0] } };
   }
 
   // 6b. Offer a trade to someone who has what we need.
@@ -179,7 +193,7 @@ function buildStep(g, me, P, mem, fresh) {
   if (offer) return offer;
 
   // 7. When the Flood is getting close, careful bots chip in to the seawall.
-  if (P.donates && danger <= 4 && g.seawallBonus < g.settings.base.seawallMaxSteps && total(me.materials) > 6 && fresh('donate')) {
+  if (P.donates && danger <= 4 && g.seawallBonus < g.settings.base.seawallMaxSteps && total(me.materials) - 2 >= reserve(g, me) + 4 && fresh('donate')) {
     return { key: 'donate', action: { type: 'donate', materials: payFromLargest(me, 2) } };
   }
 
@@ -251,10 +265,10 @@ function baseIdeas(g, me, P, danger) {
   if (me.materials.wood >= b.raidCostWood + 1 && chance(P.raid) && !g.limits.noAttacks) {
     const target = g.players
       .filter((p) => p.seat !== g.you && !g.limits.protectedSeats[p.seat] && willHit(g, p.seat, P))
-      .sort((a, c) => (c.materialTotal || 0) + grudge(g, c.seat) * 3 - (a.materialTotal || 0) - grudge(g, a.seat) * 3)[0];
+      .sort((a, c) => raidValue(g, c) - raidValue(g, a))[0];
     if (target && target.materialTotal >= 3) ideas.push({ key: 'raid', action: { type: 'choose', action: 'raid', target: target.seat } });
   }
-  if (danger > (P === PERSONALITIES.cautious ? 5 : 3) && chance(P.unsus) && !g.limits.noUnsustainable) {
+  if (danger > (P === PERSONALITIES.cautious ? 5 : 3) && chance(P.unsus) && !g.limits.noUnsustainable && !floodDanger(g, me)) {
     ideas.push({ key: 'unsus', action: { type: 'choose', action: 'unsustainable', mix: pickMix(g, me, b.unsustainableCollect) } });
   }
   ideas.push(sustainable);
@@ -291,7 +305,7 @@ function warIdeas(g, me, P, danger) {
     const target = pickTarget(g, me, P);
     if (target) ideas.push(target);
   }
-  if (danger > (P === PERSONALITIES.cautious ? 6 : 4) && chance(P.unsus) && !g.limits.noUnsustainable) ideas.push(dev('unsustainable'));
+  if (danger > (P === PERSONALITIES.cautious ? 6 : 4) && chance(P.unsus) && !g.limits.noUnsustainable && !floodDanger(g, me)) ideas.push(dev('unsustainable'));
   ideas.push(dev('sustainable'));
   return ideas;
 }
@@ -324,6 +338,7 @@ function pickTarget(g, me, P) {
     else if (sent > defenders || defenders === 0) score = 3 + (t.role === 'capital' ? 2 : 0);
     else score = P === PERSONALITIES.warlike && sent === defenders ? 1 : 0;
     if (score && t.controller != null) score += grudge(g, t.controller); // pay back those who hit us
+    if (score && t.controller != null && allianceEnemies(g).includes(t.controller)) score += 2; // our alliance's target
     if (score > bestScore) {
       bestScore = score;
       bestIdea = { key: `attack-${id}`, action: { type: 'choose', action: 'attack', target: id, ...(from ? { from, count: sent } : {}) } };
@@ -373,20 +388,16 @@ function diplomacyStep(g, me, P, mem, fresh) {
   for (const t of (g.treaties || []).filter((x) => x.invited.includes(g.you) && ![...x.signed, ...x.declined, ...x.broken].includes(g.you))) {
     const key = `treaty-${t.id}`;
     if (!fresh(key)) continue;
-    const c = t.clauses;
-    let likes = trusts(g, t.by, P);
-    if (c.maxUnits != null && (c.maxUnits < Math.min(P.army, 3) || me.units > c.maxUnits)) likes = false;
-    if (c.noAttacks && P === PERSONALITIES.warlike) likes = false;
-    if (c.noUnsustainable && P === PERSONALITIES.warlike && chance(0.5)) likes = false;
+    const verdict = judgeTreaty(g, me, P, t);
     return {
       key,
-      action: { type: likes ? 'signTreaty' : 'declineTreaty', id: t.id },
-      say: likes ? pick([`I'll sign "${t.name}".`, `Count me in.`]) : pick([`"${t.name}" isn't for me.`, `I'll pass on that treaty.`]),
+      action: { type: verdict.sign ? 'signTreaty' : 'declineTreaty', id: t.id },
+      say: verdict.say,
     };
   }
 
-  // Warlike bots tear up treaties that stop them building an army.
-  if (g.limits.maxUnits && P === PERSONALITIES.warlike && me.units >= g.limits.maxUnits.n && chance(0.3)) {
+  // Warlike bots tear up an army-limit treaty only when a real conquest is on offer.
+  if (g.limits.maxUnits && P === PERSONALITIES.warlike && me.units >= g.limits.maxUnits.n && expansionPlans(g, me).length && !floodDanger(g, me) && chance(0.5)) {
     const t = (g.treaties || []).find((x) => x.name === g.limits.maxUnits.name && x.signed.includes(g.you));
     if (t && fresh(`break-${t.id}`)) return { key: `break-${t.id}`, action: { type: 'breakTreaty', id: t.id }, say: `"${t.name}" is over for me.` };
   }
@@ -427,9 +438,11 @@ function diplomacyStep(g, me, P, mem, fresh) {
     }
   }
 
-  // Cautious bots propose a green treaty when the Flood is getting close (once a game).
+  // Propose a green treaty when the Flood is getting dangerous (once a game). Cautious bots
+  // do it early; others when their own home is at risk too.
   const danger = g.threshold - g.flood;
-  if (gen.treatiesEnabled && P === PERSONALITIES.cautious && danger <= 6 && !mem.proposedTreaty && !(g.treaties || []).some((t) => t.signed.includes(g.you))) {
+  const worried = P === PERSONALITIES.cautious ? danger <= 6 : floodDanger(g, me);
+  if (gen.treatiesEnabled && worried && !mem.proposedTreaty && !(g.treaties || []).some((t) => t.signed.includes(g.you))) {
     mem.proposedTreaty = true;
     const invite = g.players.filter((p) => p.seat !== g.you).map((p) => p.seat);
     return {
@@ -439,6 +452,81 @@ function diplomacyStep(g, me, P, mem, fresh) {
     };
   }
   return null;
+}
+
+/**
+ * Is the Flood a real threat to us? True when it's within 5 of catastrophe, or
+ * when our walls already can't hold back the current Flood.
+ */
+function floodDanger(g, me) {
+  return g.threshold - g.flood <= 5 || me.protection < g.flood;
+}
+
+/** Players we've named as the enemy in an alliance. */
+function allianceEnemies(g) {
+  return (g.pacts || []).filter((p) => p.status === 'active' && p.kind === 'alliance' && (p.a === g.you || p.b === g.you)).map((p) => p.enemy);
+}
+
+function raidValue(g, p) {
+  return (p.materialTotal || 0) + grudge(g, p.seat) * 3 + (allianceEnemies(g).includes(p.seat) ? 4 : 0);
+}
+
+/**
+ * Conquests we could realistically make soon: seats (null = open land) whose tiles
+ * we could win with the units next to them. Base mode: rich players we could raid.
+ */
+function expansionPlans(g, me) {
+  if (!g.war) {
+    if (me.materials.wood < g.settings.base.raidCostWood + 1) return [];
+    return g.players.filter((p) => p.seat !== g.you && (p.materialTotal || 0) >= 4).map((p) => p.seat);
+  }
+  const plans = [];
+  for (const id of g.attackTargets || []) {
+    const t = g.board.tiles.find((x) => x.id === id);
+    let sent;
+    let defenders;
+    if (g.stationed) {
+      const srcs = g.attackSources[id] || [];
+      if (!srcs.length) continue;
+      sent = Math.max(...srcs.map((x) => x.units));
+      defenders = Object.values(t.units || {}).reduce((a, n) => a + n, 0);
+    } else {
+      sent = me.units + (me.puppets || []).reduce((a, q) => a + g.players[q].units, 0);
+      defenders = t.controller != null ? g.players[t.controller].units : 0;
+    }
+    if (sent >= 1 && (t.controller == null || sent > defenders)) plans.push(t.controller);
+  }
+  return plans;
+}
+
+/**
+ * Should we sign this treaty? Judged on the situation, then nudged by personality.
+ * Returns { sign, say }.
+ */
+function judgeTreaty(g, me, P, t) {
+  const c = t.clauses;
+  const warlike = P === PERSONALITIES.warlike;
+  const fear = floodDanger(g, me);
+  const desperate = g.threshold - g.flood <= 3;
+  const plans = expansionPlans(g, me);
+  const members = [...t.invited, t.by].filter((x) => x !== g.you);
+  const no = (say) => ({ sign: false, say });
+  const yes = (say) => ({ sign: true, say });
+
+  // Untrustworthy proposers get refused — unless the village is about to drown.
+  if (!desperate && !trusts(g, t.by, P)) return no(pick([`I don't trust ${g.players[t.by].name}'s treaties.`, `I'll pass on that treaty.`]));
+  if (c.maxUnits != null) {
+    if (me.units > c.maxUnits) return no(`I can't sign "${t.name}" — my army is already bigger than that.`);
+    // Refuse an army limit only if we have conquests planned (and the limit would stop them).
+    if (plans.length && c.maxUnits < P.army && !desperate) return no(pick([`I have plans for my army. No to "${t.name}".`, 'Limit my army? Not now.']));
+  }
+  if (c.noAttacks && plans.length && !desperate && !fear) return no(`I won't promise peace with everyone — not yet.`);
+  if (c.noAttackSignatories && plans.some((s) => s != null && members.includes(s)) && !desperate && !(fear && !warlike)) {
+    return no(`I can't promise not to attack everyone on that list.`);
+  }
+  if (c.noUnsustainable && !fear && warlike && chance(0.6)) return no('I need Unsustainable to pay for my army. Ask me again when the water is higher.');
+  if (fear && (c.noUnsustainable || c.noAttacks)) return yes(pick([`The Flood is at ${g.flood}. I'll sign "${t.name}".`, 'Fine — saving the village comes first.']));
+  return yes(pick([`I'll sign "${t.name}".`, 'Count me in.']));
 }
 
 /** Offer 2 of our most plentiful material for 1 of what the next wall needs. */
@@ -541,5 +629,5 @@ function reply(text, from, g, mem, botName) {
   return named ? { say: pick(["I'm just a bot — try words like pact, trade, flood or attack.", 'Beep. I understand pact, trade, flood and attack.']) } : null;
 }
 
-module.exports = { decide, react, reply, wallTarget, PERSONALITIES, PERSONALITY_ORDER, BOT_NAMES };
+module.exports = { decide, react, reply, wallTarget, judgeTreaty, expansionPlans, floodDanger, PERSONALITIES, PERSONALITY_ORDER, BOT_NAMES };
 

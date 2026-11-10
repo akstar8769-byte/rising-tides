@@ -309,7 +309,7 @@ function freePuppet(s, seat, text) {
   q.puppetOf = null;
   q.puppetSince = null;
   q.command = null;
-  addLog(s, text, { kind: 'good' });
+  addLog(s, text, { kind: 'notice', event: 'puppetFreed', seat });
   // Stationed: the old overlord's units can't stay on the freed player's tiles.
   if (ST(s)) for (const t of controlled(s, seat)) clearTile(s, t, 'home');
 }
@@ -361,7 +361,7 @@ function upkeep(s) {
       let list = puppetsOf(s, o.seat);
       while (list.length && cost(list.length) > bagTotal(o.materials)) {
         const latest = list.reduce((a, b) => (s.players[b].puppetSince > s.players[a].puppetSince ? b : a));
-        freePuppet(s, latest, `${o.name} couldn't pay the garrison, so ${s.players[latest].name} is freed.`);
+        freePuppet(s, latest, `⛓ ${s.players[latest].name} is FREE: ${o.name} couldn't pay the ${cost(list.length)}-material garrison at the start of the round.`);
         list = puppetsOf(s, o.seat);
       }
       if (list.length) {

@@ -112,6 +112,58 @@ test('bots reply to chat keywords and react when attacked', () => {
   Math.random = realRandom;
 });
 
+test('bot overlords keep enough for upkeep and the garrison (so puppets do not slip away)', () => {
+  let s = newGame({ n: 3, mode: 'empire', settings: (c) => (c.general.pactsEnabled = false) });
+  s = structuredClone(s);
+  s.players[1].puppetOf = 0; // seat 0 (a bot) holds seat 1 as a puppet: garrison 1 next round
+  s.players[1].puppetSince = 1;
+  s.players[0].walls = 1;
+  s.players[0].materials = { wood: 2, stone: 1, sandbag: 1 }; // exactly one wall, nothing left over
+  s.flood = 5; // behind on walls, so it would normally build
+  const mem = { personality: 'cautious', tried: new Set(), phaseKey: null, failures: 0 };
+  const idea = bots.decide(engine.viewFor(s, 0), mem);
+  assert.notEqual(idea.action.type, 'buildWall'); // keeps 1 material for the garrison
+  assert.notEqual(idea.action.type, 'recruit');
+});
+
+test('warlike bots judge treaties by the situation', () => {
+  const realRandom = Math.random;
+  Math.random = () => 0; // every "chance" succeeds, so trust never gets in the way
+  try {
+    const P = bots.PERSONALITIES.warlike;
+    const mk = (tweak) => {
+      let s = newGame({ n: 4, mode: 'war', biomes: ['forest', 'quarry', 'riverbank', 'forest'], settings: (c) => {
+        c.general.treatiesEnabled = true;
+        c.war.openTilesClaimable = false;
+      } });
+      s = structuredClone(s);
+      s.players.forEach((p) => (p.walls = 3));
+      if (tweak) tweak(s);
+      return s;
+    };
+    const treaty = (clauses) => ({ id: 1, name: 'T', by: 1, invited: [0, 2], signed: [1], declined: [], broken: [], clauses: { maxUnits: null, noUnsustainable: false, noAttackSignatories: false, noAttacks: false, ...clauses } });
+    const judge = (s, clauses) => bots.judgeTreaty(engine.viewFor(s, 0), engine.viewFor(s, 0).players[0], P, treaty(clauses));
+    // Rising water: a warlike bot signs "no Unsustainable"
+    assert.equal(judge(mk((s) => (s.flood = 17)), { noUnsustainable: true }).sign, true);
+    // No conquest in reach: it accepts an army limit (less upkeep, less Flood)
+    assert.equal(judge(mk(), { maxUnits: 2 }).sign, true);
+    // Units next to an undefended enemy province: it refuses the limit
+    const withPlans = mk((s) => {
+      const tile = (id) => s.board.tiles.find((x) => x.id === id);
+      tile('C0').units = {};
+      tile('I0').units = { 0: 3 };
+      tile('C1').units = { 1: 1 }; // seat 1's I1 is empty
+      s.players[0].units = 3;
+    });
+    assert.ok(bots.expansionPlans(engine.viewFor(withPlans, 0), withPlans.players[0]).length > 0);
+    assert.equal(judge(withPlans, { maxUnits: 2 }).sign, false);
+    // ...and won't promise not to attack the player it's eyeing
+    assert.equal(judge(withPlans, { noAttackSignatories: true }).sign, false);
+  } finally {
+    Math.random = realRandom;
+  }
+});
+
 test('server: one human plus bots can play a whole game', async () => {
   const srv = await startServer(0);
   const c = io(`http://localhost:${srv.port}`, { transports: ['websocket'], forceNew: true });

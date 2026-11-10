@@ -104,7 +104,11 @@ function puppetBox(store) {
   const g = store.data.game;
   const me = g.players[g.you];
   const o = g.players[me.puppetOf];
+  const oMats = o.materials ? o.materials.wood + o.materials.stone + o.materials.sandbag : o.materialTotal;
+  const due = (o.upkeepDue || 0) + (o.garrisonDue || 0);
+  const garrison = `<p class="small">At the start of next round ${esc(o.name)} must pay a <b>${o.garrisonDue}-material garrison</b> to keep you (after ${o.upkeepDue} for militia upkeep). ${esc(o.name)} has ${oMats} material${oMats === 1 ? '' : 's'} now${oMats < due ? ' — <b class="ok">not enough: you will go free unless they get more!</b>' : '.'}</p>`;
   return `<div class="puppet-box">⛓ <b>You are ${esc(o.name)}'s puppet.</b> Command: <b>${esc(commandText(g, me.effectiveCommand))}</b>.
+    ${garrison}
     <p class="hint">You pay half of everything you collect as tribute (rounded up). Each round you must play the command — or revolt: attack ${esc(o.name)}'s capital (ties go to you, ${esc(o.name)} defends alone, never sanctioned). You can still survive and win.</p></div>`;
 }
 

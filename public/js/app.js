@@ -92,8 +92,22 @@ socket.on('state', (d) => {
   }
   if (d.game?.phase === 'loot' && prev?.game?.phase !== 'loot') store.ui.loot = { wood: 0, stone: 0, sandbag: 0 };
   diceOnState(d);
+  announceEvents(d);
   render();
 });
+
+/** Pop up important events (a puppet going free, a broken pact or treaty) so nobody misses them. */
+let lastAnnounced = null;
+function announceEvents(d) {
+  const log = d.game ? d.game.log : [];
+  const maxId = log.length ? log[log.length - 1].id : 0;
+  if (lastAnnounced === null || !d.game || maxId < lastAnnounced) {
+    lastAnnounced = maxId; // first load or a new game: don't replay old events
+    return;
+  }
+  for (const e of log) if (e.id > lastAnnounced && ['puppetFreed', 'pactBroken', 'treatyBroken'].includes(e.event)) toast(e.text, 'event');
+  lastAnnounced = maxId;
+}
 
 socket.on('chatHistory', (msgs) => {
   store.chat = msgs;
