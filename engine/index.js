@@ -19,15 +19,49 @@ const war = require('./war');
 const diplomacy = require('./diplomacy');
 const { playtestRecord, recordToCsv } = require('./record');
 
-const MODES = ['base', 'war', 'empire'];
-const BUILT_MODES = ['base', 'war', 'empire'];
+const MODES = ['base', 'war', 'empire', 'totalwar'];
+const BUILT_MODES = ['base', 'war', 'empire', 'totalwar'];
 
 // Which actions exist in each mode. War modes add/replace some Base actions.
 const HANDLERS = {
   base: { ...base.handlers, ...diplomacy.handlers },
   war: { ...base.handlers, ...war.handlers, ...diplomacy.handlers },
   empire: { ...base.handlers, ...war.handlers, ...diplomacy.handlers },
+  totalwar: { ...base.handlers, ...war.handlers, ...diplomacy.handlers },
 };
+
+/**
+ * Total War reuses the War rules with its own numbers: copy them into
+ * settings.war so the War code reads them, and switch off the climate politics.
+ */
+function totalWarSettings(settings) {
+  const tw = settings.totalwar;
+  settings.war = {
+    ...settings.war,
+    rounds: tw.rounds,
+    catastrophe: { ...tw.catastrophe },
+    accordLine: 999,
+    startUnits: tw.startMilitia,
+    unitCost: tw.militia.cost,
+    upkeepUnitsPerMaterial: tw.upkeepPointsPerMaterial,
+    upkeepFromRound: 2,
+    maxLoot: tw.maxLoot,
+    attackFlood: 0, // battles add Flood instead (claiming empty land is free)
+    occupationFlood: 0,
+    passivePerTile: tw.passivePerTile,
+    sustainableBonus: tw.sustainableBonus,
+    unsustainableBonus: tw.unsustainableBonus,
+    damagedPenalty: 0,
+    aidAmount: 0,
+    sanctionRounds: 0,
+    openTilesClaimable: true,
+    stationedUnits: true,
+    armyFloodPerUnits: 0,
+    destructionFloodPerUnits: 0,
+    capitalOpensAfter: tw.capitalOpensAfter,
+  };
+  return settings;
+}
 
 /**
  * Start a new game.
@@ -38,11 +72,15 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
   if (!MODES.includes(mode)) fail(`Unknown mode "${mode}".`);
   if (!Array.isArray(players) || players.length < 3 || players.length > 5) fail('Rising Tides needs 3 to 5 players.');
   for (const p of players) if (!BIOMES[p.biome]) fail(`Unknown biome "${p.biome}".`);
+  if (mode === 'totalwar') settings = totalWarSettings(JSON.parse(JSON.stringify(settings)));
   const b = settings.base;
 
   const state = {
     mode,
     settings: JSON.parse(JSON.stringify(settings)),
+    battles: [], // Total War: live battles this round
+    battleQueueTW: [],
+    nextBattleId: 1,
     rng: seed >>> 0,
     seq: 0, // log entry counter
     round: 1,
@@ -132,7 +170,7 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
     // Stationed units: everyone's starting militia stands on their capital.
     for (const p of state.players) state.board.tiles.find((t) => t.id === p.homeTile).units[p.seat] = p.units;
   }
-  const modeName = { base: 'Base', war: 'War', empire: 'War + Empire' }[mode];
+  const modeName = { base: 'Base', war: 'War', empire: 'War + Empire', totalwar: 'Total War' }[mode];
   addLog(state, `Game started: ${players.length} players, ${modeName} mode. Flood starts at ${state.flood}; catastrophe at ${base.threshold(state)}${mode === 'base' ? '' : `; the Climate Accord breaks at ${settings.war.accordLine}`}.`, { kind: 'round' });
   addLog(state, `Round 1 begins. Starting player: ${state.players[0].name}. Talk & build, then press Ready.`, { kind: 'round' });
   return state;
@@ -155,6 +193,15 @@ function waitingFor(state) {
   if (base.BUILD_PHASES.includes(state.phase)) return state.players.filter((p) => !p.ready).map((p) => p.seat);
   if (state.phase === 'choose') return state.players.filter((p) => !p.choice).map((p) => p.seat);
   if (state.phase === 'loot' && state.pendingLoot) return [state.pendingLoot.raider];
+  if (state.phase === 'battle') {
+    const seats = new Set();
+    for (const b of state.battles || []) {
+      if (b.status !== 'live') continue;
+      if (!b.auto.A) seats.add(b.attacker);
+      if (!b.auto.D) seats.add(b.defender);
+    }
+    return [...seats];
+  }
   return [];
 }
 
@@ -183,6 +230,7 @@ function viewFor(state, seat) {
   }
   v.trades = v.trades.filter((t) => t.from === seat || t.to === seat);
   if (state.mode !== 'base') war.decorateView(v, state, seat);
+  if (state.mode === 'totalwar') v.battles = state.battles; // battles are public: anyone can watch
   diplomacy.decorateView(v, state, seat);
   return v;
 }
@@ -198,6 +246,9 @@ module.exports = {
   waitingFor,
   threshold: base.threshold,
   compareDice: war.compareDice,
+  stepBattles: war.stepBattles,
+  battleSnapshot: require('./totalwar').snapshot,
+  troopsAt: war.troopsAt,
   production: war.production,
   attackTargets: war.attackTargets,
   defaultBiomeList,

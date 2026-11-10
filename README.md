@@ -3,7 +3,7 @@
 An online version of **Rising Tides**, our JA Company Programme board game, for 3–5 players on phones or laptops. It's for our own playtesting only, not for sale.
 
 - The host creates a room and shares a 4-letter code or link. Everyone else opens the link, types a name and joins. No accounts, no installs.
-- **Modes:** Base, War (territories, militia, the Climate Accord) and War + Empire (puppets, tribute, revolts). The host picks one in the lobby.
+- **Modes:** Base, War (territories, militia, the Climate Accord), War + Empire (puppets, tribute, revolts), and **⚔ Total War** — a just-for-fun mode where war is the point: 12 rounds, militia / infantry / cavalry, and **live battles** where you move your units on a battlefield and encircle the enemy. The host picks one in the lobby.
 - **Every number in the rules** can be changed in the lobby before a game starts (defaults live in `config.js`).
 
 ---
@@ -79,6 +79,8 @@ We use **Render** (free plan). You do this once; after that, Render updates the 
 
 Bots play every mode, answer your trade offers (they accept if they get at least as much as they give), follow or revolt against Empire commands, and only see what a human in their seat could see. Change **"Bot thinking time"** in the General settings to speed them up (0 = instant) or slow them down. The playtest CSV marks bot players in a `bot` column so you can filter them out.
 
+**⚔ Total War battles.** When your attack meets defenders (or someone attacks your defended land), the Play tab turns into a battlefield. Tap your units — ● militia, ■ infantry, ▲ cavalry — or use *Select all*, then tap where to send them. Attackers win by holding the flag ⚑ alone for a few seconds; defenders win by holding out. Units cut off from their own edge of the map (red dashed outline) take heavy damage and surrender, so swing cavalry round behind the enemy. Press **Auto-battle** to let the computer fight for you. Other players' battles can be watched live.
+
 **Diplomacy (Trade tab).**
 - **Pacts** are promises: offer a player a non-aggression pact or an alliance against someone for 1–3 rounds. The game never stops anyone breaking a pact — but it announces it to everyone and marks the betrayer.
 - **Treaties** (switch on "Treaties" in the lobby's General settings) are binding: write rules like "no more than 2 militia" or "no Unsustainable development", invite players, and once two have signed the game blocks any move that breaks them. To get out you must openly break the treaty: everyone sees it and you lose 3 materials (adjustable).
@@ -136,6 +138,7 @@ engine/              the rules — pure functions, no networking
   base.js            Base rules: phases, walls, market, seawall, trades, raids, scoring, host skip
   war.js             War + Empire: upkeep, militia, attacks, clashes, Accord, puppets, revolts
   diplomacy.js       pacts (recorded, never enforced) and treaties (enforced)
+  totalwar.js        Total War live battles: terrain, movement, flanking, encirclement
   board.js           biomes, home tiles, territories
   layouts.js         board layouts as data (hex coordinates)
   record.js          playtest record (JSON + CSV)
@@ -146,7 +149,7 @@ server/
   bots.js            computer players: decide(view) -> next action, with personalities
 public/              the web page (plain HTML/CSS/JS, no build step)
   js/app.js          connection, state, button handlers
-  js/lobby.js, game.js, war-ui.js, diplomacy-ui.js, board.js, dice.js, end.js, log.js, landing.js, ui.js
+  js/lobby.js, game.js, war-ui.js, diplomacy-ui.js, battle-ui.js, board.js, dice.js, end.js, log.js, landing.js, ui.js
 test/                unit tests (node:test) + an end-to-end server test
 ```
 

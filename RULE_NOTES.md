@@ -200,3 +200,50 @@ Bots, warlike ones included, now decide on treaties from the state of the game, 
 - Bots skip Unsustainable when their own home is at risk, and warlike bots stop growing their army past the army-emissions size once the Flood is within 8 of catastrophe.
 
 In 60 bot-only War games this cut catastrophes from about 15–20 to 8 (3 with treaties on), and warlike bots survived about 18% of the time instead of 1–4%.
+
+## ⚔ Total War mode (added 11 November 2026, just for fun)
+
+A separate fourth mode where war is the point. Base, War and War + Empire are unchanged. Every number is in `config.js` under `totalwar` and in the lobby.
+
+**The strategic game** (built on the War rules with stationed units)
+- **12 rounds.** Light Flood: no Accord, sanctions or aid; no army, destruction or occupation Flood. Each real battle adds Flood +1 (claiming empty land is free), and the catastrophe line is much higher (28 / 30 / 32 for 3 / 4 / 5 players).
+- **Unit types:**
+
+  | Type | Cost | Upkeep pts | HP | Damage/s | Speed | Notes |
+  |---|---|---|---|---|---|---|
+  | ● Militia | 2 | 1 | 10 | 2 | 5 | cheap |
+  | ■ Infantry | 4 | 1 | 18 | 3 | 4 | tough; stands firm against cavalry |
+  | ▲ Cavalry | 5 | 2 | 12 | 3 | 9 | fast; 150% damage vs militia, 70% vs infantry — but **150% vs encircled (cut-off) infantry**, before the 175% cut-off penalty; slow in forests |
+
+  Upkeep: 1 material per 4 upkeep points. Everyone starts with 2 militia on their capital.
+- **War profiteering:**
+  - Conquered tiles give **+1 plunder income** every round, on top of normal tile income.
+  - Winning a tile gives **up to 6 tokens of loot**, taken automatically, plus **3 materials of war spoils** from the bank.
+  - **Capitals can be captured and held.** Their owner keeps playing and can try to win them back.
+  - A capital opens to attack once 1 of its provinces has fallen.
+  - Holding **every capital** ends the game at once.
+- **Score after 12 rounds:**
+  - 2 points per tile held;
+  - +3 for each enemy capital held;
+  - 1 point per 3 spare materials;
+  - +5 if your own capital is still yours and above the Flood.
+  - A catastrophe means everyone scores 0.
+
+**Live battles**
+- Claiming empty land or marching into an undefended tile needs no battle. An attack on defended land starts a **real-time battle** on a 60×40 map.
+  - **Terrain** comes from the two tiles: forests and hills protect (130% / 140%); a river crosses the map when a Riverbank tile is involved, and is slow except at its two fords.
+  - **Positions:** attackers enter from the left edge. Defenders start around the flag: infantry on it, militia in front, cavalry behind.
+  - **Controls:** tap your units (or *Select all / Militia / Infantry / Cavalry*), then tap where to go.
+  - **Contact:** units in contact fight, and move at a third of their speed while engaged.
+  - **Flanking:** a unit hit from two directions more than 100° apart takes 140% damage.
+  - **Encirclement:** every half second, each unit must be able to trace a path to its own side's map edge (attackers: left, defenders: right) without crossing enemy-controlled ground (within 4 squares of an enemy unit). Units that can't are **cut off**: they take 175% damage, deal 75%, and **surrender after 8 seconds**. When a battle ends, the loser's cut-off units are captured.
+  - **Winning:** the attacker wins by holding the flag **alone** for 8 seconds or destroying every defender. The defender wins by destroying the attackers or **holding out for 90 seconds**.
+  - **Afterwards:** winning attackers move into the tile. Surviving defenders retreat to a neighbouring tile, or are lost. A losing attack's survivors go home.
+- **Waves:** all battles in a round run **at the same time**, and anyone can watch any battle. If two attacks hit the same tile, or one starts from a tile under attack, the second waits for the next wave.
+- **Auto-battle:** a button lets the computer fight for you. A side that gives no order for 15 seconds is put on auto. Bots and players who have left always fight on auto, and the host's Skip hands a player's battles to the computer.
+
+**Decided while building (please check)**
+- **Loot is taken automatically** (largest piles first) instead of using the picker, so battles don't stall the round.
+- **Damaged doesn't apply in Total War.** Losing land and loot is penalty enough.
+- **Moving and attacking:** in Total War you pick exactly which unit types to move or send. Other War modes still move "any N units", which are always militia.
+- Battle randomness only shapes the terrain. The fighting itself has no dice: positioning, numbers, unit types and terrain decide.

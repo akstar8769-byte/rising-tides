@@ -96,6 +96,43 @@ const DEFAULTS = {
                                  // false = one army that defends everywhere at once (the PDF's rules)
   },
 
+  // ---- Total War mode only (a just-for-fun mode where war is the point) ----
+  totalwar: {
+    rounds: 12,
+    catastrophe: { 3: 28, 4: 30, 5: 32 }, // light Flood: the line is much higher than in War
+    battleFlood: 1,              // Flood rise for each real battle (claiming empty land is free)
+    passivePerTile: 1,           // every tile you hold gives this much of its resource every round
+    occupiedBonus: 1,            // PLUNDER: conquered tiles give this much extra every round
+    sustainableBonus: 2,         // Sustainable adds this much of your home resource
+    unsustainableBonus: 6,       // Unsustainable adds this much, any mix (Flood +1)
+    maxLoot: 6,                  // most tokens taken from the loser of a battle
+    warSpoils: 3,                // materials from the bank for every province or capital you take
+    upkeepPointsPerMaterial: 4,  // pay 1 material per this many upkeep points (see unit upkeep below)
+    startMilitia: 2,             // militia each player starts with, on their capital
+    capitalOpensAfter: 1,        // provinces that must fall before a capital can be attacked
+    // Unit types. cost = materials to recruit, upkeep = upkeep points, hp = toughness,
+    // attack = damage per second in battle, speed = map squares per second.
+    militia: { cost: 2, upkeep: 1, hp: 10, attack: 2, speed: 5 },
+    infantry: { cost: 4, upkeep: 1, hp: 18, attack: 3, speed: 4 },
+    cavalry: { cost: 5, upkeep: 2, hp: 12, attack: 3, speed: 9 },
+    cavalryVsMilitiaPct: 150,    // cavalry rides down militia...
+    cavalryVsInfantryPct: 70,    // ...but infantry stand firm against it...
+    cavalryVsCutOffInfantryPct: 150, // ...unless the infantry are encircled (cut off from supply)
+    // Battles
+    battleSeconds: 90,           // a battle lasts at most this long; then the defender holds
+    captureSeconds: 8,           // attackers holding the objective alone this long win
+    surrenderSeconds: 8,         // units cut off from supply this long surrender
+    cutOffDamagePct: 175,        // damage taken by units cut off from supply (encircled)
+    flankDamagePct: 140,         // damage taken by units attacked from two sides
+    forestDefencePct: 130,       // forests and hills protect whoever stands in them
+    hillDefencePct: 140,
+    // Scoring after the last round
+    scoreTile: 2,                // points per tile you hold
+    scoreCapital: 3,             // extra points per enemy capital you hold
+    scoreHome: 5,                // bonus if your own capital is still yours and above the Flood
+    scoreMaterialsPer: 3,        // 1 point per this many spare materials
+  },
+
   // ---- War + Empire mode only ----
   empire: {
     garrisonCost: { 1: 1, 2: 3, 3: 6, 4: 10 }, // total upkeep for holding N puppets
@@ -174,6 +211,50 @@ const LABELS = {
   'war.openTilesClaimable': 'Open tiles can be claimed (off = impassable)',
   'war.stationedUnits': 'Units are stationed on tiles (off = one army everywhere)',
 
+  'totalwar.rounds': 'Number of rounds',
+  'totalwar.catastrophe.3': 'Catastrophe threshold (3 players)',
+  'totalwar.catastrophe.4': 'Catastrophe threshold (4 players)',
+  'totalwar.catastrophe.5': 'Catastrophe threshold (5 players)',
+  'totalwar.battleFlood': 'Flood rise per battle',
+  'totalwar.passivePerTile': 'Income from each tile, every round',
+  'totalwar.occupiedBonus': 'Plunder: extra income per conquered tile',
+  'totalwar.sustainableBonus': 'Sustainable: extra home resource',
+  'totalwar.unsustainableBonus': 'Unsustainable: extra materials (any mix)',
+  'totalwar.maxLoot': 'Most tokens taken per battle won',
+  'totalwar.warSpoils': 'War spoils from the bank per tile taken',
+  'totalwar.upkeepPointsPerMaterial': 'Upkeep: points per 1 material',
+  'totalwar.startMilitia': 'Starting militia',
+  'totalwar.capitalOpensAfter': 'Capital can be attacked after this many provinces fall',
+  'totalwar.militia.cost': 'Militia: cost',
+  'totalwar.militia.upkeep': 'Militia: upkeep points',
+  'totalwar.militia.hp': 'Militia: toughness (HP)',
+  'totalwar.militia.attack': 'Militia: damage per second',
+  'totalwar.militia.speed': 'Militia: speed',
+  'totalwar.infantry.cost': 'Infantry: cost',
+  'totalwar.infantry.upkeep': 'Infantry: upkeep points',
+  'totalwar.infantry.hp': 'Infantry: toughness (HP)',
+  'totalwar.infantry.attack': 'Infantry: damage per second',
+  'totalwar.infantry.speed': 'Infantry: speed',
+  'totalwar.cavalry.cost': 'Cavalry: cost',
+  'totalwar.cavalry.upkeep': 'Cavalry: upkeep points',
+  'totalwar.cavalry.hp': 'Cavalry: toughness (HP)',
+  'totalwar.cavalry.attack': 'Cavalry: damage per second',
+  'totalwar.cavalry.speed': 'Cavalry: speed',
+  'totalwar.cavalryVsMilitiaPct': 'Cavalry damage vs militia (%)',
+  'totalwar.cavalryVsInfantryPct': 'Cavalry damage vs infantry (%)',
+  'totalwar.cavalryVsCutOffInfantryPct': 'Cavalry damage vs encircled infantry (%)',
+  'totalwar.battleSeconds': 'Battle time limit (seconds)',
+  'totalwar.captureSeconds': 'Seconds to capture the objective',
+  'totalwar.surrenderSeconds': 'Seconds cut off before surrendering',
+  'totalwar.cutOffDamagePct': 'Damage taken when cut off (%)',
+  'totalwar.flankDamagePct': 'Damage taken when flanked (%)',
+  'totalwar.forestDefencePct': 'Forest protection (%)',
+  'totalwar.hillDefencePct': 'Hill protection (%)',
+  'totalwar.scoreTile': 'Score: points per tile',
+  'totalwar.scoreCapital': 'Score: extra per enemy capital held',
+  'totalwar.scoreHome': 'Score: bonus for a safe home',
+  'totalwar.scoreMaterialsPer': 'Score: materials per point',
+
   'empire.garrisonCost.1': 'Garrison cost: 1 puppet',
   'empire.garrisonCost.2': 'Garrison cost: 2 puppets',
   'empire.garrisonCost.3': 'Garrison cost: 3 puppets',
@@ -204,6 +285,22 @@ const LIMITS = {
   'war.maxDefenceDice': [1, 10],
   'war.capitalOpensAfter': [1, 9],
   'empire.tributeDivisor': [1, 10],
+  'totalwar.rounds': [1, 50],
+  'totalwar.upkeepPointsPerMaterial': [1, 99],
+  'totalwar.militia.cost': [1, 99],
+  'totalwar.infantry.cost': [1, 99],
+  'totalwar.cavalry.cost': [1, 99],
+  'totalwar.militia.hp': [1, 999],
+  'totalwar.infantry.hp': [1, 999],
+  'totalwar.cavalry.hp': [1, 999],
+  'totalwar.militia.speed': [1, 30],
+  'totalwar.infantry.speed': [1, 30],
+  'totalwar.cavalry.speed': [1, 30],
+  'totalwar.battleSeconds': [20, 600],
+  'totalwar.captureSeconds': [1, 120],
+  'totalwar.surrenderSeconds': [1, 120],
+  'totalwar.capitalOpensAfter': [1, 9],
+  'totalwar.scoreMaterialsPer': [1, 99],
   'empire.captureStockDivisor': [1, 10],
 };
 
@@ -217,6 +314,7 @@ const GROUPS_FOR_MODE = {
   base: ['general', 'base'],
   war: ['general', 'base', 'war'],
   empire: ['general', 'base', 'war', 'empire'],
+  totalwar: ['general', 'base', 'totalwar'],
 };
 
 function cloneDefaults() {

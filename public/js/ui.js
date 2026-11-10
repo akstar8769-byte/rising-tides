@@ -85,6 +85,7 @@ export const PHASE_LABEL = {
   loot: 'Resolve raids',
   raids: 'Resolve raids',
   trade: 'Trade & build',
+  battle: '⚔ Battles!',
   ended: 'Game over',
 };
 

@@ -6,9 +6,10 @@ const MODE_INFO = {
   base: { title: 'Base', text: 'Walls, trading, raids and the shared Flood.' },
   war: { title: 'War', text: 'Territories, militia, invasions and the Climate Accord.' },
   empire: { title: 'War + Empire', text: 'War, plus puppet states, tribute and revolts.' },
+  totalwar: { title: '⚔ Total War', text: 'Just for fun: war is the point. 12 rounds, militia/infantry/cavalry, and live battles where positioning and encirclement beat numbers.' },
 };
 
-const GROUP_TITLE = { general: 'General', base: 'Base game', war: 'War mode', empire: 'Empire rules' };
+const GROUP_TITLE = { general: 'General', base: 'Base game', war: 'War mode', empire: 'Empire rules', totalwar: 'Total War' };
 
 const j = (obj) => esc(JSON.stringify(obj));
 

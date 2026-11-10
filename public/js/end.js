@@ -16,8 +16,9 @@ export function renderEnd(store) {
     const names = o.winners.map((s) => esc(g.players[s].name)).join(' and ');
     headline = `<h1 class="good">🏆 ${names} ${o.winners.length > 1 ? 'share the win' : 'wins'}!</h1><p>Final Flood ${o.finalFlood}.</p>`;
   }
-  const reason = { rounds: 'All rounds played.', storm: 'The storm ended the game.', catastrophe: 'The catastrophe threshold was reached.', host: 'The host ended the game.' }[o.reason];
+  const reason = { rounds: 'All rounds played.', storm: 'The storm ended the game.', catastrophe: 'The catastrophe threshold was reached.', host: 'The host ended the game.', conquest: 'One player holds every capital.' }[o.reason];
 
+  const tw = g.mode === 'totalwar';
   const rows = [...o.results]
     .sort((a, b) => b.score - a.score || b.survived - a.survived)
     .map(
@@ -25,7 +26,7 @@ export function renderEnd(store) {
         <td>${chip(r.seat, r.name)}${o.winners.includes(r.seat) ? ' 🏆' : ''}</td>
         <td>${r.walls} (${r.protection})</td>
         <td>${r.survived ? '<span class="ok">✔ saved</span>' : '<span class="warn">✖ flooded</span>'}</td>
-        <td>${r.spare}</td><td>${r.seawallPoints}</td><td><b>${r.survived ? r.score : '—'}</b></td>
+        ${tw ? `<td>${r.tiles}</td><td>${r.capitals}</td><td>${r.spare}</td><td><b>${r.score}</b></td>` : `<td>${r.spare}</td><td>${r.seawallPoints}</td><td><b>${r.survived ? r.score : '—'}</b></td>`}
       </tr>`,
     )
     .join('');
@@ -57,10 +58,10 @@ export function renderEnd(store) {
     <section class="card">
       <h2>Results</h2>
       <div class="table-wrap"><table class="results">
-        <thead><tr><th>Player</th><th>Walls (prot.)</th><th>Home</th><th>Spare</th><th>Seawall</th><th>Score</th></tr></thead>
+        <thead><tr><th>Player</th><th>Walls (prot.)</th><th>Home</th>${tw ? '<th>Tiles</th><th>Capitals</th><th>Spare</th><th>Score</th>' : '<th>Spare</th><th>Seawall</th><th>Score</th>'}</tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
-      <p class="hint">A home survives if wall protection ≥ final Flood (${o.finalFlood}). Score = spare materials + seawall points.</p>
+      <p class="hint">${tw ? `Total War score = ${g.settings.totalwar.scoreTile} per tile held + ${g.settings.totalwar.scoreCapital} per enemy capital + 1 per ${g.settings.totalwar.scoreMaterialsPer} spare materials + ${g.settings.totalwar.scoreHome} for a safe home (protection ≥ Flood ${o.finalFlood}).` : `A home survives if wall protection ≥ final Flood (${o.finalFlood}). Score = spare materials + seawall points.`}</p>
     </section>
 
     ${

@@ -8,6 +8,7 @@ import { renderLobby } from './lobby.js';
 import { renderGame } from './game.js';
 import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
+import { refreshBattle, svgPoint, liveBattle } from './battle-ui.js';
 
 /* global io */
 const socket = io();
@@ -34,8 +35,10 @@ function freshUi() {
     trade: { to: null, give: { wood: 0, stone: 0, sandbag: 0 }, get: { wood: 0, stone: 0, sandbag: 0 } },
     loot: { wood: 0, stone: 0, sandbag: 0 },
     walls: 1,
-    recruit: { count: 1, mix: { wood: 0, stone: 0, sandbag: 0 }, tile: null },
-    move: { from: null, to: null, count: 1 }, // stationed units: the "Move units" form
+    recruit: { count: 1, mix: { wood: 0, stone: 0, sandbag: 0 }, tile: null, unit: 'infantry' },
+    move: { from: null, to: null, count: 1, troops: { militia: 0, infantry: 0, cavalry: 0 } }, // stationed units: the "Move units" form
+    battleSel: [], // Total War: dots selected on the battlefield
+    watchBattle: null,
     cmdAttackFor: null, // Empire: which puppet we're picking an attack target for
     pact: { to: null, kind: 'peace', rounds: 2, enemy: null },
     treaty: { name: '', note: '', maxUnitsOn: false, maxUnits: 2, noUnsustainable: false, noAttackSignatories: true, noAttacks: false, rounds: 0, invite: [] },
@@ -108,6 +111,12 @@ function announceEvents(d) {
   for (const e of log) if (e.id > lastAnnounced && ['puppetFreed', 'pactBroken', 'treatyBroken'].includes(e.event)) toast(e.text, 'event');
   lastAnnounced = maxId;
 }
+
+// Total War: battle positions arrive 5 times a second; redraw just the battlefield.
+socket.on('battles', (snaps) => {
+  store.battleSnaps = Object.fromEntries(snaps.map((b) => [b.id, b]));
+  refreshBattle(store);
+});
 
 socket.on('chatHistory', (msgs) => {
   store.chat = msgs;
@@ -307,6 +316,7 @@ const actions = {
     if (c.action === 'raid' || c.action === 'attack') msg.target = c.target;
     else if (c.action !== 'revolt') msg.mix = c.mix;
     if (store.data.game.stationed && (c.action === 'attack' || c.action === 'revolt')) Object.assign(msg, { from: c.from, count: c.count });
+    if (store.data.game.tw && c.action === 'attack' && c.troops) msg.troops = c.troops;
     if (c.aid) msg.aid = c.aid;
     act(msg).then((r) => {
       if (r.ok) {
@@ -321,6 +331,7 @@ const actions = {
   recruit: () => {
     const r = store.ui.recruit;
     const msg = { type: 'recruit', count: r.count, materials: r.mix };
+    if (store.data.game.tw) msg.unit = r.unit || 'infantry';
     if (store.data.game.stationed) msg.tile = r.tile || store.data.game.players[store.data.game.you].homeTile;
     act(msg).then((res) => {
       if (res.ok) {
@@ -350,6 +361,24 @@ const actions = {
     });
   },
   planWithdraw: (ds) => act({ type: 'planWithdraw', tile: ds.tile }),
+
+  // Total War battles
+  watchBattle: (ds) => {
+    store.ui.watchBattle = +ds.id;
+    store.ui.battleSel = [];
+    render();
+  },
+  battleSelect: (ds) => {
+    const svg = document.getElementById('battle-svg');
+    const b = svg && liveBattle(store, Number(svg.dataset.battle));
+    if (!b) return;
+    const g = store.data.game;
+    const side = b.attacker === g.you ? 'A' : 'D';
+    const mine = b.dots.filter((d) => d.side === side && (ds.type === 'all' || d.type === ds.type));
+    store.ui.battleSel = ds.type === 'none' ? [] : mine.map((d) => d.id);
+    refreshBattle(store);
+  },
+  battleAuto: (ds) => act({ type: 'battleAuto', battle: +ds.id, on: ds.on === '1' }),
 
   // Diplomacy
   proposePact: () => {
@@ -391,9 +420,12 @@ const actions = {
   },
   moveUnits: () => {
     const mv = store.ui.move;
-    act({ type: 'moveUnits', from: mv.from, to: mv.to, count: mv.count }).then((r) => {
+    const msg = { type: 'moveUnits', from: mv.from, to: mv.to, count: mv.count };
+    if (store.data.game.tw) msg.troops = mv.troops;
+    act(msg).then((r) => {
       if (r.ok) {
         mv.count = 1;
+        mv.troops = { militia: 0, infantry: 0, cavalry: 0 };
         render();
       }
     });
@@ -420,6 +452,23 @@ const actions = {
 };
 
 document.addEventListener('click', (e) => {
+  const svg = e.target.closest('#battle-svg');
+  if (svg) {
+    const dotEl = e.target.closest('[data-dot]');
+    const sel = new Set(store.ui.battleSel);
+    if (dotEl) {
+      const id = Number(dotEl.dataset.dot);
+      if (sel.has(id)) sel.delete(id);
+      else sel.add(id);
+      store.ui.battleSel = [...sel];
+      refreshBattle(store);
+      return;
+    }
+    if (!sel.size) return toast('Tap one of your units first (or use Select all).');
+    const p = svgPoint(svg, e);
+    if (p) act({ type: 'battleOrder', battle: Number(svg.dataset.battle), dots: [...sel], x: p.x, y: p.y });
+    return;
+  }
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
   e.preventDefault();

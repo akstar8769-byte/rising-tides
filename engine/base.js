@@ -508,6 +508,7 @@ function endRound(state) {
  * Survivors score spare materials + seawall points. Highest score wins; ties share.
  */
 function scoreGame(state, reason) {
+  if (state.mode === 'totalwar') return require('./war').scoreTotalWar(state, reason);
   const c = cfg(state);
   const catastrophe = reason === 'catastrophe';
   const results = state.players.map((p) => {
@@ -562,6 +563,8 @@ function skip(state, actor, { seat } = {}) {
     }
     addLog(state, `The host skipped ${p.name}'s turn: they play ${ACTION_NAMES[p.choice.action] || p.choice.action}.`);
     if (state.players.every((x) => x.choice)) (state.mode === 'base' ? reveal : require('./war').reveal)(state);
+  } else if (state.phase === 'battle') {
+    require('./war').skipBattle(state, seat);
   } else if (state.phase === 'loot') {
     if (state.pendingLoot.raider !== seat) fail(`${p.name} is not picking loot.`);
     randomLoot(state, ' (skipped by the host, picked at random)');
@@ -594,4 +597,4 @@ const handlers = {
   endGame,
 };
 
-module.exports = { handlers, threshold, seawallBonus, protection, wallCost, clockwise, scoreGame, checkCatastrophe, startTradePhase, BUILD_PHASES };
+module.exports = { handlers, threshold, seawallBonus, protection, wallCost, clockwise, scoreGame, checkCatastrophe, startTradePhase, finishGame, BUILD_PHASES };

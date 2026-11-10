@@ -256,6 +256,53 @@ function attachRooms(io) {
       room.record.botCount = room.members.filter((x) => x.bot).length;
     }
     syncLootTimer(room);
+    syncBattleLoop(room);
+  }
+
+  // ------------------------------------------------------------ Total War: live battles
+  // While battles are being fought, the server advances them 10 times a second and
+  // sends a small snapshot of every battle to everyone in the room 5 times a second.
+  const BATTLE_TICK_MS = 100;
+  function syncBattleLoop(room) {
+    const fighting = room.state && room.state.phase === 'battle';
+    if (fighting && !room.battleTimer) {
+      room.battleTick = 0;
+      room.battleTimer = setInterval(() => battleTick(room), BATTLE_TICK_MS);
+      room.battleTimer.unref();
+    } else if (!fighting && room.battleTimer) {
+      clearInterval(room.battleTimer);
+      room.battleTimer = null;
+    }
+  }
+
+  function battleTick(room) {
+    const s = room.state;
+    if (!s || s.phase !== 'battle') return syncBattleLoop(room);
+    if (room.paused) return;
+    // Bots — and players who have left — let the computer fight.
+    for (const b of s.battles) {
+      if (b.status !== 'live') continue;
+      const away = (seat) => room.members[seat] && (room.members[seat].bot || room.members[seat].sockets.size === 0);
+      if (away(b.attacker)) b.auto.A = true;
+      if (away(b.defender)) b.auto.D = true;
+    }
+    let ended = false;
+    try {
+      ended = engine.stepBattles(s, BATTLE_TICK_MS / 1000);
+    } catch (e) {
+      console.error(e);
+    }
+    room.battleTick++;
+    if (s.phase === 'ended' && !room.endedAt) {
+      room.endedAt = Date.now();
+      room.record = engine.playtestRecord(s, { startedAt: room.startedAt, endedAt: room.endedAt });
+    }
+    if (ended) {
+      broadcast(room); // a battle finished: everyone gets the full new state
+      syncBattleLoop(room);
+    } else if (room.battleTick % 2 === 0) {
+      io.to('room:' + room.code).emit('battles', (s.battles || []).map((b) => engine.battleSnapshot(b)));
+    }
   }
 
   /** Wrap a socket handler: catch errors and reply through the ack callback. */
@@ -597,6 +644,7 @@ function attachRooms(io) {
         clearTimeout(room.loot.timer);
         clearTimeout(room.hostTimer);
         clearBotTimers(room);
+        clearInterval(room.battleTimer);
       }
     },
   };

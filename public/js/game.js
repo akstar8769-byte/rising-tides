@@ -5,6 +5,7 @@ import { renderBoard } from './board.js';
 import { renderLog, renderChat } from './log.js';
 import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel } from './war-ui.js';
 import { diplomacyPanel, diploTags, limitsNote, myPactWith } from './diplomacy-ui.js';
+import { battlePanel } from './battle-ui.js';
 
 const BUILD = ['talk', 'trade'];
 const j = (o) => esc(JSON.stringify(o));
@@ -121,7 +122,8 @@ function floodTrack(g, me) {
   for (let i = 0; i <= max; i++) {
     const accord = g.war && i === g.war.accordLine;
     const cls = [i <= g.flood ? 'filled' : '', i === max ? 'cata' : '', i === g.flood ? 'current' : '', i === me.protection ? 'mine' : '', accord ? (g.war.accordBroken ? 'accord broken' : 'accord') : ''].join(' ');
-    cells.push(`<div class="fcell ${cls}" ${accord ? 'title="Climate Accord line"' : ''}><span>${i === max ? '☠' : i}</span></div>`);
+    const label = i === max ? '☠' : max > 24 && i % 5 && i !== g.flood ? '' : i; // long tracks: every 5th number
+    cells.push(`<div class="fcell ${cls}" ${accord ? 'title="Climate Accord line"' : ''}><span>${label}</span></div>`);
   }
   const safe = me.protection >= g.flood;
   const seawall = g.settings.base;
@@ -133,7 +135,7 @@ function floodTrack(g, me) {
       <span><i class="k filled"></i>Flood ${g.flood}</span>
       <span><i class="k cata"></i>Catastrophe at ${max}${g.seawallBonus ? ` (incl. +${g.seawallBonus} seawall)` : ''}</span>
       <span><i class="k mine"></i>Your protection ${me.protection}</span>
-      ${g.war ? `<span><i class="k accord"></i>Accord line ${g.war.accordLine}</span>` : ''}
+      ${g.war && !g.war.noAccord ? `<span><i class="k accord"></i>Accord line ${g.war.accordLine}</span>` : ''}
     </div>
     ${accordCard(g)}
     <p class="${safe ? 'ok' : 'warn'} small">${safe ? `✔ Your home is safe at Flood ${g.flood}.` : `✖ Your home would flood at Flood ${g.flood}. You need ${g.flood - me.protection} more protection.`}
@@ -160,6 +162,7 @@ function phasePanel(store) {
   }
   if (g.phase === 'choose') return g.war ? warChoosePanel(store, { choiceLabel, capped, actionCard: makeCard(store.ui.choice) }) : choosePanel(store);
   if (g.phase === 'loot') return lootPanel(store);
+  if (g.phase === 'battle') return battlePanel(store);
   return '';
 }
 

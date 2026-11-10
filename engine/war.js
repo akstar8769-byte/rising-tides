@@ -22,6 +22,7 @@ const { fail, MATERIALS, emptyBag, cleanBag, bagTotal, hasBag, addBag, subBag, d
 const { BIOMES, areAdjacent } = require('./board');
 const base = require('./base');
 const diplomacy = require('./diplomacy');
+const battles = require('./totalwar');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,6 +31,8 @@ const diplomacy = require('./diplomacy');
 const W = (s) => s.settings.war;
 const E = (s) => s.settings.empire;
 const isEmpire = (s) => s.mode === 'empire';
+const TW = (s) => s.mode === 'totalwar'; // Total War: war is encouraged
+const TWS = (s) => s.settings.totalwar;
 
 function getTile(s, id) {
   const t = s.board.tiles.find((x) => x.id === id && x.kind === 'land');
@@ -63,6 +66,7 @@ function capitalOpen(s, t) {
   return provs.length > 0 && occupied >= Math.min(W(s).capitalOpensAfter, provs.length);
 }
 function aidEligible(s, p) {
+  if (TW(s)) return false;
   return !s.accordBroken && (p.damaged || hasOccupiedTile(s, p.seat) || p.puppetOf != null);
 }
 
@@ -117,6 +121,7 @@ function production(s, seat) {
       res = MATERIALS.reduce((best, m) => (p.materials[m] + passive[m] < p.materials[best] + passive[best] ? m : best), MATERIALS[0]);
     }
     passive[res] += w.passivePerTile;
+    if (TW(s) && t.owner !== seat) passive[res] += TWS(s).occupiedBonus; // plunder
   }
   const homeRes = BIOMES[p.biome].resource;
   const base = { passive, tiles: tiles.length, unsustainable: w.unsustainableBonus };
@@ -227,13 +232,14 @@ function me(s, actor) {
 }
 
 /** Recruit militia: { count, materials } — any materials, unitCost each. */
-function recruit(s, actor, { count = 1, materials, tile } = {}) {
+function recruit(s, actor, { count = 1, materials, tile, unit = 'militia' } = {}) {
   requireBuild(s);
   const p = me(s, actor);
   if (!Number.isInteger(count) || count < 1 || count > 50) fail('Invalid number of units.');
+  if (!battles.TYPES.includes(unit) || (!TW(s) && unit !== 'militia')) fail('Unknown unit type.');
   diplomacy.checkUnits(s, actor, p.units + count);
   const bag = cleanBag(materials);
-  const need = W(s).unitCost * count;
+  const need = (TW(s) ? TWS(s)[unit].cost : W(s).unitCost) * count;
   if (bagTotal(bag) !== need) fail(`${count === 1 ? 'A unit costs' : count + ' units cost'} ${need} materials (any mix).`);
   if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
   let where = '';
@@ -241,13 +247,14 @@ function recruit(s, actor, { count = 1, materials, tile } = {}) {
     // Stationed units: new units appear on a tile you control (default: your capital).
     const T = getTile(s, tile || p.homeTile);
     if (T.controller !== actor) fail('Recruit onto a tile you control.');
-    addUnitsAt(T, actor, count);
+    addTroops(T, actor, { ...zeroTroops(), [unit]: count });
     where = ` on ${tileName(s, T)}`;
   }
   subBag(p.materials, bag);
   p.units += count;
   p.stats.unitsRecruited += count;
-  addLog(s, `${p.name} recruited ${count} unit${count === 1 ? '' : 's'}${where} (army ${p.units}).`);
+  const what = TW(s) ? `${count} ${unit}` : `${count} unit${count === 1 ? '' : 's'}`;
+  addLog(s, `${p.name} recruited ${what}${where} (army ${p.units}).`);
 }
 
 /** Overlord sets a puppet's action, publicly. { puppet, action, target } */
@@ -297,6 +304,18 @@ function planRelease(s, actor, { puppet } = {}) {
 // Upkeep (start of each round from round 2)
 // ---------------------------------------------------------------------------
 
+/** Militia upkeep owed: 1 material per N units (Total War: per N upkeep points by unit type). */
+function upkeepDue(s, p) {
+  if (!TW(s)) return Math.floor(p.units / W(s).upkeepUnitsPerMaterial);
+  const cfg = TWS(s);
+  let points = 0;
+  for (const t of s.board.tiles) {
+    const c = troopsAt(t, p.seat);
+    for (const k of battles.TYPES) points += c[k] * cfg[k].upkeep;
+  }
+  return Math.floor(points / cfg.upkeepPointsPerMaterial);
+}
+
 /** Pay n materials, largest pile first (Q13). */
 function payLargest(p, n) {
   const paid = takeLargest(p.materials, n);
@@ -335,7 +354,7 @@ function upkeep(s) {
   // 2. Militia upkeep: 1 material per N units, rounded down
   if (s.round >= w.upkeepFromRound) {
     for (const p of s.players) {
-      const due = () => Math.floor(p.units / w.upkeepUnitsPerMaterial);
+      const due = () => upkeepDue(s, p);
       let disbanded = 0;
       while (due() > bagTotal(p.materials)) {
         if (ST(s)) removeFromLargest(s, p.seat, 1); // biggest stack first
@@ -432,6 +451,7 @@ function destructionFlood(s, destroyed) {
 // ---------------------------------------------------------------------------
 
 function checkAccord(s) {
+  if (TW(s)) return; // Total War has no Climate Accord
   if (s.accordBroken || s.flood < W(s).accordLine) return;
   s.accordBroken = true;
   s.accordBrokeRound = s.round;
@@ -442,6 +462,7 @@ function checkAccord(s) {
 }
 
 function applySanction(s, e, T, resistance) {
+  if (TW(s)) return;
   if (s.accordBroken || e.kind === 'revolt' || resistance || T.controller == null) return;
   const A = s.players[e.seat];
   const who = A.puppetOf != null ? s.players[A.puppetOf] : A; // commanded attack: the overlord (Q24)
@@ -462,7 +483,7 @@ const ACTION_LABEL = { sustainable: 'Sustainable', unsustainable: 'Unsustainable
  * { action: 'attack', target: tileId }
  * { action: 'revolt' }                    puppets only: attack your overlord's capital
  */
-function choose(s, actor, { action, mix, target, aid, from, count } = {}) {
+function choose(s, actor, { action, mix, target, aid, from, count, troops } = {}) {
   if (s.phase !== 'choose') fail('It is not time to choose an action.');
   const p = me(s, actor);
   const ch = { action };
@@ -488,6 +509,13 @@ function choose(s, actor, { action, mix, target, aid, from, count } = {}) {
     if (ST(s)) {
       const src = s.board.tiles.find((x) => x.id === from);
       if (!src || src.controller !== actor || !areAdjacent(src, getTile(s, target))) fail('Attack from one of your tiles next to the target.');
+      if (TW(s) && troops) {
+        const tr = cleanTroops(troops);
+        const have = troopsAt(src, actor);
+        if (battles.TYPES.some((k) => tr[k] > have[k])) fail("You don't have those troops on that tile.");
+        count = battles.sum(tr);
+        ch.troops = tr;
+      }
       checkSend(src, actor, count);
       Object.assign(ch, { from, count });
     } else if (poolUnits(s, attackPool(s, { seat: actor, kind: 'attack' })) < 1) fail('You need at least 1 unit to attack.');
@@ -604,6 +632,14 @@ function reveal(s) {
   checkAccord(s);
   if (base.checkCatastrophe(s)) return;
 
+  if (TW(s)) {
+    const twEntries = order
+      .filter((i) => s.players[i].choice.action === 'attack')
+      .map((i) => ({ seat: i, tile: s.players[i].choice.target, from: s.players[i].choice.from, count: s.players[i].choice.count, troops: s.players[i].choice.troops || null }));
+    startBattles(s, twEntries);
+    return;
+  }
+
   // Battle list: clashes first, then other attacks clockwise from the starting player.
   const entries = order
     .filter((i) => ['attack', 'revolt'].includes(s.players[i].choice.action))
@@ -685,6 +721,7 @@ function capture(s, overlord, victim) {
     const cap = getTile(s, V.homeTile);
     for (const [k, n] of Object.entries(cap.units || {})) s.players[k].stats.unitsLost += n;
     cap.units = {};
+    cap.troops = {};
     for (const t of s.board.tiles) if (t.owner === victim && t.role === 'province') clearTile(s, t, 'home');
   }
   O.stats.captures += 1;
@@ -898,6 +935,11 @@ function decorateView(v, s, seat) {
   v.commandTargets = {};
   if (mine) for (const q of puppetsOf(s, seat)) v.commandTargets[q] = attackTargets(s, q);
   delete v.battleQueue;
+  if (TW(s)) {
+    v.war.noAccord = true;
+    v.tw = { units: battles.TYPES.map((k) => ({ type: k, ...TWS(s)[k] })), mapW: battles.MAP_W, mapH: battles.MAP_H };
+    for (const p of v.players) p.upkeepDue = upkeepDue(s, s.players[p.seat]);
+  }
   if (ST(s)) {
     v.stationed = true;
     v.attackSources = {};
@@ -925,10 +967,72 @@ function ST(s) {
 function unitsAt(t, seat) {
   return (t.units && t.units[seat]) || 0;
 }
-function addUnitsAt(t, seat, n) {
+/**
+ * Units on a tile can be of different types (Total War: militia, infantry, cavalry;
+ * other modes only ever use militia). t.units[seat] is the total, t.troops[seat]
+ * the breakdown. These helpers keep the two in step.
+ */
+const zeroTroops = () => ({ militia: 0, infantry: 0, cavalry: 0 });
+function troopsAt(t, seat) {
+  const n = unitsAt(t, seat);
+  const tr = t.troops && t.troops[seat];
+  if (!tr || battles.sum(tr) !== n) return { ...zeroTroops(), militia: n };
+  return { ...zeroTroops(), ...tr };
+}
+function setTroops(t, seat, c) {
   if (!t.units) t.units = {};
-  t.units[seat] = unitsAt(t, seat) + n;
-  if (t.units[seat] <= 0) delete t.units[seat];
+  if (!t.troops) t.troops = {};
+  const n = battles.sum(c);
+  if (n <= 0) {
+    delete t.units[seat];
+    delete t.troops[seat];
+    return;
+  }
+  t.units[seat] = n;
+  t.troops[seat] = { militia: c.militia || 0, infantry: c.infantry || 0, cavalry: c.cavalry || 0 };
+}
+function addTroops(t, seat, c) {
+  const cur = troopsAt(t, seat);
+  for (const k of battles.TYPES) cur[k] += c[k] || 0;
+  setTroops(t, seat, cur);
+}
+function takeTroops(t, seat, c) {
+  const cur = troopsAt(t, seat);
+  for (const k of battles.TYPES) {
+    if (cur[k] < (c[k] || 0)) fail("You don't have those troops there.");
+    cur[k] -= c[k] || 0;
+  }
+  setTroops(t, seat, cur);
+  return { ...zeroTroops(), ...c };
+}
+/** Take n units, cheapest types first. Returns what was taken. */
+function takeCheapest(t, seat, n) {
+  const cur = troopsAt(t, seat);
+  const taken = zeroTroops();
+  let left = n;
+  for (const k of battles.TYPES) {
+    const x = Math.min(left, cur[k]);
+    cur[k] -= x;
+    taken[k] += x;
+    left -= x;
+  }
+  setTroops(t, seat, cur);
+  return taken;
+}
+const asTroops = (x) => (typeof x === 'number' ? { ...zeroTroops(), militia: x } : x);
+function cleanTroops(input) {
+  if (!input || typeof input !== 'object') fail('Invalid troops.');
+  const c = zeroTroops();
+  for (const k of battles.TYPES) {
+    const v = input[k] === undefined ? 0 : input[k];
+    if (!Number.isInteger(v) || v < 0 || v > 999) fail(`Invalid number of ${k}.`);
+    c[k] = v;
+  }
+  return c;
+}
+function addUnitsAt(t, seat, n) {
+  if (n >= 0) addTroops(t, seat, { ...zeroTroops(), militia: n });
+  else takeCheapest(t, seat, -n);
 }
 function syncUnits(s) {
   if (!ST(s)) return;
@@ -949,15 +1053,26 @@ function checkSend(src, seat, count) {
   if (unitsAt(src, seat) < count) fail(`You only have ${unitsAt(src, seat)} unit${unitsAt(src, seat) === 1 ? '' : 's'} on that tile.`);
 }
 function sendHome(s, seat, n) {
-  if (n > 0) addUnitsAt(capitalOf(s, seat), seat, n);
+  const c = asTroops(n);
+  if (battles.sum(c) <= 0) return;
+  const home = capitalOf(s, seat);
+  if (canStand(s, seat, home)) addTroops(home, seat, c);
+  else {
+    // Total War: your capital may have been conquered — go to any tile you still hold.
+    const any = s.board.tiles.find((t) => canStand(s, seat, t));
+    if (any) addTroops(any, seat, c);
+    else s.players[seat].stats.unitsLost += battles.sum(c);
+  }
 }
 /** Units that can't stay where they are step to an adjacent tile they may stand on, or are lost. */
-function retreat(s, from, seat, n) {
+function retreat(s, from, seat, units) {
+  const c = asTroops(units);
+  const n = battles.sum(c);
   if (n <= 0) return;
   const p = s.players[seat];
   const to = s.board.tiles.filter((x) => x !== from && areAdjacent(x, from) && canStand(s, seat, x)).sort((a, b) => unitsAt(b, seat) - unitsAt(a, seat))[0];
   if (to) {
-    addUnitsAt(to, seat, n);
+    addTroops(to, seat, c);
     addLog(s, `${p.name}'s ${n} unit${n === 1 ? '' : 's'} retreat${n === 1 ? 's' : ''} to ${tileName(s, to)}.`);
   } else {
     p.stats.unitsLost += n;
@@ -966,12 +1081,13 @@ function retreat(s, from, seat, n) {
 }
 /** Move off tile t everyone who may no longer stand there: 'home' (to capital) or 'retreat' (next door). */
 function clearTile(s, t, how) {
-  for (const [k, n] of Object.entries(t.units || {})) {
+  for (const k of Object.keys(t.units || {})) {
     const seat = Number(k);
     if (canStand(s, seat, t)) continue;
-    delete t.units[k];
-    if (how === 'home') sendHome(s, seat, n);
-    else retreat(s, t, seat, n);
+    const c = troopsAt(t, seat);
+    setTroops(t, seat, zeroTroops());
+    if (how === 'home') sendHome(s, seat, c);
+    else retreat(s, t, seat, c);
   }
 }
 function removeFromLargest(s, seat, n) {
@@ -1008,20 +1124,23 @@ function removeFromTile(s, T, seats, n) {
   }
 }
 /** Surviving attackers go back to the tile they came from (or retreat if it's no longer theirs). */
-function returnStrike(s, seat, src, n) {
-  if (n <= 0) return;
-  if (canStand(s, seat, src)) addUnitsAt(src, seat, n);
-  else retreat(s, src, seat, n);
+function returnStrike(s, seat, src, units) {
+  const c = asTroops(units);
+  if (battles.sum(c) <= 0) return;
+  if (canStand(s, seat, src)) addTroops(src, seat, c);
+  else retreat(s, src, seat, c);
 }
 
 /** Move units between your tiles (any distance, through tiles you may stand on). */
-function moveUnits(s, actor, { from, to, count = 1 } = {}) {
+function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
   requireBuild(s);
   if (!ST(s)) fail('Units are not stationed in this game.');
   const p = me(s, actor);
   const A = getTile(s, from);
   const B = getTile(s, to);
   if (A === B) fail('Pick two different tiles.');
+  const exact = troops ? cleanTroops(troops) : null;
+  if (exact) count = battles.sum(exact);
   checkSend(A, actor, count);
   if (!canStand(s, actor, B)) fail("Your units can't go there.");
   const seen = new Set([A.id]);
@@ -1041,8 +1160,8 @@ function moveUnits(s, actor, { from, to, count = 1 } = {}) {
     }
   }
   if (!found) fail('No route: units can only travel through your own tiles.');
-  addUnitsAt(A, actor, -count);
-  addUnitsAt(B, actor, count);
+  const moving = exact ? takeTroops(A, actor, exact) : takeCheapest(A, actor, count);
+  addTroops(B, actor, moving);
   addLog(s, `${p.name} moved ${count} unit${count === 1 ? '' : 's'} from ${tileName(s, A)} to ${tileName(s, B)}.`);
 }
 
@@ -1242,7 +1361,271 @@ function resolveClashST(s, { a, b }) {
   return res;
 }
 
-const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits };
+// ===========================================================================
+// TOTAL WAR: battles on the board
+// After everyone's choices are revealed, each attack either takes empty land at
+// once or starts a LIVE battle (engine/totalwar.js). Battles that don't share a
+// tile run at the same time; an attack on a tile that's already being fought
+// over waits for the next "wave". When a battle ends, its result is applied here.
+// ===========================================================================
+
+function seededRand(s) {
+  return () => {
+    // same generator as util.nextRandom, kept here to avoid a circular import
+    let t = (s.rng = (s.rng + 0x6d2b79f5) >>> 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function startBattles(s, entries) {
+  s.battles = [];
+  s.battleQueueTW = entries;
+  nextWave(s);
+}
+
+/** Start every battle that can start now; take empty land immediately. */
+function nextWave(s) {
+  const busy = new Set();
+  const later = [];
+  let rise = 0;
+  for (const e of s.battleQueueTW) {
+    const A = s.players[e.seat];
+    const T = getTile(s, e.tile);
+    const src = getTile(s, e.from);
+    if (busy.has(T.id) || busy.has(src.id)) {
+      later.push(e);
+      continue;
+    }
+    const name = tileName(s, T);
+    if (src.controller !== e.seat) {
+      addLog(s, `${A.name}'s attack on ${name} fizzles: they lost the tile it started from.`);
+      continue;
+    }
+    if (T.controller === e.seat) {
+      addLog(s, `${A.name}'s attack on ${name} fizzles: it is already theirs.`);
+      continue;
+    }
+    if (T.role === 'capital' && T.controller === T.owner && !capitalOpen(s, T)) {
+      addLog(s, `${A.name}'s attack on ${name} fizzles: its provinces are no longer occupied.`);
+      continue;
+    }
+    // March out the chosen troops (or as many as are still there).
+    const have = troopsAt(src, e.seat);
+    let sent;
+    if (e.troops) {
+      sent = zeroTroops();
+      for (const k of battles.TYPES) sent[k] = Math.min(e.troops[k], have[k]);
+      takeTroops(src, e.seat, sent);
+    } else sent = takeCheapest(src, e.seat, Math.min(e.count || 0, battles.sum(have)));
+    if (!battles.sum(sent)) {
+      addLog(s, `${A.name}'s attack on ${name} fizzles: no units left on ${tileName(s, src)}.`);
+      continue;
+    }
+    A.stats.attack += 0; // counted at reveal
+    if (T.controller == null) {
+      T.controller = e.seat;
+      addTroops(T, e.seat, sent);
+      A.stats.claims += 1;
+      addLog(s, `${A.name} claims ${name} with ${battles.sum(sent)} unit${battles.sum(sent) === 1 ? '' : 's'}.`);
+      continue;
+    }
+    const D = T.controller;
+    diplomacy.onHostile(s, e.seat, D);
+    s.players[D].stats.timesAttacked += 1;
+    const defenders = troopsAt(T, D);
+    if (!battles.sum(defenders)) {
+      addLog(s, `${A.name} marches into ${name} — nobody was there to defend it.`);
+      conquerTW(s, e.seat, D, T, sent);
+      continue;
+    }
+    // A real battle.
+    setTroops(T, D, zeroTroops()); // the defenders are in the battle now
+    busy.add(T.id);
+    busy.add(src.id);
+    rise += TWS(s).battleFlood;
+    const b = battles.createBattle({
+      id: s.nextBattleId++,
+      tile: T,
+      from: src,
+      attacker: e.seat,
+      defender: D,
+      aTroops: sent,
+      dTroops: defenders,
+      cfg: TWS(s),
+      rand: seededRand(s),
+    });
+    s.battles.push(b);
+    addLog(s, `⚔ BATTLE for ${name}: ${A.name} (${describeTroops(sent)}) attacks ${s.players[D].name} (${describeTroops(defenders)}).`, { kind: 'battle', event: 'battleStart', battle: b.id });
+  }
+  s.battleQueueTW = later;
+  if (rise) {
+    s.flood += rise;
+    addLog(s, `The fighting raises the Flood by ${rise} to ${s.flood} (catastrophe at ${base.threshold(s)}).`, { kind: 'flood' });
+    if (base.checkCatastrophe(s)) return;
+  }
+  syncUnits(s);
+  if (s.battles.some((b) => b.status === 'live')) {
+    s.phase = 'battle';
+    return;
+  }
+  if (s.battleQueueTW.length) return nextWave(s);
+  s.battles = [];
+  base.startTradePhase(s);
+}
+
+function describeTroops(c) {
+  const parts = battles.TYPES.filter((k) => c[k] > 0).map((k) => `${c[k]} ${k}`);
+  return parts.length ? parts.join(', ') : 'nobody';
+}
+
+/** Winning a tile in Total War: move in, take loot and war spoils. */
+function conquerTW(s, taker, D, T, troops) {
+  const cfg = TWS(s);
+  const name = tileName(s, T);
+  T.controller = taker;
+  clearTile(s, T, 'retreat'); // anyone left there falls back
+  addTroops(T, taker, troops);
+  const A = s.players[taker];
+  const Dp = s.players[D];
+  // Loot (taken automatically: battles are fast) + spoils from the bank
+  const loot = takeLargest(Dp.materials, Math.min(cfg.maxLoot, bagTotal(Dp.materials)));
+  subBag(Dp.materials, loot);
+  addBag(A.materials, loot);
+  A.stats.tokensStolen += bagTotal(loot);
+  const res = BIOMES[T.biome].resource || leastHeld(A);
+  A.materials[res] += cfg.warSpoils;
+  A.stats.warSpoils = (A.stats.warSpoils || 0) + cfg.warSpoils;
+  addLog(s, `🏴 ${A.name} takes ${name}${T.role === 'capital' ? ' — A CAPITAL!' : '.'} Loot: ${describeBag(loot)}; war spoils: ${cfg.warSpoils} ${res}.`, { kind: 'good' });
+  // Holding every capital ends the war at once.
+  const capitals = s.board.tiles.filter((t) => t.role === 'capital');
+  if (capitals.every((t) => t.controller === taker)) {
+    addLog(s, `👑 ${A.name} holds every capital. The war is over!`, { kind: 'good' });
+    base.finishGame(s, 'conquest');
+  }
+}
+
+/** Apply a finished battle to the board. */
+function finishBattleTW(s, b) {
+  const T = getTile(s, b.tile);
+  const src = getTile(s, b.from);
+  const A = s.players[b.attacker];
+  const D = s.players[b.defender];
+  const aLeft = battles.survivors(b, 'A');
+  const dLeft = battles.survivors(b, 'D');
+  const lost = (side) => battles.sum(b.losses[side]) + battles.sum(b.surrendered[side]);
+  A.stats.unitsLost += lost('A');
+  D.stats.unitsLost += lost('D');
+  A.stats.encircledKills = (A.stats.encircledKills || 0) + battles.sum(b.surrendered.D);
+  D.stats.encircledKills = (D.stats.encircledKills || 0) + battles.sum(b.surrendered.A);
+  const winner = b.winner === 'A' ? A : D;
+  winner.stats.battlesWon = (winner.stats.battlesWon || 0) + 1;
+  const surrender = (side) => (battles.sum(b.surrendered[side]) ? `, ${battles.sum(b.surrendered[side])} surrendered (cut off)` : '');
+  addLog(
+    s,
+    `⚔ ${winner.name} wins the battle for ${tileName(s, T)} — ${b.reason}. ${A.name} lost ${lost('A')}${surrender('A')}; ${D.name} lost ${lost('D')}${surrender('D')}.`,
+    { kind: 'battle', event: 'battleEnd', battle: b.id },
+  );
+  if (b.winner === 'A') {
+    // Surviving defenders who weren't cut off fall back to a neighbouring tile.
+    retreat(s, T, b.defender, dLeft);
+    conquerTW(s, b.attacker, b.defender, T, aLeft);
+  } else {
+    addTroops(T, b.defender, dLeft);
+    returnStrike(s, b.attacker, src, aLeft);
+  }
+  syncUnits(s);
+}
+
+/**
+ * Advance every live battle by dt seconds (called by the server ~10 times a
+ * second). Changes the state in place. Returns true if anything ended.
+ */
+function stepBattles(s, dt) {
+  if (s.phase !== 'battle') return false;
+  let ended = false;
+  for (const b of s.battles) {
+    if (b.status !== 'live') continue;
+    if (battles.stepBattle(b, dt, TWS(s))) {
+      ended = true;
+      finishBattleTW(s, b);
+      if (s.phase === 'ended') return true;
+    }
+  }
+  if (ended && !s.battles.some((b) => b.status === 'live')) {
+    if (s.battleQueueTW.length) nextWave(s);
+    else {
+      s.battles = [];
+      base.startTradePhase(s);
+    }
+  }
+  return ended;
+}
+
+function liveBattle(s, id) {
+  if (s.phase !== 'battle') fail('There is no battle right now.');
+  const b = s.battles.find((x) => x.id === id && x.status === 'live');
+  if (!b) fail('That battle is over.');
+  return b;
+}
+function sideOf(b, seat) {
+  if (seat === b.attacker) return 'A';
+  if (seat === b.defender) return 'D';
+  fail("You're not fighting in that battle.");
+}
+
+/** { battle, dots: [ids], x, y } — move your dots. */
+function battleOrder(s, actor, { battle, dots, x, y } = {}) {
+  const b = liveBattle(s, battle);
+  const side = sideOf(b, actor);
+  if (!Array.isArray(dots) || !dots.length) fail('Pick some of your units first.');
+  if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) fail('Pick a spot on the map.');
+  b.auto[side] = false;
+  battles.order(b, side, dots.map(Number), x, y);
+}
+
+/** { battle, on } — let the computer fight for you (or take back control). */
+function battleAuto(s, actor, { battle, on = true } = {}) {
+  const b = liveBattle(s, battle);
+  const side = sideOf(b, actor);
+  b.auto[side] = !!on;
+  b.ordered[side] = true;
+}
+
+/** Host skip during battles: the computer takes over that player's battles. */
+function skipBattle(s, seat) {
+  let any = false;
+  for (const b of s.battles) {
+    if (b.status !== 'live') continue;
+    if (b.attacker === seat) b.auto.A = any = true;
+    if (b.defender === seat) b.auto.D = any = true;
+  }
+  if (!any) fail(`${s.players[seat].name} is not in a battle.`);
+  addLog(s, `The host hands ${s.players[seat].name}'s battles to the computer.`);
+}
+
+/** Total War score: tiles, captured capitals, spare materials, and a safe home. */
+function scoreTotalWar(s, reason) {
+  const cfg = TWS(s);
+  const catastrophe = reason === 'catastrophe';
+  const results = s.players.map((p) => {
+    const tiles = controlled(s, p.seat);
+    const capitals = tiles.filter((t) => t.role === 'capital' && t.owner !== p.seat).length;
+    const prot = p.walls * s.settings.base.wallProtection;
+    const home = s.board.tiles.find((t) => t.id === p.homeTile);
+    const homeSafe = !catastrophe && home.controller === p.seat && prot >= s.flood;
+    const spare = bagTotal(p.materials);
+    const score = catastrophe ? 0 : tiles.length * cfg.scoreTile + capitals * cfg.scoreCapital + Math.floor(spare / cfg.scoreMaterialsPer) + (homeSafe ? cfg.scoreHome : 0);
+    return { seat: p.seat, name: p.name, walls: p.walls, protection: prot, survived: homeSafe, spare, seawallPoints: 0, tiles: tiles.length, capitals, score };
+  });
+  const best = catastrophe ? null : Math.max(...results.map((r) => r.score));
+  const winners = catastrophe ? [] : results.filter((r) => r.score === best).map((r) => r.seat);
+  return { reason, catastrophe, finalFlood: s.flood, threshold: base.threshold(s), results, winners };
+}
+
+const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto };
+
 
 
 module.exports = {
@@ -1259,4 +1642,8 @@ module.exports = {
   tileName,
   attackSources,
   unitsAt,
+  troopsAt,
+  stepBattles,
+  skipBattle,
+  scoreTotalWar,
 };

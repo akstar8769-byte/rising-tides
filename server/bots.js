@@ -88,6 +88,15 @@ function reserve(g, me, extraUnits = 0) {
   return upkeep + (me.garrisonDue || 0);
 }
 
+/** Total War: warlike bots like cavalry, others build solid infantry; militia when money is short. */
+function pickUnitType(g, me, P) {
+  const cost = (t) => g.tw.units.find((u) => u.type === t).cost;
+  const budget = total(me.materials) - reserve(g, me, 1);
+  const wish = P === PERSONALITIES.warlike ? (chance(0.6) ? 'cavalry' : 'infantry') : P === PERSONALITIES.balanced ? (chance(0.3) ? 'cavalry' : 'infantry') : chance(0.5) ? 'infantry' : 'militia';
+  if (budget >= cost(wish)) return wish;
+  return budget >= cost('infantry') ? 'infantry' : 'militia';
+}
+
 /** Pay n materials from the biggest piles. */
 function payFromLargest(me, n) {
   const left = { ...me.materials };
@@ -156,14 +165,18 @@ function buildStep(g, me, P, mem, fresh) {
     const w = g.settings.war;
     // 3. Recruit up to the personality's army size — but walls come first unless warlike,
     //    and cautious/balanced bots stay under the army-emissions limit.
-    let target = P.army;
+    let target = g.tw ? P.army + 3 : P.army;
     // Big armies pollute (army emissions). Careful bots always stay under that size;
     // warlike bots too once the Flood is getting high or their own home is at risk.
     const armyPollutes = w.armyFloodPerUnits > 0 && (P !== PERSONALITIES.warlike || g.threshold - g.flood <= 8 || floodDanger(g, me));
     if (armyPollutes) target = Math.min(target, w.armyFloodPerUnits - 1);
     const wallsOk = me.protection >= g.flood + 1 || P === PERSONALITIES.warlike;
-    if (me.units < target && wallsOk && total(me.materials) - w.unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
-      const action = { type: 'recruit', count: 1, materials: payFromLargest(me, w.unitCost) };
+    // Total War: pick a unit type that suits the personality and the budget.
+    const unit = g.tw ? pickUnitType(g, me, P) : 'militia';
+    const unitCost = g.tw ? g.tw.units.find((u) => u.type === unit).cost : w.unitCost;
+    if (me.units < target && wallsOk && total(me.materials) - unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
+      const action = { type: 'recruit', count: 1, materials: payFromLargest(me, unitCost) };
+      if (g.tw) action.unit = unit;
       if (g.stationed) action.tile = frontier(g)[0] || me.homeTile;
       return { key: `recruit-${me.units}`, action };
     }
@@ -341,7 +354,8 @@ function pickTarget(g, me, P) {
     if (score && t.controller != null && allianceEnemies(g).includes(t.controller)) score += 2; // our alliance's target
     if (score > bestScore) {
       bestScore = score;
-      bestIdea = { key: `attack-${id}`, action: { type: 'choose', action: 'attack', target: id, ...(from ? { from, count: sent } : {}) } };
+      const troops = g.tw && from ? { ...((g.board.tiles.find((x) => x.id === from).troops || {})[g.you] || {}) } : null;
+      bestIdea = { key: `attack-${id}`, action: { type: 'choose', action: 'attack', target: id, ...(from ? { from, count: sent } : {}), ...(troops && Object.keys(troops).length ? { troops } : {}) } };
     }
   }
   return bestIdea;
