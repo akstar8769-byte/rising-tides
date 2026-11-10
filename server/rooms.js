@@ -110,6 +110,7 @@ function attachRooms(io) {
       for (const sid of m.sockets) io.to(sid).emit('state', data);
     }
     scheduleBots(room);
+    botReactions(room);
   }
 
   // ------------------------------------------------------------ bots
@@ -120,7 +121,13 @@ function attachRooms(io) {
     room.members.forEach((m, seat) => {
       if (!m.bot || room.botTimers[seat]) return;
       const view = engine.viewFor(s, seat);
-      const offers = engine.BUILD_PHASES.includes(s.phase) && view.trades.some((t) => t.to === seat && !(m.bot.tried && m.bot.tried.has('trade-' + t.id)));
+      // Offers waiting for this bot's answer (trades, pact offers, treaty invitations) also wake it up.
+      const tried = (key) => m.bot.tried && m.bot.tried.has(key);
+      const offers =
+        engine.BUILD_PHASES.includes(s.phase) &&
+        (view.trades.some((t) => t.to === seat && !tried('trade-' + t.id)) ||
+          (view.pacts || []).some((p) => p.status === 'proposed' && p.b === seat && !tried('pact-' + p.id)) ||
+          (view.treaties || []).some((x) => x.invited.includes(seat) && ![...x.signed, ...x.declined, ...x.broken].includes(seat) && !tried('treaty-' + x.id)));
       if (!view.waitingFor.includes(seat) && !offers) return;
       room.botTimers[seat] = setTimeout(() => {
         room.botTimers[seat] = null;
@@ -139,6 +146,7 @@ function attachRooms(io) {
     if (idea) {
       try {
         applyToRoom(room, seat, idea.action);
+        if (idea.say) botSay(room, seat, idea.say);
       } catch (e) {
         if (e.name !== 'RuleError') console.error(e);
         m.bot.tried.add(idea.key); // try something else next time
@@ -154,6 +162,56 @@ function attachRooms(io) {
       }
     }
     broadcast(room);
+  }
+
+  /** A bot posts in the room chat. */
+  function botSay(room, seat, text) {
+    const m = room.members[seat];
+    if (!m || !text) return;
+    const msg = { name: m.name, seat, text, time: Date.now(), bot: true };
+    room.chat.push(msg);
+    if (room.chat.length > 200) room.chat.shift();
+    io.to('room:' + room.code).emit('chat', msg);
+  }
+
+  /** Bots react in chat to what just happened (attacks on them, broken pacts, a high Flood). */
+  function botReactions(room) {
+    const s = room.state;
+    if (!s || s.phase === 'ended') return;
+    room.members.forEach((m, seat) => {
+      if (!m.bot) return;
+      const line = bots.react(engine.viewFor(s, seat), m.bot);
+      if (line) setTimeout(() => botSay(room, seat, line), 400 + Math.random() * 900).unref();
+    });
+  }
+
+  /** Bots answer chat messages that mention them (or "everyone"). */
+  function botReplies(room, fromSeat, text) {
+    const s = room.state;
+    if (!s || s.phase === 'ended' || fromSeat < 0) return;
+    const answers = [];
+    room.members.forEach((m, seat) => {
+      if (!m.bot || seat === fromSeat) return;
+      const r = bots.reply(text, fromSeat, engine.viewFor(s, seat), m.bot, m.name);
+      if (r) answers.push({ seat, r, named: text.toLowerCase().includes(m.name.replace(/^bot\s+/i, '').toLowerCase()) });
+    });
+    // Bots you name all answer; otherwise one bot speaks for the group.
+    const chosen = answers.some((a) => a.named) ? answers.filter((a) => a.named) : answers.length ? [answers[Math.floor(Math.random() * answers.length)]] : [];
+    chosen.forEach(({ seat, r }, i) => {
+      setTimeout(() => {
+        if (!room.state || room.state.phase === 'ended') return;
+        if (r.action) {
+          try {
+            applyToRoom(room, seat, r.action);
+          } catch (e) {
+            if (e.name !== 'RuleError') console.error(e);
+            r.say = null; // don't claim we did something we couldn't
+          }
+        }
+        if (r.say) botSay(room, seat, r.say);
+        if (r.action) broadcast(room);
+      }, 700 + i * 500 + Math.random() * 600).unref();
+    });
   }
 
   function clearBotTimers(room) {
@@ -512,6 +570,7 @@ function attachRooms(io) {
       room.chat.push(msg);
       if (room.chat.length > 200) room.chat.shift();
       io.to('room:' + room.code).emit('chat', msg);
+      botReplies(room, msg.seat, t);
     });
 
     socket.on('disconnect', () => detach(socket));

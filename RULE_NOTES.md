@@ -151,3 +151,32 @@ With tile income, a growing empire paid the same Flood per round as a small one,
 - Units count as "destroyed" whenever they're lost in battle, including defenders with nowhere to retreat and units on a captured capital. Units disbanded for unpaid upkeep don't count.
 - Destruction Flood is added right after each battle. If it causes a catastrophe, the game ends immediately and the remaining battles that round don't happen.
 - The playtest record now includes Flood from armies and from destruction, plus each player's army emissions.
+
+## Diplomacy: pacts and treaties (added 10 November 2026)
+
+**Pacts (always available; setting `general.pactsEnabled`).** The rulebook says promises are never binding, so the game doesn't enforce pacts. It records them publicly.
+- During either Trade & Build phase, offer a player a **non-aggression pact** (no raids or attacks on each other) or an **alliance** (the same, plus a named shared enemy) for 1–3 rounds (`general.maxPactRounds`).
+- Offers are private between the two players. Active pacts are visible to everyone.
+- A pact made before choosing covers the current round. Unanswered offers lapse at the end of the round.
+- **Breaking a pact** means raiding or attacking your partner, including in a clash. It's allowed, but the log announces "⚠ X BROKE their pact with Y", and X carries a public 🗡 "broke a pact" mark for the rest of the game.
+- When a pact runs out without being broken, both players get a "pact kept" in the record.
+- The game remembers who has raided or attacked whom (shown to bots, which hold grudges).
+
+**Treaties (off by default; setting `general.treatiesEnabled`).** A treaty is a set of rules the game can check, and it **is** enforced.
+- Rules available:
+  - no more than N militia each (War modes only);
+  - no Unsustainable development;
+  - no raids or attacks on fellow signatories;
+  - no raids or attacks at all.
+- A treaty can also have a name and a note. The note is shown but not enforced.
+- The proposer signs first and invites others. The treaty comes into force once 2 players have signed. It lasts a set number of rounds, or the rest of the game.
+- **While you're a signatory, the game blocks any move that breaks the rules.** You can't sign a militia treaty while you're over its limit.
+- **Leaving early means breaking it:** you're freed from it, marked publicly ("broke a treaty"), and lose `general.treatyBreakPenalty` materials (default 3, taken from your biggest piles). A treaty ends when fewer than 2 signatories remain.
+
+**Decided while building (please check)**
+- **Claims and revolts count as attacks** for "no attacks" treaties. Claiming an empty open tile breaks no pact, because no player is attacked.
+- **A puppet's treaty beats its overlord's command:** if the command would break the puppet's treaty, the puppet plays Sustainable instead.
+- **Militia limits only block recruiting.** Units you already have never break a treaty, and you can't sign a militia treaty while above its limit.
+- Pacts and treaties are handled during Trade & Build phases only, the same as trading.
+
+**Bots and diplomacy.** Bots answer pact offers and treaty invitations based on personality and trust. They trust players who broke pacts or attacked them less. They offer pacts: cautious and balanced bots seek peace with the strongest neighbour, and warlike bots seek alliances against the leader. They usually honour pacts (cautious about 98% of the time, warlike about 60%). They send trade offers when they need a material, and they chat: reacting to attacks, broken pacts and a dangerous Flood, and answering simple messages that mention them or "everyone" (keywords: pact/peace, trade, attack, flood, hello).

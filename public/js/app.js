@@ -37,6 +37,8 @@ function freshUi() {
     recruit: { count: 1, mix: { wood: 0, stone: 0, sandbag: 0 }, tile: null },
     move: { from: null, to: null, count: 1 }, // stationed units: the "Move units" form
     cmdAttackFor: null, // Empire: which puppet we're picking an attack target for
+    pact: { to: null, kind: 'peace', rounds: 2, enemy: null },
+    treaty: { name: '', note: '', maxUnitsOn: false, maxUnits: 2, noUnsustainable: false, noAttackSignatories: true, noAttacks: false, rounds: 0, invite: [] },
     hostOpen: false,
     chatDraft: '',
   };
@@ -334,6 +336,45 @@ const actions = {
     });
   },
   planWithdraw: (ds) => act({ type: 'planWithdraw', tile: ds.tile }),
+
+  // Diplomacy
+  proposePact: () => {
+    const p = store.ui.pact;
+    const msg = { type: 'proposePact', to: p.to, kind: p.kind, rounds: p.rounds };
+    if (p.kind === 'alliance') msg.enemy = p.enemy;
+    act(msg).then((r) => r.ok && toast('Pact offered.'));
+  },
+  respondPact: (ds) => act({ type: 'respondPact', id: +ds.id, accept: ds.accept === '1' }),
+  cancelPact: (ds) => act({ type: 'cancelPact', id: +ds.id }),
+  toggleInvite: (ds) => {
+    const list = store.ui.treaty.invite;
+    const seat = +ds.seat;
+    store.ui.treaty.invite = list.includes(seat) ? list.filter((x) => x !== seat) : [...list, seat];
+    render();
+  },
+  proposeTreaty: () => {
+    const t = store.ui.treaty;
+    act({
+      type: 'proposeTreaty',
+      name: t.name,
+      note: t.note,
+      rounds: t.rounds,
+      invite: t.invite,
+      clauses: { maxUnits: t.maxUnitsOn ? t.maxUnits : null, noUnsustainable: t.noUnsustainable, noAttackSignatories: t.noAttackSignatories, noAttacks: t.noAttacks },
+    }).then((r) => {
+      if (r.ok) {
+        toast('Treaty proposed.');
+        store.ui.treaty = { ...store.ui.treaty, name: '', note: '', invite: [] };
+        render();
+      }
+    });
+  },
+  signTreaty: (ds) => act({ type: 'signTreaty', id: +ds.id }),
+  declineTreaty: (ds) => act({ type: 'declineTreaty', id: +ds.id }),
+  breakTreaty: (ds) => {
+    if (!confirm(`Break the treaty "${ds.name}"? Everyone will see it and you'll lose materials.`)) return;
+    act({ type: 'breakTreaty', id: +ds.id });
+  },
   moveUnits: () => {
     const mv = store.ui.move;
     act({ type: 'moveUnits', from: mv.from, to: mv.to, count: mv.count }).then((r) => {

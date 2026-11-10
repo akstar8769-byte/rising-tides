@@ -31,6 +31,7 @@ const {
   addLog,
 } = require('./util');
 const { BIOMES } = require('./board');
+const diplomacy = require('./diplomacy');
 
 const BUILD_PHASES = ['talk', 'trade'];
 const ACTION_NAMES = { sustainable: 'Sustainable', unsustainable: 'Unsustainable', raid: 'Raid', attack: 'Attack' };
@@ -269,11 +270,13 @@ function choose(state, actor, { action, mix, target } = {}) {
       if (bagTotal(choice.mix) !== c.sustainableCollect) fail(`Pick exactly ${c.sustainableCollect} materials.`);
     }
   } else if (action === 'unsustainable') {
+    diplomacy.checkMove(state, actor, 'unsustainable');
     choice.mix = cleanBag(mix, 'mix');
     if (bagTotal(choice.mix) !== c.unsustainableCollect) fail(`Pick exactly ${c.unsustainableCollect} materials.`);
   } else if (action === 'raid') {
     if (state.mode !== 'base') fail('Raids are replaced by attacks in War mode.');
     otherPlayer(state, actor, target);
+    diplomacy.checkMove(state, actor, 'attack', target);
     if (p.materials.wood < c.raidCostWood) fail(`You need at least ${c.raidCostWood} wood to raid.`);
     choice.target = target;
   } else {
@@ -362,6 +365,7 @@ function resolveRaid(state, { raider, target }) {
     return;
   }
   A.materials.wood -= c.raidCostWood;
+  diplomacy.onHostile(state, raider, target); // remembers the raid; breaks any pact between them
   D.stats.timesRaided += 1;
 
   let won;
@@ -471,6 +475,7 @@ function startTradePhase(state) {
 }
 
 function endRound(state) {
+  diplomacy.endOfRound(state); // pacts and treaties that run out this round end
   const c = cfg(state);
   const rounds = state.mode === 'base' ? c.rounds : state.settings.war.rounds;
   if (state.round >= rounds) {

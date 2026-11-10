@@ -16,6 +16,7 @@ const { fail, RuleError, addLog, bagTotal } = require('./util');
 const { BIOMES, buildBoard, defaultBiomeList } = require('./board');
 const base = require('./base');
 const war = require('./war');
+const diplomacy = require('./diplomacy');
 const { playtestRecord, recordToCsv } = require('./record');
 
 const MODES = ['base', 'war', 'empire'];
@@ -23,9 +24,9 @@ const BUILT_MODES = ['base', 'war', 'empire'];
 
 // Which actions exist in each mode. War modes add/replace some Base actions.
 const HANDLERS = {
-  base: base.handlers,
-  war: { ...base.handlers, ...war.handlers },
-  empire: { ...base.handlers, ...war.handlers },
+  base: { ...base.handlers, ...diplomacy.handlers },
+  war: { ...base.handlers, ...war.handlers, ...diplomacy.handlers },
+  empire: { ...base.handlers, ...war.handlers, ...diplomacy.handlers },
 };
 
 /**
@@ -60,6 +61,10 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
     accordBrokeRound: null,
     clashCount: 0,
     battleQueue: [],
+    // Diplomacy
+    pacts: [],
+    treaties: [],
+    nextDiploId: 1,
     destroyedPool: 0, // units destroyed in battle that haven't added Flood yet
     floodFromArmies: 0,
     floodFromDestruction: 0,
@@ -80,6 +85,9 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
       puppetSince: null,
       command: null, // Empire: what the overlord ordered this puppet to do
       plans: { withdraw: [], release: [] }, // carried out at the next upkeep
+      hits: {}, // seat -> times that player raided/attacked this one (public)
+      betrayals: 0, // pacts this player has broken (public)
+      treatyBreaks: 0, // treaties this player has broken (public)
       stats: {
         attack: 0,
         revolt: 0,
@@ -100,6 +108,11 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
         tributeReceived: 0,
         sanctions: 0,
         armyFlood: 0,
+        pactsMade: 0,
+        pactsKept: 0,
+        pactsBroken: 0,
+        treatiesSigned: 0,
+        treatiesBroken: 0,
         sustainable: 0,
         unsustainable: 0,
         raid: 0,
@@ -170,6 +183,7 @@ function viewFor(state, seat) {
   }
   v.trades = v.trades.filter((t) => t.from === seat || t.to === seat);
   if (state.mode !== 'base') war.decorateView(v, state, seat);
+  diplomacy.decorateView(v, state, seat);
   return v;
 }
 

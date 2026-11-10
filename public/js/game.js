@@ -4,6 +4,7 @@ import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, st
 import { renderBoard } from './board.js';
 import { renderLog, renderChat } from './log.js';
 import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel } from './war-ui.js';
+import { diplomacyPanel, diploTags, limitsNote, myPactWith } from './diplomacy-ui.js';
 
 const BUILD = ['talk', 'trade'];
 const j = (o) => esc(JSON.stringify(o));
@@ -13,7 +14,7 @@ export function renderGame(store) {
   const g = d.game;
   const me = g.players[g.you];
   const tab = store.ui.tab;
-  const incoming = g.trades.filter((t) => t.to === g.you).length;
+  const incoming = g.trades.filter((t) => t.to === g.you).length + (g.pacts || []).filter((p) => p.status === 'proposed' && p.b === g.you).length + (g.treaties || []).filter((t) => t.invited.includes(g.you) && ![...t.signed, ...t.declined, ...t.broken].includes(g.you)).length;
 
   return `
   ${topBar(store)}
@@ -31,6 +32,7 @@ export function renderGame(store) {
     </section>
     <section class="col col-trade" data-tab="trade">
       ${tradePanel(store)}
+      ${diplomacyPanel(store)}
     </section>
     <section class="col col-log" data-tab="log">
       <div class="card"><h2>Chat</h2>${renderChat(store)}</div>
@@ -205,6 +207,7 @@ function choosePanel(store) {
 
   const susDesc = homeRes ? `Collect ${b.sustainableCollect} ${homeRes === 'sandbag' ? 'sandbags' : homeRes}` : `Collect any ${b.sustainableCollect}`;
   const noWood = me.materials.wood < b.raidCostWood;
+  const L = g.limits || { protectedSeats: {} };
   let extra = '';
   let canLock = false;
   if (c.action === 'sustainable' && !homeRes) {
@@ -222,7 +225,7 @@ function choosePanel(store) {
       .filter((p) => p.seat !== g.you)
       .map(
         (p) =>
-          `<button class="target ${c.target === p.seat ? 'selected' : ''}" data-act="set" data-path="choice.target" data-json="${p.seat}" aria-pressed="${c.target === p.seat}">${chip(p.seat, p.name)}<small>${p.materials ? bagInline(p.materials) : plural(p.materialTotal, 'material')}</small></button>`,
+          `<button class="target ${c.target === p.seat ? 'selected' : ''}" data-act="set" data-path="choice.target" data-json="${p.seat}" aria-pressed="${c.target === p.seat}" ${L.protectedSeats[p.seat] ? 'disabled' : ''}>${chip(p.seat, p.name)}<small>${p.materials ? bagInline(p.materials) : plural(p.materialTotal, 'material')}${L.protectedSeats[p.seat] ? ' · 📜 treaty' : myPactWith(g, p.seat) ? ' · ⚠ breaks your pact' : ''}</small></button>`,
       )
       .join('')}</div>
       <p class="hint">At resolution you pay ${b.raidCostWood} wood; they pay ${b.raidDefenceWood} wood to defend if they can. You must roll strictly higher. Win: take up to ${b.raidMaxLoot} tokens.</p>`;
@@ -232,10 +235,11 @@ function choosePanel(store) {
   return `<div class="card phase-card">
     <h2>2. Choose secretly</h2>
     <p class="hint">Nobody can see your choice until everyone has chosen.</p>
+    ${limitsNote(g)}
     <div class="action-cards">
       ${card('sustainable', 'Sustainable', susDesc, 'No Flood change')}
-      ${card('unsustainable', 'Unsustainable', `Collect any ${b.unsustainableCollect}`, `Flood +${b.unsustainableFlood}`)}
-      ${card('raid', 'Raid', 'Steal from a player', 'No Flood change', noWood, noWood ? `Needs ${b.raidCostWood} wood` : '')}
+      ${card('unsustainable', 'Unsustainable', `Collect any ${b.unsustainableCollect}`, `Flood +${b.unsustainableFlood}`, !!L.noUnsustainable, L.noUnsustainable ? '📜 Treaty forbids' : '')}
+      ${card('raid', 'Raid', 'Steal from a player', 'No Flood change', noWood || !!L.noAttacks, L.noAttacks ? '📜 Treaty forbids' : noWood ? `Needs ${b.raidCostWood} wood` : '')}
     </div>
     ${extra}
     ${c.action ? `<button class="btn primary big" data-act="lockIn" ${canLock ? '' : 'disabled'}>Lock in ${c.action === 'raid' ? 'raid' : c.action}</button>` : ''}
@@ -363,6 +367,7 @@ function playersList(store) {
           ${g.phase === 'trade' && p.choice ? choiceLabel(g, p.choice) : ''}
         </div>
         ${g.war ? `<div class="row small wrap">${warTags(g, p)}</div>` : ''}
+        ${diploTags(g, p) ? `<div class="row small wrap">${diploTags(g, p)}</div>` : ''}
       </li>`;
     })
     .join('')}</ul>`;

@@ -28,6 +28,11 @@ function randomAction(s, rnd) {
     () => [seat, { type: 'choose', action: 'raid', target: Math.floor(rnd() * n) }],
     () => [s.pendingLoot ? s.pendingLoot.raider : seat, { type: 'pickLoot', materials: mix(s.pendingLoot ? s.pendingLoot.count : 3) }],
     () => ['system', { type: 'lootTimeout' }],
+    () => [seat, { type: 'proposePact', to: Math.floor(rnd() * n), kind: pick(['peace', 'alliance']), enemy: Math.floor(rnd() * n), rounds: 1 + Math.floor(rnd() * 3) }],
+    () => [seat, { type: 'respondPact', id: s.pacts.length ? pick(s.pacts).id : 0, accept: rnd() < 0.7 }],
+    () => [seat, { type: 'proposeTreaty', name: 'T', clauses: { maxUnits: rnd() < 0.5 ? 3 : null, noUnsustainable: rnd() < 0.5, noAttackSignatories: rnd() < 0.5 }, invite: [Math.floor(rnd() * n), Math.floor(rnd() * n)], rounds: Math.floor(rnd() * 3) }],
+    () => [seat, { type: 'signTreaty', id: s.treaties.length ? pick(s.treaties).id : 0 }],
+    () => [seat, { type: 'breakTreaty', id: s.treaties.length ? pick(s.treaties).id : 0 }],
   ];
   if (s.mode !== 'base') {
     const tiles = s.board.tiles.filter((t) => t.kind === 'land').map((t) => t.id);
@@ -73,6 +78,7 @@ for (const [mode, stationed] of VARIANTS) test(`random ${mode}${mode === 'base' 
       settings: (c) => {
         c.base.stormEnabled = g % 2 === 0;
         c.war.stationedUnits = stationed;
+        c.general.treatiesEnabled = true;
       },
     });
     let steps = 0;

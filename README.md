@@ -79,6 +79,11 @@ We use **Render** (free plan). You do this once; after that, Render updates the 
 
 Bots play every mode, answer your trade offers (they accept if they get at least as much as they give), follow or revolt against Empire commands, and only see what a human in their seat could see. Change **"Bot thinking time"** in the General settings to speed them up (0 = instant) or slow them down. The playtest CSV marks bot players in a `bot` column so you can filter them out.
 
+**Diplomacy (Trade tab).**
+- **Pacts** are promises: offer a player a non-aggression pact or an alliance against someone for 1–3 rounds. The game never stops anyone breaking a pact — but it announces it to everyone and marks the betrayer.
+- **Treaties** (switch on "Treaties" in the lobby's General settings) are binding: write rules like "no more than 2 militia" or "no Unsustainable development", invite players, and once two have signed the game blocks any move that breaks them. To get out you must openly break the treaty: everyone sees it and you lose 3 materials (adjustable).
+- Bots join in: they offer and answer pacts, sign or refuse treaties, send trade offers and chat. Talk to them in the chat using their name or "everyone" with words like *peace*, *pact*, *trade*, *flood* or *attack*.
+
 **Refreshed by accident or lost connection?** Open the link again. You'll usually be put straight back into your seat. If not, type the room code and **exactly the same name** as before.
 
 **Host controls** (the **Host ▾** button at the top during a game):
@@ -130,6 +135,7 @@ engine/              the rules — pure functions, no networking
   index.js           createGame, applyAction (state + action -> new state), viewFor (what one player may see)
   base.js            Base rules: phases, walls, market, seawall, trades, raids, scoring, host skip
   war.js             War + Empire: upkeep, militia, attacks, clashes, Accord, puppets, revolts
+  diplomacy.js       pacts (recorded, never enforced) and treaties (enforced)
   board.js           biomes, home tiles, territories
   layouts.js         board layouts as data (hex coordinates)
   record.js          playtest record (JSON + CSV)
@@ -140,7 +146,7 @@ server/
   bots.js            computer players: decide(view) -> next action, with personalities
 public/              the web page (plain HTML/CSS/JS, no build step)
   js/app.js          connection, state, button handlers
-  js/lobby.js, game.js, war-ui.js, board.js, dice.js, end.js, log.js, landing.js, ui.js
+  js/lobby.js, game.js, war-ui.js, diplomacy-ui.js, board.js, dice.js, end.js, log.js, landing.js, ui.js
 test/                unit tests (node:test) + an end-to-end server test
 ```
 

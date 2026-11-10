@@ -15,7 +15,10 @@ function botsOnlyGame(mode, n, stationed, seed) {
     mode,
     seed,
     biomes: ['forest', 'quarry', 'riverbank', 'mixed', 'forest'].slice(0, n),
-    settings: (c) => (c.war.stationedUnits = stationed),
+    settings: (c) => {
+      c.war.stationedUnits = stationed;
+      c.general.treatiesEnabled = seed % 2 === 0; // half the games with treaties on
+    },
   });
   const personalities = ['cautious', 'balanced', 'warlike', 'balanced', 'warlike'];
   const mem = s.players.map((p, i) => ({ personality: personalities[i], tried: new Set(), phaseKey: null, failures: 0 }));
@@ -52,13 +55,16 @@ for (const [mode, stationed] of [
 ]) {
   test(`bots finish ${mode}${mode === 'base' ? '' : stationed ? ' (stationed)' : ' (one army)'} games on their own`, () => {
     let attacks = 0;
+    let pacts = 0;
     for (let g = 0; g < 8; g++) {
       const { s, steps, skips } = botsOnlyGame(mode, 3 + (g % 3), stationed, g + 1);
+      pacts += s.players.reduce((a, p) => a + p.stats.pactsMade, 0);
       assert.equal(s.phase, 'ended', `game ${g} did not finish (${steps} steps)`);
       assert.ok(skips <= 3, `bots needed ${skips} skips in game ${g}`);
       attacks += s.players.reduce((a, p) => a + (p.stats.attack || 0) + (p.stats.raid || 0), 0);
     }
     assert.ok(attacks > 0, 'bots never fought'); // the warlike bots should start something
+    assert.ok(pacts > 0, 'bots never made a pact');
   });
 }
 
@@ -71,19 +77,39 @@ test('bots only build walls they expect to need, and save the rest', () => {
   };
   const mem = () => ({ personality: 'balanced', tried: new Set(), phaseKey: null, failures: 0 });
   // Round 1, Flood 2, 7 rounds: expects roughly Flood 2 + 0.5 x 7 = 6 -> wants protection 6
-  let s = rich(newGame({ n: 3 }), 1); // protection 2
+  let s = rich(newGame({ n: 3, settings: (c) => (c.general.pactsEnabled = false) }), 1); // protection 2
   let idea = bots.decide(engine.viewFor(s, 1), mem());
   assert.equal(idea.action.type, 'buildWall');
-  s = rich(newGame({ n: 3 }), 4); // protection 8: already enough
+  s = rich(newGame({ n: 3, settings: (c) => (c.general.pactsEnabled = false) }), 4); // protection 8: already enough
   idea = bots.decide(engine.viewFor(s, 1), mem());
   assert.notEqual(idea.action.type, 'buildWall');
   // At most one wall per round for a balanced bot
-  s = rich(newGame({ n: 3 }), 1);
+  s = rich(newGame({ n: 3, settings: (c) => (c.general.pactsEnabled = false) }), 1);
   const m = mem();
   const first = bots.decide(engine.viewFor(s, 1), m);
   s = engine.applyAction(s, 1, first.action);
   const second = bots.decide(engine.viewFor(s, 1), m);
   assert.notEqual(second.action.type, 'buildWall');
+});
+
+test('bots reply to chat keywords and react when attacked', () => {
+  const realRandom = Math.random;
+  Math.random = () => 0; // make every "chance" succeed, so the test is predictable
+  test.after?.(() => (Math.random = realRandom));
+  let s = newGame({ n: 3 });
+  const mem = { personality: 'cautious', tried: new Set(), phaseKey: null, failures: 0 };
+  const v = engine.viewFor(s, 1);
+  const r = bots.reply('Bram, peace?', 0, v, mem, 'Bot Bram');
+  assert.equal(r.action.type, 'proposePact');
+  assert.equal(r.action.to, 0);
+  assert.equal(bots.reply('nice weather', 0, v, mem, 'Bot Bram'), null); // not addressed
+  assert.ok(bots.reply('hi everyone', 0, v, mem, 'Bot Bram').say);
+  bots.react(v, mem); // first look: nothing to react to
+  s = structuredClone(s);
+  s.players[1].hits = { 0: 1 };
+  assert.match(bots.react(engine.viewFor(s, 1), mem), /Ana/);
+  assert.equal(bots.react(engine.viewFor(s, 1), mem), null); // only once
+  Math.random = realRandom;
 });
 
 test('server: one human plus bots can play a whole game', async () => {

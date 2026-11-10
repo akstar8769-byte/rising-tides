@@ -21,6 +21,7 @@
 const { fail, MATERIALS, emptyBag, cleanBag, bagTotal, hasBag, addBag, subBag, describeBag, rollDie, addLog } = require('./util');
 const { BIOMES, areAdjacent } = require('./board');
 const base = require('./base');
+const diplomacy = require('./diplomacy');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -162,6 +163,9 @@ function effectiveCommand(s, p) {
   if (!c) return { action: 'sustainable', fallback: true };
   if (c.action === 'attack' && (p.units < 1 || !attackTargets(s, p.seat).includes(c.target))) return { action: 'sustainable', fallback: true };
   if (c.action === 'attack' && ST(s) && !attackSources(s, p.seat, c.target).length) return { action: 'sustainable', fallback: true };
+  // A treaty the puppet signed beats its overlord's command.
+  if (c.action === 'unsustainable' && diplomacy.blockedBy(s, p.seat, 'unsustainable')) return { action: 'sustainable', fallback: true };
+  if (c.action === 'attack' && diplomacy.blockedBy(s, p.seat, 'attack', getTile(s, c.target).controller)) return { action: 'sustainable', fallback: true };
   return c;
 }
 
@@ -227,6 +231,7 @@ function recruit(s, actor, { count = 1, materials, tile } = {}) {
   requireBuild(s);
   const p = me(s, actor);
   if (!Number.isInteger(count) || count < 1 || count > 50) fail('Invalid number of units.');
+  diplomacy.checkUnits(s, actor, p.units + count);
   const bag = cleanBag(materials);
   const need = W(s).unitCost * count;
   if (bagTotal(bag) !== need) fail(`${count === 1 ? 'A unit costs' : count + ' units cost'} ${need} materials (any mix).`);
@@ -473,11 +478,13 @@ function choose(s, actor, { action, mix, target, aid, from, count } = {}) {
     if (bagTotal(ch.mix) !== prod.free) fail(`Pick exactly ${prod.free} materials.`);
     if (MATERIALS.some((m) => ch.mix[m] > 0 && !prod.allowed.includes(m))) fail('You can only pick materials your tiles produce.');
   } else if (action === 'unsustainable') {
+    diplomacy.checkMove(s, actor, 'unsustainable');
     const n = production(s, actor).unsustainable;
     ch.mix = cleanBag(mix, 'mix');
     if (bagTotal(ch.mix) !== n) fail(`Pick exactly ${n} materials.`);
   } else if (action === 'attack') {
     if (p.puppetOf == null && !attackTargets(s, actor).includes(target)) fail("You can't attack that tile.");
+    diplomacy.checkMove(s, actor, 'attack', getTile(s, target).controller);
     if (ST(s)) {
       const src = s.board.tiles.find((x) => x.id === from);
       if (!src || src.controller !== actor || !areAdjacent(src, getTile(s, target))) fail('Attack from one of your tiles next to the target.');
@@ -487,6 +494,7 @@ function choose(s, actor, { action, mix, target, aid, from, count } = {}) {
     ch.target = target;
   } else if (action === 'revolt') {
     if (p.units < 1) fail('You need at least 1 unit to revolt.');
+    diplomacy.checkMove(s, actor, 'attack', p.puppetOf);
     if (ST(s)) {
       const src = s.board.tiles.find((x) => x.id === from);
       if (!src || src.controller !== actor) fail('Revolt from one of your own tiles.');
@@ -757,6 +765,7 @@ function resolveAttack(s, e) {
 
   const D = T.controller;
   const Dp = s.players[D];
+  diplomacy.onHostile(s, e.seat, D); // remembers the attack; breaks any pact between them
   const resistance = T.owner === e.seat || T.owner === taker;
   applySanction(s, e, T, resistance);
   Dp.stats.timesAttacked += 1;
@@ -813,6 +822,8 @@ function resolveClash(s, { a, b }) {
   s.clashCount += 1;
   A.stats.clashes += 1;
   B.stats.clashes += 1;
+  diplomacy.onHostile(s, a.seat, b.seat);
+  diplomacy.onHostile(s, b.seat, a.seat);
   applySanction(s, a, TA, TA.owner === a.seat || TA.owner === A.puppetOf);
   applySanction(s, b, TB, TB.owner === b.seat || TB.owner === B.puppetOf);
   const ua = poolUnits(s, poolA);
@@ -1111,6 +1122,7 @@ function resolveAttackST(s, e) {
 
   const D = T.controller;
   const Dp = s.players[D];
+  diplomacy.onHostile(s, e.seat, D); // remembers the attack; breaks any pact between them
   const resistance = T.owner === e.seat || T.owner === taker;
   applySanction(s, e, T, resistance);
   Dp.stats.timesAttacked += 1;
@@ -1178,6 +1190,8 @@ function resolveClashST(s, { a, b }) {
   s.clashCount += 1;
   A.stats.clashes += 1;
   B.stats.clashes += 1;
+  diplomacy.onHostile(s, a.seat, b.seat);
+  diplomacy.onHostile(s, b.seat, a.seat);
   applySanction(s, a, TA, TA.owner === a.seat || TA.owner === A.puppetOf);
   applySanction(s, b, TB, TB.owner === b.seat || TB.owner === B.puppetOf);
   addUnitsAt(srcA, a.seat, -sa);

@@ -1,6 +1,7 @@
 // War + Empire parts of the game screen: units, recruiting, attack targets,
 // the Climate Accord, puppets, commands and revolts.
 import { esc, chip, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME } from './ui.js';
+import { limitsNote, myPactWith } from './diplomacy-ui.js';
 
 const BUILD = ['talk', 'trade'];
 const j = (o) => esc(JSON.stringify(o));
@@ -221,6 +222,8 @@ function targetNote(g, id) {
     notes.push(d ? `defended by ${d}` : 'undefended!');
   }
   if (!g.war.accordBroken && !exempt) notes.push('⛔ you will be sanctioned');
+  if (t.controller != null && myPactWith(g, t.controller)) notes.push(`⚠ breaks your pact with ${g.players[t.controller].name}`);
+  if (t.controller != null && g.limits && g.limits.protectedSeats[t.controller]) notes.push('📜 forbidden by your treaty');
   return notes.join(' · ');
 }
 
@@ -256,9 +259,10 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
       : `Tiles + ${bagText(prod.fixed)}`;
   const cards = [];
   if (!puppet || cmd.action === 'sustainable') cards.push(actionCard('sustainable', 'Sustainable', susDesc, 'No Flood change'));
-  if (!puppet || cmd.action === 'unsustainable') cards.push(actionCard('unsustainable', 'Unsustainable', `Tiles + any ${prod.unsustainable}`, `Flood +${g.settings.base.unsustainableFlood}`));
+  const L = g.limits || { protectedSeats: {} };
+  if (!puppet || cmd.action === 'unsustainable') cards.push(actionCard('unsustainable', 'Unsustainable', `Tiles + any ${prod.unsustainable}`, `Flood +${g.settings.base.unsustainableFlood}`, !!L.noUnsustainable, L.noUnsustainable ? '📜 Treaty forbids' : ''));
   if (!puppet) {
-    const why = pool < 1 ? 'Needs 1 unit' : !g.attackTargets.length ? 'No targets' : g.stationed && !g.attackTargets.some((id) => (g.attackSources[id] || []).length) ? 'No units at the front' : '';
+    const why = L.noAttacks ? '📜 Treaty forbids' : pool < 1 ? 'Needs 1 unit' : !g.attackTargets.length ? 'No targets' : g.stationed && !g.attackTargets.some((id) => (g.attackSources[id] || []).length) ? 'No units at the front' : '';
     cards.push(actionCard('attack', 'Attack', 'Tile income only', `Flood +${w.attackFlood}`, !!why, why));
   } else if (cmd.action === 'attack') {
     cards.push(actionCard('attack', 'Attack (ordered)', esc(tileLabel(g, cmd.target)), `Flood +${w.attackFlood}`));
@@ -325,6 +329,7 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
 
   return `<div class="card phase-card">
     <h2>3. Choose secretly</h2>
+    ${limitsNote(g)}
     ${puppet ? `<p class="puppet-box">⛓ ${esc(g.players[me.puppetOf].name)} commands: <b>${esc(commandText(g, cmd))}</b>. Play it — or revolt.</p>` : '<p class="hint">Nobody can see your choice until everyone has chosen.</p>'}
     <div class="action-cards">${cards.join('')}</div>
     ${extra}

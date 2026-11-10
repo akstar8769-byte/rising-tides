@@ -57,6 +57,11 @@ function playtestRecord(state, meta = {}) {
       tributeReceived: p.stats.tributeReceived,
       puppetAtEnd: p.puppetOf != null ? state.players[p.puppetOf].name : null,
       armyFlood: p.stats.armyFlood,
+      pactsMade: p.stats.pactsMade,
+      pactsKept: p.stats.pactsKept,
+      pactsBroken: p.stats.pactsBroken,
+      treatiesSigned: p.stats.treatiesSigned,
+      treatiesBroken: p.stats.treatiesBroken,
     };
   });
   return {
@@ -153,6 +158,11 @@ function recordToCsv(rec) {
     ['tribute_received', (p) => p.tributeReceived],
     ['puppet_of_at_end', (p) => p.puppetAtEnd],
     ['army_flood', (p) => p.armyFlood],
+    ['pacts_made', (p) => p.pactsMade],
+    ['pacts_kept', (p) => p.pactsKept],
+    ['pacts_broken', (p) => p.pactsBroken],
+    ['treaties_signed', (p) => p.treatiesSigned],
+    ['treaties_broken', (p) => p.treatiesBroken],
   ];
   const lines = [cols.map((c) => c[0]).join(',')];
   for (const p of rec.players) lines.push(cols.map((c) => csvCell(c[1](p))).join(','));

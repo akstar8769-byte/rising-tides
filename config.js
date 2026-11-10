@@ -27,6 +27,10 @@ const DEFAULTS = {
     botThinkMs: 900,             // how long bots "think" before each move, in milliseconds
     hideOtherMaterials: false,   // true = you only see the TOTAL number of materials other players hold
     boardLayout: 'standard19',   // which board layout to use (see engine/layouts.js)
+    pactsEnabled: true,          // players can make (non-binding) pacts with each other
+    maxPactRounds: 3,            // longest pact allowed, in rounds
+    treatiesEnabled: false,      // TREATIES: written rules the game holds signatories to (see engine/diplomacy.js)
+    treatyBreakPenalty: 3,       // materials lost when you openly break a treaty
   },
 
   base: {
@@ -111,6 +115,10 @@ const LABELS = {
   'general.botThinkMs': 'Bot thinking time (milliseconds)',
   'general.hideOtherMaterials': "Hide other players' exact materials",
   'general.boardLayout': 'Board layout',
+  'general.pactsEnabled': 'Pacts (non-binding promises between players)',
+  'general.maxPactRounds': 'Longest pact (rounds)',
+  'general.treatiesEnabled': 'Treaties (rules the game holds signatories to)',
+  'general.treatyBreakPenalty': 'Materials lost for breaking a treaty',
 
   'base.rounds': 'Number of rounds',
   'base.catastrophe.3': 'Catastrophe threshold (3 players)',
@@ -182,6 +190,7 @@ const LIMITS = {
   'general.lootPickSeconds': [5, 600],
   'general.hostHandoverSeconds': [5, 3600],
   'general.botThinkMs': [0, 10000],
+  'general.maxPactRounds': [1, 20],
   'base.rounds': [1, 50],
   'base.catastrophe.3': [1, 999],
   'base.catastrophe.4': [1, 999],

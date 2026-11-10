@@ -38,7 +38,9 @@ function startServer(port = process.env.PORT || 3000) {
 
 if (require.main === module) {
   startServer().then(({ port }) => {
-    console.log(`Rising Tides is running. Open http://localhost:${port} in your browser.`);
+    // On Render, RENDER_EXTERNAL_URL is the public address; locally it's localhost.
+    const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
+    console.log(`Rising Tides is running. Open ${url} in your browser.`);
   });
 }
 
