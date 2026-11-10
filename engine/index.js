@@ -230,7 +230,8 @@ function viewFor(state, seat) {
   }
   v.trades = v.trades.filter((t) => t.from === seat || t.to === seat);
   if (state.mode !== 'base') war.decorateView(v, state, seat);
-  if (state.mode === 'totalwar') v.battles = state.battles; // battles are public: anyone can watch
+  // Battles are public: anyone can watch. Send the territory as a short string, not the raw grids.
+  if (state.mode === 'totalwar') v.battles = (state.battles || []).map(({ reach, territory, ...b }) => ({ ...b, terr: require('./totalwar').territoryString({ territory, reach }) }));
   diplomacy.decorateView(v, state, seat);
   return v;
 }

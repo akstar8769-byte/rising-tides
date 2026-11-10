@@ -122,8 +122,9 @@ test('total war: a defended tile starts a live battle; the Flood rises by 1; pla
   assert.deepEqual(engine.waitingFor(s).sort(), [0, 1]);
   assert.equal(engine.troopsAt(tile(s, 'I1'), 1).militia, 0); // defenders are on the battlefield
   const b = s.battles[0];
-  assert.equal(b.dots.filter((d) => d.side === 'A').length, 4);
-  assert.equal(b.dots.filter((d) => d.side === 'D').length, 2);
+  // every unit is ${CFG.dotsPerUnit} dots on the battlefield
+  assert.equal(b.dots.filter((d) => d.side === 'A').length, 4 * CFG.dotsPerUnit);
+  assert.equal(b.dots.filter((d) => d.side === 'D').length, 2 * CFG.dotsPerUnit);
 });
 
 test('total war: battle orders only move your own dots', () => {
@@ -131,10 +132,11 @@ test('total war: battle orders only move your own dots', () => {
   const b = s.battles[0];
   const mine = b.dots.filter((d) => d.side === 'A').map((d) => d.id);
   s = act(s, 0, 'battleOrder', { battle: b.id, dots: mine, x: 40, y: 20 });
-  assert.ok(s.battles[0].dots.filter((d) => d.side === 'A').every((d) => d.tx === 40));
+  const near40 = (st) => st.battles[0].dots.filter((d) => d.side === 'A').every((d) => Math.abs(d.tx - 40) < 2);
+  assert.ok(near40(s));
   assert.throws(() => act(s, 2, 'battleOrder', { battle: b.id, dots: mine, x: 1, y: 1 }), /not fighting/);
   s = act(s, 1, 'battleOrder', { battle: b.id, dots: mine, x: 1, y: 1 }); // seat 1 can't move seat 0's dots
-  assert.ok(s.battles[0].dots.filter((d) => d.side === 'A').every((d) => d.tx === 40));
+  assert.ok(near40(s));
 });
 
 test('total war: a battle runs to the end and its result is applied to the board', () => {
@@ -168,14 +170,15 @@ test('total war: two attacks on the same tile are fought one after the other (wa
 
 // ---------------------------------------------------------------- the battle simulation
 const T_PLAIN = { id: 'X', biome: 'quarry' };
-function bareBattle(aTroops, dTroops) {
+const CFG1 = { ...CFG, dotsPerUnit: 1 }; // one dot per unit keeps these mechanics tests simple
+function bareBattle(aTroops, dTroops, cfg = CFG1) {
   let r = 0.5;
-  const b = tw.createBattle({ id: 1, tile: T_PLAIN, from: T_PLAIN, attacker: 0, defender: 1, aTroops, dTroops, cfg: CFG, rand: () => (r = (r * 9301 + 49297) % 233280 / 233280) });
+  const b = tw.createBattle({ id: 1, tile: T_PLAIN, from: T_PLAIN, attacker: 0, defender: 1, aTroops, dTroops, cfg, rand: () => (r = (r * 9301 + 49297) % 233280 / 233280) });
   b.terrain = b.terrain.map((row) => row.replace(/./g, '.')); // all plain, for fair tests
   return b;
 }
-const run = (b, secs) => {
-  for (let t = 0; t < secs; t += 0.1) if (tw.stepBattle(b, 0.1, CFG)) break;
+const run = (b, secs, cfg = CFG1) => {
+  for (let t = 0; t < secs; t += 0.1) if (tw.stepBattle(b, 0.1, cfg)) break;
   return b;
 };
 
@@ -211,6 +214,8 @@ test('battle: attackers who hold the flag alone win', () => {
   const cav = b.dots.find((d) => d.side === 'A');
   cav.x = cav.tx = b.obj.x;
   cav.y = cav.ty = b.obj.y;
+  // As if the attackers had marched there, holding a corridor home; the defender keeps the far edge.
+  b.territory = b.territory.map((_, i) => (i % 30 < 25 ? 'A' : 'D'));
   b.ordered = { A: true, D: true };
   run(b, CFG.captureSeconds + 2);
   assert.equal(b.winner, 'A');
@@ -240,7 +245,7 @@ test('battle: hitting a unit from two sides does more damage than from one side'
     def.tx = def.x;
     def.ty = def.y;
     b.ordered = { A: true, D: true };
-    tw.stepBattle(b, 1, CFG);
+    tw.stepBattle(b, 1, CFG1);
   }
   const hpTwo = twoSides.dots.find((d) => d.side === 'D').hp;
   const hpOne = oneSide.dots.find((d) => d.side === 'D').hp;
@@ -258,7 +263,7 @@ test('battle: cavalry rides down militia but struggles against infantry', () => 
     def.tx = def.x;
     def.ty = def.y;
     b.ordered = { A: true, D: true };
-    tw.stepBattle(b, 1, CFG);
+    tw.stepBattle(b, 1, CFG1);
   }
   const lostM = 1 - vsMilitia.dots.find((d) => d.side === 'D').hp / CFG.militia.hp;
   const lostI = 1 - vsInfantry.dots.find((d) => d.side === 'D').hp / CFG.infantry.hp;
@@ -280,12 +285,60 @@ test('battle: cavalry is weak against infantry — unless the infantry are encir
     inf.ty = inf.y;
     inf.cut = cut;
     b.ordered = { A: true, D: true };
-    tw.stepBattle(b, 1, CFG);
+    tw.stepBattle(b, 1, CFG1);
   }
   const lost = (b) => CFG.infantry.hp - b.dots.find((d) => d.side === 'D').hp;
   // supplied: 3 dmg x 70% = 2.1;  encircled: 3 x 150% x 175% (cut-off) = 7.9
   assert.ok(Math.abs(lost(supplied) - CFG.cavalry.attack * 0.7) < 0.01);
   assert.ok(lost(encircled) > lost(supplied) * 3);
+});
+
+test('battle: each unit is a group of dots; tapping one dot moves the whole unit', () => {
+  const b = bareBattle({ infantry: 2 }, { militia: 1 }, CFG);
+  const mine = b.dots.filter((d) => d.side === 'A');
+  assert.equal(mine.length, 2 * CFG.dotsPerUnit);
+  const unit = mine[0].unit;
+  tw.order(b, 'A', [mine[0].id], 30, 20); // tap just one dot
+  for (const d of mine) {
+    if (d.unit === unit) assert.ok(Math.abs(d.tx - 30) < 2 && Math.abs(d.ty - 20) < 2);
+    else assert.ok(d.tx < 15); // the other unit stays put
+  }
+});
+
+test('battle: surviving dots are grouped back into whole units (rounding up)', () => {
+  const b = bareBattle({ infantry: 2 }, { militia: 1 }, CFG);
+  const a = b.dots.filter((d) => d.side === 'A');
+  b.dots = b.dots.filter((d) => d !== a[0] && d !== a[1]); // 4 of 6 infantry dots left
+  assert.deepEqual(tw.survivors(b, 'A'), { militia: 0, infantry: 2, cavalry: 0 });
+  b.dots = b.dots.filter((d) => d.side !== 'A' || d === a[5]); // 1 dot left
+  assert.deepEqual(tw.survivors(b, 'A'), { militia: 0, infantry: 1, cavalry: 0 });
+  assert.equal(tw.unitsLost(b, 'A'), 1);
+});
+
+test('battle: territory — each side starts with ground; dots claim what they move through; the frontline shows', () => {
+  const b = bareBattle({ militia: 1 }, { militia: 1 });
+  const terr = tw.territoryString(b);
+  assert.equal(terr[0], 'a'); // left edge: attacker, supplied
+  assert.equal(terr[29], 'd'); // right edge: defender
+  const att = b.dots.find((d) => d.side === 'A');
+  att.tx = 20; // march into no-man's land
+  b.ordered = { A: true, D: true };
+  run(b, 6);
+  const row = Math.floor(att.y / 2);
+  assert.equal(b.territory[row * 30 + Math.floor(att.x / 2)], 'A'); // it claimed the ground it reached
+  assert.equal(att.cut, false); // and its trail keeps it supplied
+});
+
+test('battle: enemy territory between you and your edge cuts you off', () => {
+  const b = bareBattle({ militia: 1 }, { militia: 1 });
+  const att = b.dots.find((d) => d.side === 'A');
+  att.x = att.tx = 20;
+  att.y = att.ty = 20;
+  // The defenders have painted a wall of territory behind the attacker
+  for (let y = 0; y < 20; y++) for (let x = 3; x < 6; x++) b.territory[y * 30 + x] = 'D';
+  tw.computeSupply(b);
+  assert.equal(att.cut, true);
+  assert.match(tw.territoryString(b), /A/); // its ground is now a cut-off pocket
 });
 
 test('battle: a side that gives no orders is put on auto-battle after a while', () => {

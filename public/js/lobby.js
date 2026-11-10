@@ -163,7 +163,8 @@ function settingRow(path, value, meta, isHost) {
     input = `<input type="checkbox" id="${id}" data-setting="${path}" ${value ? 'checked' : ''} ${isHost ? '' : 'disabled'} />`;
   } else if (typeof value === 'number') {
     const [min, max] = meta.limits[path] || [0, 999];
-    input = `<input type="number" inputmode="numeric" id="${id}" data-setting="${path}" value="${value}" min="${min}" max="${max}" step="1" ${isHost ? '' : 'disabled'} />`;
+    const dec = (meta.decimals || []).includes(path);
+    input = `<input type="number" inputmode="${dec ? 'decimal' : 'numeric'}" id="${id}" data-setting="${path}" value="${value}" min="${min}" max="${max}" step="${dec ? '0.1' : '1'}" ${isHost ? '' : 'disabled'} />`;
   } else {
     const opts = meta.options[path] || [value];
     input = `<select id="${id}" data-setting="${path}" ${isHost ? '' : 'disabled'}>${opts.map((o) => `<option ${o === value ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;

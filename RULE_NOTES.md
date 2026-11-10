@@ -211,9 +211,9 @@ A separate fourth mode where war is the point. Base, War and War + Empire are un
 
   | Type | Cost | Upkeep pts | HP | Damage/s | Speed | Notes |
   |---|---|---|---|---|---|---|
-  | ● Militia | 2 | 1 | 10 | 2 | 5 | cheap |
-  | ■ Infantry | 4 | 1 | 18 | 3 | 4 | tough; stands firm against cavalry |
-  | ▲ Cavalry | 5 | 2 | 12 | 3 | 9 | fast; 150% damage vs militia, 70% vs infantry — but **150% vs encircled (cut-off) infantry**, before the 175% cut-off penalty; slow in forests |
+  | ● Militia | 2 | 1 | 10 | 1 | 3 | cheap |
+  | ■ Infantry | 4 | 1 | 18 | 1.5 | 2.5 | tough; stands firm against cavalry |
+  | ▲ Cavalry | 5 | 2 | 12 | 1.5 | 5 | fast; 150% damage vs militia, 70% vs infantry — but **150% vs encircled (cut-off) infantry**, before the 175% cut-off penalty; slow in forests |
 
   Upkeep: 1 material per 4 upkeep points. Everyone starts with 2 militia on their capital.
 - **War profiteering:**
@@ -247,3 +247,11 @@ A separate fourth mode where war is the point. Base, War and War + Empire are un
 - **Damaged doesn't apply in Total War.** Losing land and loot is penalty enough.
 - **Moving and attacking:** in Total War you pick exactly which unit types to move or send. Other War modes still move "any N units", which are always militia.
 - Battle randomness only shapes the terrain. The fighting itself has no dice: positioning, numbers, unit types and terrain decide.
+
+### Battles, version 2 (11 November 2026)
+After the first playtest ("a bit laggy, fast and weird; War of Dots shows a frontline"):
+- **Each unit is 3 dots** on the battlefield (`totalwar.dotsPerUnit`). The unit's toughness and damage are shared between its dots, and they move in a small formation. Tapping one dot selects the whole unit. After the battle, surviving dots are grouped back into whole units, rounding up.
+- **Territory and frontline.** Ground within 3 squares of a dot becomes that side's (the nearest dot wins) and **stays** theirs until enemy dots take it. The attacker starts with a strip on the left, the defender with most of the right. The battle screen tints each side's ground and draws a dark **frontline** where they meet.
+- **Supply through your own territory.** A dot is supplied if it can trace a path to its side's map edge without crossing **enemy territory** (empty ground is fine). Cutting a corridor through the enemy's ground behind them encircles them; cut-off ground shows as a red pocket. Marching forward lays your own corridor, so a normal advance stays supplied.
+- **Slower:** movement speeds and damage roughly halved, battles last up to 120 seconds, and capturing the flag takes 10 seconds. Unit damage and speed may now have one decimal place in the lobby.
+- **Smoother:** the browser slides dots between the server's 5-a-second updates and redraws only what changed.

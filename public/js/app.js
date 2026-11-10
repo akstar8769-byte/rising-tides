@@ -8,7 +8,7 @@ import { renderLobby } from './lobby.js';
 import { renderGame } from './game.js';
 import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
-import { refreshBattle, svgPoint, liveBattle } from './battle-ui.js';
+import { refreshBattle, svgPoint, liveBattle, toggleUnit, startBattleAnimation } from './battle-ui.js';
 
 /* global io */
 const socket = io();
@@ -455,15 +455,11 @@ document.addEventListener('click', (e) => {
   const svg = e.target.closest('#battle-svg');
   if (svg) {
     const dotEl = e.target.closest('[data-dot]');
-    const sel = new Set(store.ui.battleSel);
     if (dotEl) {
-      const id = Number(dotEl.dataset.dot);
-      if (sel.has(id)) sel.delete(id);
-      else sel.add(id);
-      store.ui.battleSel = [...sel];
-      refreshBattle(store);
+      toggleUnit(store, Number(dotEl.dataset.dot)); // a tap selects the dot's whole unit
       return;
     }
+    const sel = new Set(store.ui.battleSel);
     if (!sel.size) return toast('Tap one of your units first (or use Select all).');
     const p = svgPoint(svg, e);
     if (p) act({ type: 'battleOrder', battle: Number(svg.dataset.battle), dots: [...sel], x: p.x, y: p.y });
@@ -518,3 +514,4 @@ document.addEventListener('submit', (e) => {
 });
 
 render();
+startBattleAnimation(store); // smooth battlefield animation (only draws when a battle is on screen)

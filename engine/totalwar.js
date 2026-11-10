@@ -2,8 +2,10 @@
  * TOTAL WAR — LIVE BATTLES
  * ========================
  * When an attack in Total War meets defenders, the two players fight a short
- * real-time battle on a small map. Every unit is a dot. Players tap their dots
- * and tap where to send them; the server moves everything a little every tick.
+ * real-time battle on a small map. Every unit on the board becomes a small
+ * group of DOTS on the battlefield (3 by default) that move together. Players
+ * tap a dot to select its unit and tap where to send it; the server moves
+ * everything a little every tick.
  *
  * What decides battles (all numbers are in config.js -> totalwar):
  *  - Unit types: militia (cheap), infantry (tough), cavalry (fast; rides down
@@ -11,11 +13,14 @@
  *    and in forests).
  *  - Terrain: forests and hills protect whoever stands in them; rivers are slow
  *    to cross except at fords.
+ *  - TERRITORY and the FRONTLINE: ground your dots move through becomes yours
+ *    and stays yours until enemy dots take it. Where the two territories meet
+ *    is the frontline.
+ *  - SUPPLY and ENCIRCLEMENT: a dot is supplied if it can trace a path back to
+ *    its own side's edge of the map without crossing ENEMY territory. Dots that
+ *    can't are CUT OFF: they take much more damage, deal less, and surrender if
+ *    they stay cut off too long.
  *  - FLANKING: a dot being hit from two different sides takes extra damage.
- *  - ENCIRCLEMENT: every half second we check which dots can still trace a path
- *    back to their own side's edge of the map without crossing ground the enemy
- *    controls. Dots that can't are CUT OFF: they take much more damage, deal
- *    less, and surrender if they stay cut off too long.
  *  - The attacker wins by holding the objective (the flag) with nobody
  *    defending it, or by destroying every defender. The defender wins by
  *    destroying the attackers or holding out until time runs out.
@@ -29,17 +34,30 @@
 const MAP_W = 60;
 const MAP_H = 40;
 const TCELL = 4; // terrain cell size -> 15 x 10 terrain grid
-const SCELL = 2; // supply cell size -> 30 x 20 supply grid
-const CONTACT = 2.4; // dots this close fight each other
-const ZOC = 4; // "zone of control" radius used for supply lines
+const SCELL = 2; // territory / supply cell size -> 30 x 20 grid
+const COLS = MAP_W / SCELL;
+const ROWS = MAP_H / SCELL;
+const CONTACT = 2.2; // dots this close fight each other
+const PAINT = 3; // dots claim ground within this distance
 const TYPES = ['militia', 'infantry', 'cavalry'];
 const SIDES = ['A', 'D'];
 const AI_EVERY = 1.2; // seconds between AI decisions
 const IDLE_AUTO = 15; // a side that gives no order for this long is put on auto-battle
+// Where each dot of a unit stands relative to the unit's centre (a small triangle)
+const SLOTS = [
+  [0, -0.9],
+  [-0.9, 0.6],
+  [0.9, 0.6],
+  [0, 0.9],
+  [-1, -0.5],
+  [1, -0.5],
+];
 
 const sum = (c) => TYPES.reduce((a, k) => a + (c[k] || 0), 0);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const zero = () => ({ militia: 0, infantry: 0, cavalry: 0 });
+const cellOf = (x, y) => clamp(Math.floor(y / SCELL), 0, ROWS - 1) * COLS + clamp(Math.floor(x / SCELL), 0, COLS - 1);
 
 // ---------------------------------------------------------------- map
 
@@ -99,10 +117,12 @@ function defenceFactor(ch, cfg) {
 // ---------------------------------------------------------------- setup
 
 /**
- * Create a battle. aTroops / dTroops are { militia, infantry, cavalry }.
+ * Create a battle. aTroops / dTroops are { militia, infantry, cavalry } units;
+ * each unit becomes cfg.dotsPerUnit dots that share its toughness and damage.
  * `rand` is the game's seeded random number function, so battles replay exactly.
  */
 function createBattle({ id, tile, from, attacker, defender, aTroops, dTroops, cfg, rand }) {
+  const dpu = Math.max(1, Math.min(SLOTS.length, cfg.dotsPerUnit || 1));
   const b = {
     id,
     tile: tile.id,
@@ -111,6 +131,12 @@ function createBattle({ id, tile, from, attacker, defender, aTroops, dTroops, cf
     defender,
     terrain: makeTerrain(tile.biome, from.biome, rand),
     obj: { x: 47, y: 20, r: 5 },
+    dpu,
+    initial: { A: { ...zero(), ...aTroops }, D: { ...zero(), ...dTroops } },
+    // Territory: who holds each 2x2 square ('A', 'D' or '' for nobody yet).
+    // The attacker starts with a strip on the left, the defender most of the rest.
+    territory: Array.from({ length: COLS * ROWS }, (_, i) => ((i % COLS) * SCELL < 8 ? 'A' : (i % COLS) * SCELL >= 26 ? 'D' : '')),
+    reach: { A: [], D: [] }, // squares each side can supply (filled by computeSupply)
     dots: [],
     time: 0,
     capture: 0,
@@ -120,100 +146,97 @@ function createBattle({ id, tile, from, attacker, defender, aTroops, dTroops, cf
     ordered: { A: false, D: false },
     ai: { A: 0, D: 0 },
     supplyTimer: 0,
-    losses: { A: zero(), D: zero() },
-    surrendered: { A: zero(), D: zero() },
+    losses: { A: zero(), D: zero() }, // dots destroyed
+    surrendered: { A: zero(), D: zero() }, // dots that surrendered
     status: 'live',
     winner: null,
     reason: null,
   };
-  let next = 1;
-  const add = (side, seat, type, x, y) => {
-    const hp = cfg[type].hp;
-    b.dots.push({ id: next++, side, seat, type, x, y, tx: x, ty: y, hp, max: hp, cut: false, cutT: 0 });
+  let nextDot = 1;
+  let nextUnit = 1;
+  const addUnit = (side, seat, type, cx, cy) => {
+    const unit = nextUnit++;
+    const hp = cfg[type].hp / dpu;
+    for (let k = 0; k < dpu; k++) {
+      const x = clamp(cx + SLOTS[k][0], 1, MAP_W - 1);
+      const y = clamp(cy + SLOTS[k][1], 1, MAP_H - 1);
+      b.dots.push({ id: nextDot++, unit, slot: k, side, seat, type, x, y, tx: x, ty: y, hp, max: hp, cut: false, cutT: 0 });
+    }
   };
-  // Attackers enter from the left edge in a column.
+  // Attackers enter from the left edge in two columns.
   const aList = TYPES.flatMap((t) => Array(aTroops[t] || 0).fill(t));
-  aList.forEach((t, i) => add('A', attacker, t, 4 + (i % 2) * 2 + (t === 'cavalry' ? 2 : 0), MAP_H / 2 + (Math.ceil(i / 2) * (i % 2 ? 1 : -1) * 3)));
+  aList.forEach((t, i) => addUnit('A', attacker, t, 4 + (i % 2) * 3 + (t === 'cavalry' ? 2 : 0), clamp(MAP_H / 2 + Math.ceil(i / 2) * (i % 2 ? 1 : -1) * 3.5, 3, MAP_H - 3)));
   // Defenders: infantry on the flag, militia in front, cavalry in reserve behind.
-  const dList = TYPES.flatMap((t) => Array(dTroops[t] || 0).fill(t));
-  const counters = { militia: 0, infantry: 0, cavalry: 0 };
-  for (const t of dList) {
+  const counters = zero();
+  for (const t of TYPES.flatMap((x) => Array(dTroops[x] || 0).fill(x))) {
     const k = counters[t]++;
-    const spread = Math.ceil(k / 2) * (k % 2 ? 1 : -1) * 3;
+    const spread = Math.ceil(k / 2) * (k % 2 ? 1 : -1) * 3.5;
     const x = t === 'infantry' ? b.obj.x : t === 'militia' ? b.obj.x - 6 : b.obj.x + 6;
-    add('D', defender, t, x, clamp(b.obj.y + spread, 2, MAP_H - 2));
-  }
-  for (const d of b.dots) {
-    d.x = clamp(d.x, 1, MAP_W - 1);
-    d.y = clamp(d.y, 1, MAP_H - 1);
-    d.tx = d.x;
-    d.ty = d.y;
+    addUnit('D', defender, t, x, clamp(b.obj.y + spread, 3, MAP_H - 3));
   }
   computeSupply(b);
   return b;
 }
 
-function zero() {
-  return { militia: 0, infantry: 0, cavalry: 0 };
-}
-
 // ---------------------------------------------------------------- orders
 
-/** Send some of your dots to (x, y). */
+/** Send units (any of their dots' ids) to (x, y); each dot keeps its place in the formation. */
 function order(b, side, ids, x, y) {
-  const tx = clamp(Number(x), 0.5, MAP_W - 0.5);
-  const ty = clamp(Number(y), 0.5, MAP_H - 0.5);
-  let moved = 0;
-  for (const d of b.dots) {
-    if (d.side !== side || !ids.includes(d.id)) continue;
-    d.tx = tx;
-    d.ty = ty;
-    moved++;
-  }
+  const tx = clamp(Number(x), 1, MAP_W - 1);
+  const ty = clamp(Number(y), 1, MAP_H - 1);
+  const units = new Set(b.dots.filter((d) => d.side === side && ids.includes(d.id)).map((d) => d.unit));
+  sendUnits(b, side, units, tx, ty);
   b.ordered[side] = true;
-  return moved;
+  return units.size;
 }
 
-// ---------------------------------------------------------------- supply lines
+function sendUnits(b, side, units, tx, ty) {
+  for (const d of b.dots) {
+    if (d.side !== side || !units.has(d.unit)) continue;
+    d.tx = clamp(tx + SLOTS[d.slot][0] * 1.2, 0.5, MAP_W - 0.5);
+    d.ty = clamp(ty + SLOTS[d.slot][1] * 1.2, 0.5, MAP_H - 0.5);
+  }
+}
+
+// ---------------------------------------------------------------- territory and supply
 
 /**
- * Which dots are cut off? A supply cell belongs to whoever has the nearest dot
- * within ZOC. From each side's edge we flood out through cells the enemy doesn't
- * control; a dot whose cell can't be reached is cut off.
+ * 1. Dots claim the ground around them (the nearest dot within PAINT wins).
+ * 2. From each side's edge, flood out through squares the ENEMY doesn't hold.
+ * 3. A dot whose square can't be reached is cut off.
  */
 function computeSupply(b) {
-  const cols = MAP_W / SCELL;
-  const rows = MAP_H / SCELL;
-  const owner = new Array(cols * rows).fill(null);
-  for (let cy = 0; cy < rows; cy++) {
-    for (let cx = 0; cx < cols; cx++) {
+  for (let cy = 0; cy < ROWS; cy++) {
+    for (let cx = 0; cx < COLS; cx++) {
       const p = { x: (cx + 0.5) * SCELL, y: (cy + 0.5) * SCELL };
-      let best = ZOC;
+      let best = PAINT;
+      let side = null;
       for (const d of b.dots) {
         const dd = dist(d, p);
         if (dd < best) {
           best = dd;
-          owner[cy * cols + cx] = d.side;
+          side = d.side;
         }
       }
+      if (side) b.territory[cy * COLS + cx] = side;
     }
   }
   for (const side of SIDES) {
     const enemy = side === 'A' ? 'D' : 'A';
-    const seen = new Uint8Array(cols * rows);
+    const seen = new Uint8Array(COLS * ROWS);
     const queue = [];
-    const edge = side === 'A' ? 0 : cols - 1; // attackers are supplied from the left, defenders from the right
-    for (let cy = 0; cy < rows; cy++) {
-      const i = cy * cols + edge;
-      if (owner[i] !== enemy) {
+    const edge = side === 'A' ? 0 : COLS - 1; // attackers are supplied from the left, defenders from the right
+    for (let cy = 0; cy < ROWS; cy++) {
+      const i = cy * COLS + edge;
+      if (b.territory[i] !== enemy) {
         seen[i] = 1;
         queue.push(i);
       }
     }
     while (queue.length) {
       const i = queue.pop();
-      const cx = i % cols;
-      const cy = (i - cx) / cols;
+      const cx = i % COLS;
+      const cy = (i - cx) / COLS;
       for (const [dx, dy] of [
         [1, 0],
         [-1, 0],
@@ -222,20 +245,30 @@ function computeSupply(b) {
       ]) {
         const nx = cx + dx;
         const ny = cy + dy;
-        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-        const j = ny * cols + nx;
-        if (seen[j] || owner[j] === enemy) continue;
+        if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+        const j = ny * COLS + nx;
+        if (seen[j] || b.territory[j] === enemy) continue;
         seen[j] = 1;
         queue.push(j);
       }
     }
-    for (const d of b.dots) {
-      if (d.side !== side) continue;
-      const cx = clamp(Math.floor(d.x / SCELL), 0, cols - 1);
-      const cy = clamp(Math.floor(d.y / SCELL), 0, rows - 1);
-      d.cut = !seen[cy * cols + cx];
-    }
+    b.reach[side] = seen;
+    for (const d of b.dots) if (d.side === side) d.cut = !seen[cellOf(d.x, d.y)];
   }
+}
+
+/**
+ * Territory for drawing: one character per square.
+ * 'a' / 'd' = held and supplied, 'A' / 'D' = held but cut off (a pocket), '.' = nobody.
+ */
+function territoryString(b) {
+  let s = '';
+  for (let i = 0; i < b.territory.length; i++) {
+    const t = b.territory[i];
+    if (!t) s += '.';
+    else s += b.reach[t] && b.reach[t][i] ? t.toLowerCase() : t;
+  }
+  return s;
 }
 
 // ---------------------------------------------------------------- AI (bots and auto-battle)
@@ -244,45 +277,47 @@ function centroid(list) {
   return { x: list.reduce((a, d) => a + d.x, 0) / list.length, y: list.reduce((a, d) => a + d.y, 0) / list.length };
 }
 
+/** Group a side's dots into units: [{ unit, type, x, y }] (x, y = centre). */
+function unitsOf(b, side) {
+  const map = new Map();
+  for (const d of b.dots) {
+    if (d.side !== side) continue;
+    if (!map.has(d.unit)) map.set(d.unit, { unit: d.unit, type: d.type, dots: [] });
+    map.get(d.unit).dots.push(d);
+  }
+  return [...map.values()].map((u) => ({ ...u, ...centroid(u.dots) }));
+}
+
 function runAI(b, side) {
-  const mine = b.dots.filter((d) => d.side === side);
+  const mine = unitsOf(b, side);
   const foes = b.dots.filter((d) => d.side !== side);
   if (!mine.length || !foes.length) return;
   const o = b.obj;
   const foeC = centroid(foes);
-  const nearest = (d) => foes.reduce((a, f) => (dist(d, f) < dist(d, a) ? f : a));
+  const nearest = (u) => foes.reduce((a, f) => (dist(u, f) < dist(u, a) ? f : a));
+  const go = (u, t) => sendUnits(b, side, new Set([u.unit]), t.x, t.y);
   if (side === 'A') {
     // Foot soldiers march on the flag together; cavalry swings round a flank and hits from behind.
     const flankY = foeC.y > MAP_H / 2 ? 6 : MAP_H - 6;
-    mine.forEach((d, i) => {
-      if (d.type === 'cavalry') {
+    mine.forEach((u, i) => {
+      if (u.type === 'cavalry') {
         const behind = { x: Math.min(MAP_W - 3, foeC.x + 8), y: flankY };
-        const there = dist(d, behind) < 4 || d.x > foeC.x;
-        const t = there ? nearest(d) : behind;
-        d.tx = t.x;
-        d.ty = t.y;
-      } else {
-        d.tx = o.x - 1 + (i % 3);
-        d.ty = o.y + ((i % 5) - 2) * 1.5;
-      }
+        go(u, dist(u, behind) < 4 || u.x > foeC.x ? nearest(u) : behind);
+      } else go(u, { x: o.x - 1 + (i % 3) * 1.5, y: o.y + ((i % 5) - 2) * 2.2 });
     });
   } else {
     // Infantry hold the flag; militia meet attackers who come close; cavalry
     // rides behind the attackers to cut their supply line.
-    const attackers = foes;
-    const aC = centroid(attackers);
-    mine.forEach((d, i) => {
-      let t;
-      if (d.type === 'infantry') t = { x: o.x + ((i % 3) - 1) * 1.5, y: o.y + ((i % 4) - 1.5) * 1.5 };
-      else if (d.type === 'cavalry') {
+    const aC = centroid(foes);
+    mine.forEach((u, i) => {
+      if (u.type === 'infantry') go(u, { x: o.x + ((i % 3) - 1) * 2.4, y: o.y + ((i % 4) - 1.5) * 2.4 });
+      else if (u.type === 'cavalry') {
         const rear = { x: Math.max(3, aC.x - 8), y: aC.y > MAP_H / 2 ? MAP_H - 5 : 5 };
-        t = dist(d, rear) < 4 ? nearest(d) : rear;
+        go(u, dist(u, rear) < 4 ? nearest(u) : rear);
       } else {
-        const close = attackers.filter((a) => dist(a, o) < 16);
-        t = close.length ? nearest(d) : { x: o.x - 6, y: o.y + ((i % 5) - 2) * 2.5 };
+        const close = foes.filter((a) => dist(a, o) < 16);
+        go(u, close.length ? nearest(u) : { x: o.x - 6, y: o.y + ((i % 5) - 2) * 3.5 });
       }
-      d.tx = t.x;
-      d.ty = t.y;
     });
   }
 }
@@ -317,6 +352,7 @@ function flanked(d, attackers) {
 function stepBattle(b, dt, cfg) {
   if (b.status !== 'live') return false;
   b.time += dt;
+  const dpu = b.dpu || 1;
 
   // Sides that never gave an order get the computer's help.
   for (const side of SIDES) {
@@ -332,26 +368,26 @@ function stepBattle(b, dt, cfg) {
 
   // Who is in contact with whom
   const contact = new Map();
-  for (const d of b.dots) contact.set(d, b.dots.filter((e) => e.side !== d.side && dist(d, e) <= CONTACT));
+  for (const d of b.dots) contact.set(d, b.dots.filter((e) => e.side !== d.side && Math.abs(e.x - d.x) <= CONTACT && dist(d, e) <= CONTACT));
 
   // Movement: dots in contact can still move, but slowly.
   for (const d of b.dots) {
     const togo = Math.hypot(d.tx - d.x, d.ty - d.y);
-    if (togo < 0.2) continue;
-    const sp = cfg[d.type].speed * speedFactor(terrainAt(b, d.x, d.y), d.type) * (contact.get(d).length ? 0.35 : 1) * dt;
+    if (togo < 0.15) continue;
+    const sp = cfg[d.type].speed * speedFactor(terrainAt(b, d.x, d.y), d.type) * (contact.get(d).length ? 0.3 : 1) * dt;
     const k = Math.min(1, sp / togo);
     d.x += (d.tx - d.x) * k;
     d.y += (d.ty - d.y) * k;
   }
-  // Keep friendly dots from piling on top of each other.
+  // Keep dots of the same side from piling on top of each other.
   for (let i = 0; i < b.dots.length; i++) {
     for (let j = i + 1; j < b.dots.length; j++) {
       const a = b.dots[i];
       const c = b.dots[j];
       if (a.side !== c.side) continue;
       const dd = dist(a, c);
-      if (dd > 0 && dd < 1.4) {
-        const push = (1.4 - dd) / 2;
+      if (dd > 0 && dd < 1.1) {
+        const push = (1.1 - dd) / 2;
         const ux = (a.x - c.x) / dd;
         const uy = (a.y - c.y) / dd;
         a.x = clamp(a.x + ux * push, 0.5, MAP_W - 0.5);
@@ -362,13 +398,13 @@ function stepBattle(b, dt, cfg) {
     }
   }
 
-  // Combat: every dot hits the nearest enemy in contact.
+  // Combat: every dot hits the nearest enemy in contact. A unit's damage is shared by its dots.
   const damage = new Map();
   for (const d of b.dots) {
     const foes = contact.get(d);
     if (!foes.length) continue;
     const target = foes.reduce((a, f) => (dist(d, f) < dist(d, a) ? f : a));
-    let dmg = cfg[d.type].attack * matchup(d.type, target.type, cfg, target.cut) * dt;
+    let dmg = (cfg[d.type].attack / dpu) * matchup(d.type, target.type, cfg, target.cut) * dt;
     if (d.cut) dmg *= 0.75; // cut-off troops are low on supplies
     damage.set(target, (damage.get(target) || 0) + dmg);
   }
@@ -384,7 +420,7 @@ function stepBattle(b, dt, cfg) {
     return false;
   });
 
-  // Supply lines and surrender
+  // Territory, supply lines and surrender
   b.supplyTimer -= dt;
   if (b.supplyTimer <= 0) {
     computeSupply(b);
@@ -421,14 +457,31 @@ function finish(b, winner, reason) {
   return true;
 }
 
-/** Surviving troops per side, by type. */
+/**
+ * Units that come out of the battle, by type: the surviving dots of each type
+ * are grouped back into whole units (rounding up), never more than went in.
+ */
 function survivors(b, side) {
+  const dpu = b.dpu || 1;
+  const dots = zero();
+  for (const d of b.dots) if (d.side === side) dots[d.type]++;
   const c = zero();
-  for (const d of b.dots) if (d.side === side) c[d.type]++;
+  for (const k of TYPES) c[k] = Math.min(b.initial ? b.initial[side][k] : Infinity, Math.ceil(dots[k] / dpu));
   return c;
 }
 
-/** A small copy of a battle for sending to browsers ten times a second. */
+/** Units lost in the battle (destroyed or surrendered). */
+function unitsLost(b, side) {
+  const start = b.initial ? sum(b.initial[side]) : sum(survivors(b, side)) + Math.ceil((sum(b.losses[side]) + sum(b.surrendered[side])) / (b.dpu || 1));
+  return start - sum(survivors(b, side));
+}
+
+/** Of the units lost, how many surrendered after being cut off. */
+function unitsSurrendered(b, side) {
+  return Math.min(unitsLost(b, side), Math.round(sum(b.surrendered[side]) / (b.dpu || 1)));
+}
+
+/** A small copy of a battle for sending to browsers several times a second. */
 function snapshot(b) {
   return {
     id: b.id,
@@ -437,8 +490,38 @@ function snapshot(b) {
     status: b.status,
     winner: b.winner,
     auto: b.auto,
-    dots: b.dots.map((d) => [d.id, d.side, d.type, Math.round(d.x * 10) / 10, Math.round(d.y * 10) / 10, Math.round((d.hp / d.max) * 100), d.cut ? 1 : 0, Math.round(d.tx * 10) / 10, Math.round(d.ty * 10) / 10]),
+    terr: territoryString(b),
+    dots: b.dots.map((d) => [
+      d.id,
+      d.side,
+      d.type,
+      Math.round(d.x * 10) / 10,
+      Math.round(d.y * 10) / 10,
+      Math.round((d.hp / d.max) * 100),
+      d.cut ? 1 : 0,
+      Math.round(d.tx * 10) / 10,
+      Math.round(d.ty * 10) / 10,
+      d.unit,
+    ]),
   };
 }
 
-module.exports = { MAP_W, MAP_H, TCELL, TYPES, createBattle, stepBattle, order, runAI, survivors, snapshot, sum, makeTerrain, computeSupply };
+module.exports = {
+  MAP_W,
+  MAP_H,
+  TCELL,
+  SCELL,
+  TYPES,
+  createBattle,
+  stepBattle,
+  order,
+  runAI,
+  survivors,
+  unitsLost,
+  unitsSurrendered,
+  snapshot,
+  territoryString,
+  sum,
+  makeTerrain,
+  computeSupply,
+};

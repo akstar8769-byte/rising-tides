@@ -382,6 +382,7 @@ function attachRooms(io) {
       labels: config.LABELS,
       limits: config.LIMITS,
       options: config.OPTIONS,
+      decimals: config.DECIMALS,
       groupsForMode: config.GROUPS_FOR_MODE,
       modes: engine.MODES,
       builtModes: engine.BUILT_MODES,

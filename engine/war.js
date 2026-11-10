@@ -1514,14 +1514,15 @@ function finishBattleTW(s, b) {
   const D = s.players[b.defender];
   const aLeft = battles.survivors(b, 'A');
   const dLeft = battles.survivors(b, 'D');
-  const lost = (side) => battles.sum(b.losses[side]) + battles.sum(b.surrendered[side]);
+  // Casualties are counted in whole units: surviving dots are grouped back into units.
+  const lost = (side) => battles.unitsLost(b, side);
   A.stats.unitsLost += lost('A');
   D.stats.unitsLost += lost('D');
-  A.stats.encircledKills = (A.stats.encircledKills || 0) + battles.sum(b.surrendered.D);
-  D.stats.encircledKills = (D.stats.encircledKills || 0) + battles.sum(b.surrendered.A);
+  A.stats.encircledKills = (A.stats.encircledKills || 0) + battles.unitsSurrendered(b, 'D');
+  D.stats.encircledKills = (D.stats.encircledKills || 0) + battles.unitsSurrendered(b, 'A');
   const winner = b.winner === 'A' ? A : D;
   winner.stats.battlesWon = (winner.stats.battlesWon || 0) + 1;
-  const surrender = (side) => (battles.sum(b.surrendered[side]) ? `, ${battles.sum(b.surrendered[side])} surrendered (cut off)` : '');
+  const surrender = (side) => (battles.unitsSurrendered(b, side) ? `, ${battles.unitsSurrendered(b, side)} surrendered (cut off)` : '');
   addLog(
     s,
     `⚔ ${winner.name} wins the battle for ${tileName(s, T)} — ${b.reason}. ${A.name} lost ${lost('A')}${surrender('A')}; ${D.name} lost ${lost('D')}${surrender('D')}.`,

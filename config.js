@@ -7,7 +7,7 @@
  * to change the defaults for everyone.
  *
  * Rules for editing:
- *  - Numbers must be whole numbers (no decimals).
+ *  - Numbers must be whole numbers, except the few listed in DECIMALS (one decimal place).
  *  - If you add a new setting, also add a label for it in LABELS below, so it
  *    shows up nicely in the lobby, and (if needed) a min/max in LIMITS.
  *  - Settings are grouped: "general" applies to every mode, "base" to the base
@@ -112,15 +112,16 @@ const DEFAULTS = {
     capitalOpensAfter: 1,        // provinces that must fall before a capital can be attacked
     // Unit types. cost = materials to recruit, upkeep = upkeep points, hp = toughness,
     // attack = damage per second in battle, speed = map squares per second.
-    militia: { cost: 2, upkeep: 1, hp: 10, attack: 2, speed: 5 },
-    infantry: { cost: 4, upkeep: 1, hp: 18, attack: 3, speed: 4 },
-    cavalry: { cost: 5, upkeep: 2, hp: 12, attack: 3, speed: 9 },
+    militia: { cost: 2, upkeep: 1, hp: 10, attack: 1, speed: 3 },
+    infantry: { cost: 4, upkeep: 1, hp: 18, attack: 1.5, speed: 2.5 },
+    cavalry: { cost: 5, upkeep: 2, hp: 12, attack: 1.5, speed: 5 },
+    dotsPerUnit: 3,              // each unit appears as this many dots on the battlefield (1-6)
     cavalryVsMilitiaPct: 150,    // cavalry rides down militia...
     cavalryVsInfantryPct: 70,    // ...but infantry stand firm against it...
     cavalryVsCutOffInfantryPct: 150, // ...unless the infantry are encircled (cut off from supply)
     // Battles
-    battleSeconds: 90,           // a battle lasts at most this long; then the defender holds
-    captureSeconds: 8,           // attackers holding the objective alone this long win
+    battleSeconds: 120,          // a battle lasts at most this long; then the defender holds
+    captureSeconds: 10,          // attackers holding the objective alone this long win
     surrenderSeconds: 8,         // units cut off from supply this long surrender
     cutOffDamagePct: 175,        // damage taken by units cut off from supply (encircled)
     flankDamagePct: 140,         // damage taken by units attacked from two sides
@@ -243,6 +244,7 @@ const LABELS = {
   'totalwar.cavalryVsMilitiaPct': 'Cavalry damage vs militia (%)',
   'totalwar.cavalryVsInfantryPct': 'Cavalry damage vs infantry (%)',
   'totalwar.cavalryVsCutOffInfantryPct': 'Cavalry damage vs encircled infantry (%)',
+  'totalwar.dotsPerUnit': 'Dots per unit on the battlefield',
   'totalwar.battleSeconds': 'Battle time limit (seconds)',
   'totalwar.captureSeconds': 'Seconds to capture the objective',
   'totalwar.surrenderSeconds': 'Seconds cut off before surrendering',
@@ -293,6 +295,7 @@ const LIMITS = {
   'totalwar.militia.hp': [1, 999],
   'totalwar.infantry.hp': [1, 999],
   'totalwar.cavalry.hp': [1, 999],
+  'totalwar.dotsPerUnit': [1, 6],
   'totalwar.militia.speed': [1, 30],
   'totalwar.infantry.speed': [1, 30],
   'totalwar.cavalry.speed': [1, 30],
@@ -303,6 +306,9 @@ const LIMITS = {
   'totalwar.scoreMaterialsPer': [1, 99],
   'empire.captureStockDivisor': [1, 10],
 };
+
+/** Settings that may have one decimal place (unit damage and speed in Total War). */
+const DECIMALS = ['militia', 'infantry', 'cavalry'].flatMap((u) => [`totalwar.${u}.attack`, `totalwar.${u}.speed`]);
 
 /** Allowed values for text settings. */
 const OPTIONS = {
@@ -341,8 +347,10 @@ function setSetting(settings, path, value) {
   } else if (typeof def === 'number') {
     const n = Number(value);
     const [min, max] = LIMITS[path] || [0, 999];
-    if (!Number.isInteger(n) || n < min || n > max) {
-      throw new Error(`"${LABELS[path] || path}" must be a whole number from ${min} to ${max}.`);
+    const decimal = DECIMALS.includes(path);
+    const ok = decimal ? Number.isFinite(n) && Math.abs(n * 10 - Math.round(n * 10)) < 1e-9 : Number.isInteger(n);
+    if (!ok || n < min || n > max) {
+      throw new Error(`"${LABELS[path] || path}" must be ${decimal ? 'a number with at most one decimal place' : 'a whole number'} from ${min} to ${max}.`);
     }
     clean = n;
   } else {
@@ -358,4 +366,4 @@ function setSetting(settings, path, value) {
   return copy;
 }
 
-module.exports = { DEFAULTS, LABELS, LIMITS, OPTIONS, GROUPS_FOR_MODE, cloneDefaults, getPath, setSetting };
+module.exports = { DEFAULTS, LABELS, LIMITS, OPTIONS, DECIMALS, GROUPS_FOR_MODE, cloneDefaults, getPath, setSetting };
