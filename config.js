@@ -128,6 +128,7 @@ const DEFAULTS = {
     upkeepPointsPerMaterial: 4,  // pay 1 material per this many upkeep points (see unit upkeep below)
     startMilitia: 2,             // militia each player starts with, on their capital
     capitalOpensAfter: 1,        // provinces that must fall before a capital can be attacked
+    truceRounds: 2,              // opening truce: no attacks on other players in the first this-many rounds (empty land is fine)
     boardLayout: 'sea37',        // Total War board: 37 hexes with sea bays between the players
     // Unit types (what each one is: engine/arsenal.js). cost = materials to recruit,
     // upkeep = upkeep points, hp = toughness, attack = damage per second in battle,
@@ -171,6 +172,7 @@ const DEFAULTS = {
     cavalryVsInfantryPct: 70,    // ...but infantry stand firm against it...
     cavalryVsCutOffInfantryPct: 150, // ...unless the infantry are encircled (cut off from supply)
     // Battles
+    battleSpeedPct: 60,          // how fast battles play (100 = original pace); all timers stretch to match
     battleSeconds: 120,          // a battle lasts at most this long; then the defender holds
     captureSeconds: 10,          // attackers holding the objective alone this long win
     surrenderSeconds: 8,         // units cut off from supply this long surrender
@@ -292,6 +294,8 @@ const LABELS = {
   'totalwar.upkeepPointsPerMaterial': 'Upkeep: points per 1 material',
   'totalwar.startMilitia': 'Starting militia',
   'totalwar.capitalOpensAfter': 'Capital can be attacked after this many provinces fall',
+  'totalwar.truceRounds': 'Opening truce: rounds with no attacks on players',
+  'totalwar.battleSpeedPct': 'Battle speed (%, 100 = original pace)',
   'totalwar.militia.cost': 'Militia: cost',
   'totalwar.militia.upkeep': 'Militia: upkeep points',
   'totalwar.militia.hp': 'Militia: toughness (HP)',
@@ -370,6 +374,8 @@ const LIMITS = {
   'totalwar.captureSeconds': [1, 120],
   'totalwar.surrenderSeconds': [1, 120],
   'totalwar.capitalOpensAfter': [1, 9],
+  'totalwar.truceRounds': [0, 20],
+  'totalwar.battleSpeedPct': [20, 200],
   'totalwar.scoreMaterialsPer': [1, 99],
   'empire.captureStockDivisor': [1, 10],
 };

@@ -34,6 +34,8 @@ const E = (s) => s.settings.empire;
 const isEmpire = (s) => s.mode === 'empire';
 const TW = (s) => s.mode === 'totalwar'; // Total War: war is encouraged
 const TWS = (s) => s.settings.totalwar;
+/** Total War opening truce: no attacks on other players yet (claiming empty land is fine). */
+const inTruce = (s) => TW(s) && s.round <= (TWS(s).truceRounds || 0);
 
 function getTile(s, id) {
   const t = s.board.tiles.find((x) => x.id === id && x.kind === 'land');
@@ -177,12 +179,13 @@ function attackTargets(s, seat) {
         !forbidden.has(t.controller) &&
         (mine.some((m) => areAdjacent(m, t)) || amph.some((sea) => areAdjacent(sea, t))) &&
         (t.controller != null || W(s).openTilesClaimable) &&
+        !(t.controller != null && inTruce(s)) &&
         !(t.role === 'capital' && !capitalOpen(s, t)),
     )
     .map((t) => t.id);
   // Total War: ships can sail to any sea bay that isn't already theirs (the bays are joined by the ocean).
   const hasShips = seasHeld(s, seat).some((t) => unitsAt(t, seat) > 0);
-  const sea = TW(s) && hasShips ? s.board.tiles.filter((t) => t.kind === 'sea' && t.controller !== seat && !forbidden.has(t.controller)).map((t) => t.id) : [];
+  const sea = TW(s) && hasShips ? s.board.tiles.filter((t) => t.kind === 'sea' && t.controller !== seat && !forbidden.has(t.controller) && !(t.controller != null && inTruce(s))).map((t) => t.id) : [];
   return [...land, ...sea];
 }
 
@@ -537,7 +540,11 @@ function choose(s, actor, { action, mix, target, aid, from, count, troops } = {}
     ch.mix = cleanBag(mix, 'mix');
     if (bagTotal(ch.mix) !== n) fail(`Pick exactly ${n} materials.`);
   } else if (action === 'attack') {
-    if (p.puppetOf == null && !attackTargets(s, actor).includes(target)) fail("You can't attack that tile.");
+    if (p.puppetOf == null && !attackTargets(s, actor).includes(target)) {
+      const T0 = s.board.tiles.find((x) => x.id === target);
+      if (T0 && T0.controller != null && T0.controller !== actor && inTruce(s)) fail(`Opening truce: no attacks on other players until round ${TWS(s).truceRounds + 1}.`);
+      fail("You can't attack that tile.");
+    }
     const T = TW(s) ? getAnyTile(s, target) : getTile(s, target);
     diplomacy.checkMove(s, actor, 'attack', T.controller);
     if (ST(s)) {
@@ -978,6 +985,7 @@ function decorateView(v, s, seat) {
     const cfg = TWS(s);
     const meP = s.players[seat];
     v.tw = {
+      truce: inTruce(s) ? cfg.truceRounds : 0, // last round of the opening truce (0 = none)
       units: battles.TYPES.map((k) => ({ type: k, ...cfg[k], ...ARS.UNITS[k], unlocked: meP ? ARS.canBuild(meP, k) : false })),
       techs: ARS.TECH_IDS.map((id) => ({ id, ...ARS.TECHS[id], cost: cfg.research[id] })),
       formations: battles.FORMATION_IDS.map((id) => ({ id, name: battles.FORMATIONS[id].name, desc: battles.FORMATIONS[id].desc, ...cfg.formations[id] })),
@@ -1755,7 +1763,7 @@ function stepBattles(s, dt) {
   let ended = false;
   for (const b of s.battles) {
     if (b.status !== 'live') continue;
-    if (battles.stepBattle(b, dt, TWS(s))) {
+    if (battles.stepBattle(b, dt * (b.speed || 1), TWS(s))) {
       ended = true;
       finishBattleTW(s, b);
       if (s.phase === 'ended') return true;

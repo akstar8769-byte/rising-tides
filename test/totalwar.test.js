@@ -396,3 +396,33 @@ test('total war: bots can play whole games, battles included', () => {
     for (const p of s.players) assert.equal(p.units, s.board.tiles.reduce((a, t) => a + (t.units[p.seat] || 0), 0));
   }
 });
+
+test('total war: opening truce blocks attacks on players, not empty land', () => {
+  let s = newGame({ n: 4, mode: 'totalwar', truce: true, biomes: BIOMES, settings: (c) => (c.totalwar.boardLayout = 'standard19') });
+  assert.equal(s.settings.totalwar.truceRounds, 2);
+  const targets = engine.attackTargets(s, 0);
+  const tiles = (ids) => ids.map((id) => s.board.tiles.find((t) => t.id === id));
+  assert.ok(tiles(targets).every((t) => t.controller == null), 'only empty land is a target during the truce');
+  const enemy = s.board.tiles.find((t) => t.controller != null && t.controller !== 0 && t.kind === 'land');
+  s = allReady(s);
+  assert.throws(() => engine.applyAction(s, 0, { type: 'choose', action: 'attack', target: enemy.id, from: 'C0', troops: { militia: 1 } }), /truce/i);
+  const view = engine.viewFor(s, 0);
+  assert.equal(view.tw.truce, 2);
+  // Round 3: the truce is over.
+  const later = structuredClone(s);
+  later.round = 3;
+  assert.equal(engine.viewFor(later, 0).tw.truce, 0);
+});
+
+test('total war: battles run in slow motion at battleSpeedPct', () => {
+  const timeAfter = (pct) => {
+    let s = place(twGame((c) => (c.totalwar.battleSpeedPct = pct)), { 0: { I0: { infantry: 2, cavalry: 2 } }, 1: { I1: { militia: 2 }, C1: { militia: 1 } } });
+    s = chooseAll(allReady(s), { 0: { action: 'attack', target: 'I1', from: 'I0', troops: { infantry: 2, cavalry: 2 } } });
+    s = structuredClone(s);
+    assert.equal(s.battles[0].speed, pct / 100);
+    for (let i = 0; i < 10; i++) engine.stepBattles(s, 0.1); // one real second
+    return s.battles[0].time;
+  };
+  assert.ok(Math.abs(timeAfter(100) - 1) < 1e-6);
+  assert.ok(Math.abs(timeAfter(50) - 0.5) < 1e-6);
+});

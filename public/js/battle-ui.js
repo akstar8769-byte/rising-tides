@@ -332,8 +332,8 @@ export function battlePanel(store) {
       <span>${chip(D.seat, D.name)} <small>defending · <span class="army-D">${army('D')}</span></small></span>
     </div>
     <div class="battle-meta row wrap small">
-      <span>⏱ <b class="battle-clock">${done ? 'over' : fmt(b.limit - b.time)}</b></span>
-      ${kind === 'air' ? '<span>No flag: shoot down their aircraft. Winner gets air superiority.</span>' : `<span>⚑ capture <b class="battle-capture">${Math.min(b.capture, b.captureNeeded).toFixed(1)}</b> / ${b.captureNeeded}s</span>`}
+      <span>⏱ <b class="battle-clock">${done ? 'over' : fmt((b.limit - b.time) / (b.speed || 1))}</b></span>
+      ${kind === 'air' ? '<span>No flag: shoot down their aircraft. Winner gets air superiority.</span>' : `<span>⚑ capture <b class="battle-capture">${(Math.min(b.capture, b.captureNeeded) / (b.speed || 1)).toFixed(1)}</b> / ${Math.round(b.captureNeeded / (b.speed || 1))}s</span>`}
       ${extras.map((x) => `<span>${x}</span>`).join('')}
       ${terrainKinds.length ? `<span class="muted">terrain: ${terrainKinds.join(', ')}</span>` : ''}
       ${done ? `<span class="tag ${b.winner === mySide ? 'ok' : 'warn'}">${b.winner === 'A' ? esc(A.name) : esc(D.name)} won</span>` : ''}
@@ -377,9 +377,9 @@ export function refreshBattle(store) {
   set('#bt-terr', territoryLayer(b));
   set('#bt-obj', objectiveLayer(b));
   const clock = document.querySelector('.battle-clock');
-  if (clock) clock.textContent = b.status === 'live' ? fmt(b.limit - b.time) : 'over';
+  if (clock) clock.textContent = b.status === 'live' ? fmt((b.limit - b.time) / (b.speed || 1)) : 'over';
   const cap = document.querySelector('.battle-capture');
-  if (cap) cap.textContent = Math.min(b.capture, b.captureNeeded).toFixed(1);
+  if (cap) cap.textContent = (Math.min(b.capture, b.captureNeeded) / (b.speed || 1)).toFixed(1);
   // Keep the Auto-battle button in step (the computer may take over an idle side).
   const g = store.data.game;
   const side = b.attacker === g.you ? 'A' : b.defender === g.you ? 'D' : null;

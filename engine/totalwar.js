@@ -269,6 +269,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     time: 0,
     capture: 0,
     limit: kind === 'air' ? cfg.airBattleSeconds || 45 : cfg.battleSeconds,
+    speed: (cfg.battleSpeedPct || 100) / 100, // slow motion: battle seconds per real second
     captureNeeded: cfg.captureSeconds,
     auto: { A: false, D: false },
     ordered: { A: false, D: false },

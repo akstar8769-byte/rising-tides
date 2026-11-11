@@ -207,6 +207,7 @@ A separate fourth mode where war is the point. Base, War and War + Empire are un
 
 **The strategic game** (built on the War rules with stationed units)
 - **18 rounds.** Light Flood: no Accord, sanctions or aid; no army, destruction or occupation Flood. Each real battle adds Flood +1 (claiming empty land is free), and the catastrophe line is much higher (28 / 30 / 32 for 3 / 4 / 5 players).
+- **Opening truce:** for the first 2 rounds nobody can attack another player. Claiming empty land is still allowed, so the opening is for expanding, researching and recruiting. (`truceRounds`; 0 turns it off.)
 - **Unit types:**
 
   | Type | Cost | Upkeep pts | HP | Damage/s | Speed | Notes |
@@ -254,6 +255,7 @@ After the first playtest ("a bit laggy, fast and weird; War of Dots shows a fron
 - **Territory and frontline.** Ground within 3 squares of a dot becomes that side's (the nearest dot wins) and **stays** theirs until enemy dots take it. The attacker starts with a strip on the left, the defender with most of the right. The battle screen tints each side's ground and draws a dark **frontline** where they meet.
 - **Supply through your own territory.** A dot is supplied if it can trace a path to its side's map edge without crossing **enemy territory** (empty ground is fine). Cutting a corridor through the enemy's ground behind them encircles them; cut-off ground shows as a red pocket. Marching forward lays your own corridor, so a normal advance stays supplied.
 - **Slower:** movement speeds and damage roughly halved, battles last up to 120 seconds, and capturing the flag takes 10 seconds. Unit damage and speed may now have one decimal place in the lobby.
+- **Slow motion (battle speed 60%):** battles now play at 60% of that pace. Everything slows down together: movement, damage, the clock, capturing and surrendering. A full battle therefore lasts up to about 200 real seconds, and taking the flag takes about 17. The battle screen shows real seconds. (`battleSpeedPct`; 100 = the old pace.)
 - **Smoother:** the browser slides dots between the server's 5-a-second updates and redraws only what changed.
 
 

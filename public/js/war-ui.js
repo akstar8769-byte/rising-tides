@@ -26,6 +26,8 @@ export function accordPill(g) {
 }
 
 export function accordCard(g) {
+  if (g.tw && g.tw.truce)
+    return `<p class="accord-note">🕊 <b>Opening truce</b> until the end of round ${g.tw.truce}: nobody can attack another player yet. Claiming empty land is allowed. Use the time to research, recruit and build up.</p>`;
   if (!g.war || g.war.noAccord) return '';
   const w = g.war;
   if (w.accordBroken)
@@ -436,7 +438,7 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
   const L = g.limits || { protectedSeats: {} };
   if (!puppet || cmd.action === 'unsustainable') cards.push(actionCard('unsustainable', 'Unsustainable', `Tiles + any ${prod.unsustainable}`, `Flood +${g.settings.base.unsustainableFlood}`, !!L.noUnsustainable, L.noUnsustainable ? '📜 Treaty forbids' : ''));
   if (!puppet) {
-    const why = L.noAttacks ? '📜 Treaty forbids' : pool < 1 ? 'Needs 1 unit' : !g.attackTargets.length ? 'No targets' : g.stationed && !g.attackTargets.some((id) => (g.attackSources[id] || []).length) ? 'No units at the front' : '';
+    const why = L.noAttacks ? '📜 Treaty forbids' : pool < 1 ? 'Needs 1 unit' : !g.attackTargets.length ? (g.tw && g.tw.truce ? `🕊 Truce until round ${g.tw.truce + 1}` : 'No targets') : g.stationed && !g.attackTargets.some((id) => (g.attackSources[id] || []).length) ? 'No units at the front' : '';
     cards.push(actionCard('attack', 'Attack', 'Tile income only', `Flood +${w.attackFlood}`, !!why, why));
   } else if (cmd.action === 'attack') {
     cards.push(actionCard('attack', 'Attack (ordered)', esc(tileLabel(g, cmd.target)), `Flood +${w.attackFlood}`));
