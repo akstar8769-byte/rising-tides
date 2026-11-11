@@ -23,6 +23,7 @@ const { BIOMES, areAdjacent } = require('./board');
 const base = require('./base');
 const diplomacy = require('./diplomacy');
 const battles = require('./totalwar');
+const ARS = require('./arsenal');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,6 +39,22 @@ function getTile(s, id) {
   const t = s.board.tiles.find((x) => x.id === id && x.kind === 'land');
   if (!t) fail('Pick a valid tile.');
   return t;
+}
+/** A land tile or (Total War) a sea bay. */
+function getAnyTile(s, id) {
+  const t = s.board.tiles.find((x) => x.id === id && (x.kind === 'land' || x.kind === 'sea'));
+  if (!t) fail('Pick a valid tile.');
+  return t;
+}
+const domainOf = (k) => ARS.UNITS[k].domain;
+const isCoastal = (s, t) => t.kind === 'land' && s.board.tiles.some((x) => x.kind === 'sea' && areAdjacent(x, t));
+/** Sea bays this player's ships hold. */
+function seasHeld(s, seat) {
+  return s.board.tiles.filter((t) => t.kind === 'sea' && t.controller === seat);
+}
+/** A sea bay with no ships left in it belongs to nobody. */
+function refreshSeas(s) {
+  for (const t of s.board.tiles) if (t.kind === 'sea' && !Object.values(t.units || {}).some((n) => n > 0)) t.controller = null;
 }
 function controlled(s, seat) {
   return s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat);
@@ -71,6 +88,7 @@ function aidEligible(s, p) {
 }
 
 function tileName(s, t) {
+  if (t.kind === 'sea') return `the sea bay ${t.id}${t.controller != null ? ' held by ' + s.players[t.controller].name : ''}`;
   const biome = BIOMES[t.biome].label;
   const held = t.controller != null && t.controller !== t.owner ? ` held by ${s.players[t.controller].name}` : '';
   if (t.owner == null) return `the open ${biome} tile ${t.id}${held}`;
@@ -150,16 +168,22 @@ function attackTargets(s, seat) {
     puppetsOf(s, p.puppetOf).forEach((x) => forbidden.add(x));
   }
   const mine = controlled(s, seat);
-  return s.board.tiles
+  // Total War: amphibious attacks land on coasts next to a sea bay your ships hold.
+  const amph = TW(s) && TWS(s).amphibious && mine.some((m) => isCoastal(s, m)) ? seasHeld(s, seat) : [];
+  const land = s.board.tiles
     .filter(
       (t) =>
         t.kind === 'land' &&
         !forbidden.has(t.controller) &&
-        mine.some((m) => areAdjacent(m, t)) &&
+        (mine.some((m) => areAdjacent(m, t)) || amph.some((sea) => areAdjacent(sea, t))) &&
         (t.controller != null || W(s).openTilesClaimable) &&
         !(t.role === 'capital' && !capitalOpen(s, t)),
     )
     .map((t) => t.id);
+  // Total War: ships can sail to any sea bay that isn't already theirs (the bays are joined by the ocean).
+  const hasShips = seasHeld(s, seat).some((t) => unitsAt(t, seat) > 0);
+  const sea = TW(s) && hasShips ? s.board.tiles.filter((t) => t.kind === 'sea' && t.controller !== seat && !forbidden.has(t.controller)).map((t) => t.id) : [];
+  return [...land, ...sea];
 }
 
 /** A puppet's command, falling back to Sustainable if none or no longer possible (Q22). */
@@ -237,6 +261,7 @@ function recruit(s, actor, { count = 1, materials, tile, unit = 'militia' } = {}
   const p = me(s, actor);
   if (!Number.isInteger(count) || count < 1 || count > 50) fail('Invalid number of units.');
   if (!battles.TYPES.includes(unit) || (!TW(s) && unit !== 'militia')) fail('Unknown unit type.');
+  if (TW(s) && !ARS.canBuild(p, unit)) fail(`Research ${ARS.TECHS[ARS.UNITS[unit].tech].name} first.`);
   diplomacy.checkUnits(s, actor, p.units + count);
   const bag = cleanBag(materials);
   const need = (TW(s) ? TWS(s)[unit].cost : W(s).unitCost) * count;
@@ -245,8 +270,15 @@ function recruit(s, actor, { count = 1, materials, tile, unit = 'militia' } = {}
   let where = '';
   if (ST(s)) {
     // Stationed units: new units appear on a tile you control (default: your capital).
-    const T = getTile(s, tile || p.homeTile);
-    if (T.controller !== actor) fail('Recruit onto a tile you control.');
+    const T = TW(s) ? getAnyTile(s, tile || p.homeTile) : getTile(s, tile || p.homeTile);
+    if (TW(s) && domainOf(unit) === 'sea') {
+      // Ships are launched into a sea bay next to your coast that no enemy fleet holds.
+      if (T.kind !== 'sea') fail('Ships must be launched into a sea bay.');
+      if (T.controller != null && T.controller !== actor) fail('Enemy ships hold that bay.');
+      if (!controlled(s, actor).some((m) => areAdjacent(m, T))) fail('Launch ships into a bay next to your own coast.');
+      T.controller = actor;
+    } else if (T.kind !== 'land') fail('Only ships can go to sea.');
+    else if (T.controller !== actor) fail('Recruit onto a tile you control.');
     addTroops(T, actor, { ...zeroTroops(), [unit]: count });
     where = ` on ${tileName(s, T)}`;
   }
@@ -335,6 +367,7 @@ function freePuppet(s, seat, text) {
 
 function upkeep(s) {
   const w = W(s);
+  if (TW(s)) finishResearch(s);
   // 1. Planned withdrawals and releases
   for (const p of s.players) {
     for (const id of p.plans.withdraw) {
@@ -505,16 +538,21 @@ function choose(s, actor, { action, mix, target, aid, from, count, troops } = {}
     if (bagTotal(ch.mix) !== n) fail(`Pick exactly ${n} materials.`);
   } else if (action === 'attack') {
     if (p.puppetOf == null && !attackTargets(s, actor).includes(target)) fail("You can't attack that tile.");
-    diplomacy.checkMove(s, actor, 'attack', getTile(s, target).controller);
+    const T = TW(s) ? getAnyTile(s, target) : getTile(s, target);
+    diplomacy.checkMove(s, actor, 'attack', T.controller);
     if (ST(s)) {
       const src = s.board.tiles.find((x) => x.id === from);
-      if (!src || src.controller !== actor || !areAdjacent(src, getTile(s, target))) fail('Attack from one of your tiles next to the target.');
-      if (TW(s) && troops) {
-        const tr = cleanTroops(troops);
+      const okSrc = TW(s) ? attackSources(s, actor, target).some((x) => x.tile === from) : src && src.controller === actor && areAdjacent(src, T);
+      if (!src || src.controller !== actor || !okSrc) fail(T.kind === 'sea' ? 'Sail from a sea bay your ships hold.' : 'Attack from one of your tiles next to the target (or across a sea bay you hold).');
+      if (TW(s)) {
+        const tr = troops ? cleanTroops(troops) : null;
         const have = troopsAt(src, actor);
-        if (battles.TYPES.some((k) => tr[k] > have[k])) fail("You don't have those troops on that tile.");
-        count = battles.sum(tr);
-        ch.troops = tr;
+        if (tr && battles.TYPES.some((k) => tr[k] > 0 && (domainOf(k) === 'sea') !== (T.kind === 'sea'))) fail(T.kind === 'sea' ? 'Only ships can fight at sea.' : "Ships can't go ashore — they shell the coast from their bay instead.");
+        if (tr && battles.TYPES.some((k) => tr[k] > have[k])) fail("You don't have those troops on that tile.");
+        if (tr) {
+          count = battles.sum(tr);
+          ch.troops = tr;
+        }
       }
       checkSend(src, actor, count);
       Object.assign(ch, { from, count });
@@ -571,7 +609,7 @@ function defaultChoice(s, p) {
 function choiceText(s, p) {
   const ch = p.choice;
   const ordered = p.puppetOf != null && ch.action !== 'revolt' ? ' (as commanded)' : '';
-  if (ch.action === 'attack') return `Attack on ${tileName(s, getTile(s, ch.target))}${ordered}`;
+  if (ch.action === 'attack') return `Attack on ${tileName(s, getAnyTile(s, ch.target))}${ordered}`;
   if (ch.action === 'revolt') return `REVOLT against ${s.players[p.puppetOf].name}`;
   return ACTION_LABEL[ch.action] + ordered;
 }
@@ -937,8 +975,20 @@ function decorateView(v, s, seat) {
   delete v.battleQueue;
   if (TW(s)) {
     v.war.noAccord = true;
-    v.tw = { units: battles.TYPES.map((k) => ({ type: k, ...TWS(s)[k] })), mapW: battles.MAP_W, mapH: battles.MAP_H };
-    for (const p of v.players) p.upkeepDue = upkeepDue(s, s.players[p.seat]);
+    const cfg = TWS(s);
+    const meP = s.players[seat];
+    v.tw = {
+      units: battles.TYPES.map((k) => ({ type: k, ...cfg[k], ...ARS.UNITS[k], unlocked: meP ? ARS.canBuild(meP, k) : false })),
+      techs: ARS.TECH_IDS.map((id) => ({ id, ...ARS.TECHS[id], cost: cfg.research[id] })),
+      formations: battles.FORMATION_IDS.map((id) => ({ id, name: battles.FORMATIONS[id].name, desc: battles.FORMATIONS[id].desc, ...cfg.formations[id] })),
+      mapW: battles.MAP_W,
+      mapH: battles.MAP_H,
+      seas: meP ? s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller == null || t.controller === seat) && controlled(s, seat).some((m) => areAdjacent(m, t))).map((t) => t.id) : [],
+    };
+    for (const p of v.players) {
+      p.upkeepDue = upkeepDue(s, s.players[p.seat]);
+      p.research = researchOf(s.players[p.seat]);
+    }
   }
   if (ST(s)) {
     v.stationed = true;
@@ -951,6 +1001,7 @@ function decorateView(v, s, seat) {
     for (const id of targets) v.attackSources[id] = attackSources(s, seat, id);
     v.revoltSources = mine && mine.puppetOf != null ? controlled(s, seat).filter((t) => unitsAt(t, seat) > 0).map((t) => ({ tile: t.id, units: unitsAt(t, seat) })) : [];
     v.standTiles = mine ? s.board.tiles.filter((t) => canStand(s, seat, t)).map((t) => t.id) : [];
+    if (TW(s) && mine) v.seaTiles = s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller === seat || t.controller == null)).map((t) => t.id);
   }
 }
 
@@ -972,7 +1023,7 @@ function unitsAt(t, seat) {
  * other modes only ever use militia). t.units[seat] is the total, t.troops[seat]
  * the breakdown. These helpers keep the two in step.
  */
-const zeroTroops = () => ({ militia: 0, infantry: 0, cavalry: 0 });
+const zeroTroops = () => ARS.zero();
 function troopsAt(t, seat) {
   const n = unitsAt(t, seat);
   const tr = t.troops && t.troops[seat];
@@ -989,7 +1040,7 @@ function setTroops(t, seat, c) {
     return;
   }
   t.units[seat] = n;
-  t.troops[seat] = { militia: c.militia || 0, infantry: c.infantry || 0, cavalry: c.cavalry || 0 };
+  t.troops[seat] = Object.fromEntries(battles.TYPES.filter((k) => c[k] > 0).map((k) => [k, c[k]]));
 }
 function addTroops(t, seat, c) {
   const cur = troopsAt(t, seat);
@@ -1005,12 +1056,13 @@ function takeTroops(t, seat, c) {
   setTroops(t, seat, cur);
   return { ...zeroTroops(), ...c };
 }
-/** Take n units, cheapest types first. Returns what was taken. */
-function takeCheapest(t, seat, n) {
+/** Take n units, cheapest types first (only types that can go to `domainFilter`). Returns what was taken. */
+function takeCheapest(t, seat, n, domainFilter = null) {
   const cur = troopsAt(t, seat);
   const taken = zeroTroops();
   let left = n;
   for (const k of battles.TYPES) {
+    if (domainFilter === 'sea' ? domainOf(k) !== 'sea' : domainFilter === 'land' ? domainOf(k) === 'sea' : false) continue;
     const x = Math.min(left, cur[k]);
     cur[k] -= x;
     taken[k] += x;
@@ -1101,9 +1153,18 @@ function removeFromLargest(s, seat, n) {
 function attackSources(s, seat, targetId) {
   const T = s.board.tiles.find((x) => x.id === targetId);
   if (!T) return [];
-  return s.board.tiles
-    .filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && areAdjacent(t, T))
-    .map((t) => ({ tile: t.id, units: unitsAt(t, seat) }));
+  if (T.kind === 'sea') {
+    // Fleets sail from any bay they hold.
+    return seasHeld(s, seat)
+      .filter((t) => t !== T && unitsAt(t, seat) > 0)
+      .map((t) => ({ tile: t.id, units: unitsAt(t, seat) }));
+  }
+  const near = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && areAdjacent(t, T));
+  let amph = [];
+  if (TW(s) && TWS(s).amphibious && seasHeld(s, seat).some((sea) => areAdjacent(sea, T))) {
+    amph = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && isCoastal(s, t) && !near.includes(t));
+  }
+  return [...near.map((t) => ({ tile: t.id, units: unitsAt(t, seat) })), ...amph.map((t) => ({ tile: t.id, units: unitsAt(t, seat), amphibious: true }))];
 }
 /** Units on a tile that defend it: the holder's first, then helpers (e.g. an overlord). Revolt: overlord only. */
 function tileDefenders(T, revolt) {
@@ -1136,9 +1197,24 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
   requireBuild(s);
   if (!ST(s)) fail('Units are not stationed in this game.');
   const p = me(s, actor);
-  const A = getTile(s, from);
-  const B = getTile(s, to);
+  const A = TW(s) ? getAnyTile(s, from) : getTile(s, from);
+  const B = TW(s) ? getAnyTile(s, to) : getTile(s, to);
   if (A === B) fail('Pick two different tiles.');
+  if (A.kind === 'sea' || B.kind === 'sea') {
+    // Fleets sail between bays: any bay you hold or an empty one.
+    if (A.kind !== 'sea' || B.kind !== 'sea') fail('Ships stay at sea; land units stay on land.');
+    if (A.controller !== actor) fail("Those aren't your ships.");
+    if (B.controller != null && B.controller !== actor) fail('Enemy ships hold that bay — attack it instead.');
+    const exactS = troops ? cleanTroops(troops) : null;
+    if (exactS) count = battles.sum(exactS);
+    checkSend(A, actor, count);
+    const moving = exactS ? takeTroops(A, actor, exactS) : takeCheapest(A, actor, count);
+    B.controller = actor;
+    addTroops(B, actor, moving);
+    refreshSeas(s);
+    addLog(s, `${p.name} sailed ${count} ship${count === 1 ? '' : 's'} from ${A.id} to ${B.id}.`);
+    return;
+  }
   const exact = troops ? cleanTroops(troops) : null;
   if (exact) count = battles.sum(exact);
   checkSend(A, actor, count);
@@ -1392,8 +1468,8 @@ function nextWave(s) {
   let rise = 0;
   for (const e of s.battleQueueTW) {
     const A = s.players[e.seat];
-    const T = getTile(s, e.tile);
-    const src = getTile(s, e.from);
+    const T = getAnyTile(s, e.tile);
+    const src = getAnyTile(s, e.from);
     if (busy.has(T.id) || busy.has(src.id)) {
       later.push(e);
       continue;
@@ -1414,11 +1490,13 @@ function nextWave(s) {
     // March out the chosen troops (or as many as are still there).
     const have = troopsAt(src, e.seat);
     let sent;
+    const dom = T.kind === 'sea' ? 'sea' : 'land';
     if (e.troops) {
       sent = zeroTroops();
-      for (const k of battles.TYPES) sent[k] = Math.min(e.troops[k], have[k]);
+      for (const k of battles.TYPES) sent[k] = (domainOf(k) === 'sea') === (dom === 'sea') ? Math.min(e.troops[k] || 0, have[k]) : 0;
       takeTroops(src, e.seat, sent);
-    } else sent = takeCheapest(src, e.seat, Math.min(e.count || 0, battles.sum(have)));
+    } else sent = takeCheapest(src, e.seat, Math.min(e.count || 0, battles.sum(have)), dom);
+    if (src.kind === 'sea') refreshSeas(s);
     if (!battles.sum(sent)) {
       addLog(s, `${A.name}'s attack on ${name} fizzles: no units left on ${tileName(s, src)}.`);
       continue;
@@ -1427,7 +1505,7 @@ function nextWave(s) {
     if (T.controller == null) {
       T.controller = e.seat;
       addTroops(T, e.seat, sent);
-      A.stats.claims += 1;
+      if (T.kind === 'land') A.stats.claims += 1;
       addLog(s, `${A.name} claims ${name} with ${battles.sum(sent)} unit${battles.sum(sent) === 1 ? '' : 's'}.`);
       continue;
     }
@@ -1436,8 +1514,14 @@ function nextWave(s) {
     s.players[D].stats.timesAttacked += 1;
     const defenders = troopsAt(T, D);
     if (!battles.sum(defenders)) {
-      addLog(s, `${A.name} marches into ${name} — nobody was there to defend it.`);
-      conquerTW(s, e.seat, D, T, sent);
+      if (T.kind === 'sea') {
+        T.controller = e.seat;
+        addTroops(T, e.seat, sent);
+        addLog(s, `${A.name}'s fleet sails into ${T.id} unopposed.`);
+      } else {
+        addLog(s, `${A.name} marches into ${name} — nobody was there to defend it.`);
+        conquerTW(s, e.seat, D, T, sent);
+      }
       continue;
     }
     // A real battle.
@@ -1445,19 +1529,8 @@ function nextWave(s) {
     busy.add(T.id);
     busy.add(src.id);
     rise += TWS(s).battleFlood;
-    const b = battles.createBattle({
-      id: s.nextBattleId++,
-      tile: T,
-      from: src,
-      attacker: e.seat,
-      defender: D,
-      aTroops: sent,
-      dTroops: defenders,
-      cfg: TWS(s),
-      rand: seededRand(s),
-    });
-    s.battles.push(b);
-    addLog(s, `⚔ BATTLE for ${name}: ${A.name} (${describeTroops(sent)}) attacks ${s.players[D].name} (${describeTroops(defenders)}).`, { kind: 'battle', event: 'battleStart', battle: b.id });
+    const b = beginBattleTW(s, { attacker: e.seat, defender: D, T, src, sent, defenders });
+    addLog(s, `⚔ ${T.kind === 'sea' ? 'NAVAL BATTLE' : 'BATTLE'} for ${name}: ${A.name} (${describeTroops(sent)}) attacks ${s.players[D].name} (${describeTroops(defenders)}).${b.kind === 'air' ? ' Both sides have aircraft: the air battle comes first!' : ''}`, { kind: 'battle', event: 'battleStart', battle: b.id });
   }
   s.battleQueueTW = later;
   if (rise) {
@@ -1475,9 +1548,97 @@ function nextWave(s) {
   base.startTradePhase(s);
 }
 
+/** Split troops into those whose domain passes `test` and the rest. */
+function splitTroops(c, test) {
+  const yes = zeroTroops();
+  const no = zeroTroops();
+  for (const k of battles.TYPES) (test(k) ? yes : no)[k] = c[k] || 0;
+  return [yes, no];
+}
+
+/** Shore bombardment per second from a side's cruisers and battleships in bays next to tile T. */
+function bombardFor(s, T, seat) {
+  const cfg = TWS(s);
+  let dps = 0;
+  for (const sea of s.board.tiles) {
+    if (sea.kind !== 'sea' || sea.controller !== seat || !areAdjacent(sea, T)) continue;
+    const c = troopsAt(sea, seat);
+    for (const k of ['cruiser', 'battleship']) dps += (c[k] || 0) * cfg[k].attack * (cfg.bombardPct / 100);
+  }
+  return Math.round(dps * 10) / 10;
+}
+
+/**
+ * Start the fighting for one attack. Sea bay: a naval battle. Land: if both sides
+ * brought aircraft, an AIR battle first (the land battle follows when it ends).
+ * Otherwise straight to the land battle, with the bombers of whoever has aircraft.
+ */
+function beginBattleTW(s, { attacker, defender, T, src, sent, defenders }) {
+  const cfg = TWS(s);
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s) };
+  if (T.kind === 'sea') {
+    const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
+    s.battles.push(b);
+    return b;
+  }
+  const isPlane = (k) => domainOf(k) === 'air';
+  const [aAir, aGround] = splitTroops(sent, isPlane);
+  const [dAir, dGround] = splitTroops(defenders, isPlane);
+  const ground = { aGround, dGround, aAir, dAir };
+  if (battles.sum(aAir) && battles.sum(dAir)) {
+    const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'air', aTroops: aAir, dTroops: dAir });
+    b.pending = ground; // the land battle that follows
+    s.battles.push(b);
+    return b;
+  }
+  const sup = battles.sum(aAir) ? 'A' : battles.sum(dAir) ? 'D' : null;
+  return startLandBattle(s, common, ground, sup, sup === 'A' ? aAir : sup === 'D' ? dAir : zeroTroops());
+}
+
+/** The land battle. `sup` = side with air superiority; its bombers fly over the battle, other planes wait. */
+function startLandBattle(s, common, g, sup, planes) {
+  const [bombers, otherPlanes] = splitTroops(planes, (k) => k === 'bomber');
+  const reserve = { A: zeroTroops(), D: zeroTroops() };
+  if (sup) reserve[sup] = otherPlanes;
+  // The side without air superiority keeps its planes out of the fight (they lost the air battle, or have none).
+  const aT = { ...g.aGround };
+  const dT = { ...g.dGround };
+  if (sup === 'A') for (const k of battles.TYPES) aT[k] += bombers[k];
+  if (sup === 'D') for (const k of battles.TYPES) dT[k] += bombers[k];
+  const b = battles.createBattle({
+    ...common,
+    id: s.nextBattleId++,
+    kind: 'land',
+    aTroops: aT,
+    dTroops: dT,
+    bombard: { A: bombardFor(s, common.tile, common.attacker), D: bombardFor(s, common.tile, common.defender) },
+  });
+  b.reserve = reserve;
+  b.airLosers = g.airLosers || { A: zeroTroops(), D: zeroTroops() };
+  if (sup) b.airSuperiority = sup;
+  s.battles.push(b);
+  return b;
+}
+
 function describeTroops(c) {
-  const parts = battles.TYPES.filter((k) => c[k] > 0).map((k) => `${c[k]} ${k}`);
+  const parts = battles.TYPES.filter((k) => c[k] > 0).map((k) => `${c[k]} ${ARS.UNITS[k].name.toLowerCase()}`);
   return parts.length ? parts.join(', ') : 'nobody';
+}
+
+/** Ships that must leave a bay go to another bay their side holds (or an empty one), or are lost. */
+function seaRetreat(s, from, seat, ships, home = false) {
+  const n = battles.sum(ships);
+  if (!n) return;
+  const opts = s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller === seat || (t.controller == null && t !== from)));
+  const to = home && from.kind === 'sea' && (from.controller === seat || from.controller == null) ? from : opts.find((t) => t.controller === seat && t !== from) || opts[0];
+  if (to) {
+    to.controller = seat;
+    addTroops(to, seat, ships);
+    if (to !== from) addLog(s, `${s.players[seat].name}'s ${n} ship${n === 1 ? '' : 's'} withdraw to ${to.id}.`);
+  } else {
+    s.players[seat].stats.unitsLost += n;
+    addLog(s, `${s.players[seat].name}'s ${n} ship${n === 1 ? '' : 's'} had nowhere to go and are scuttled.`, { kind: 'bad' });
+  }
 }
 
 /** Winning a tile in Total War: move in, take loot and war spoils. */
@@ -1506,10 +1667,28 @@ function conquerTW(s, taker, D, T, troops) {
   }
 }
 
+/** An air battle ended: count the losses, then the land battle starts. */
+function finishAirTW(s, b) {
+  const T = getAnyTile(s, b.tile);
+  const src = getAnyTile(s, b.from);
+  const A = s.players[b.attacker];
+  const D = s.players[b.defender];
+  A.stats.unitsLost += battles.unitsLost(b, 'A');
+  D.stats.unitsLost += battles.unitsLost(b, 'D');
+  const aLeft = battles.survivors(b, 'A');
+  const dLeft = battles.survivors(b, 'D');
+  const win = b.winner === 'A' ? A : D;
+  addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
+  const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
+}
+
 /** Apply a finished battle to the board. */
 function finishBattleTW(s, b) {
-  const T = getTile(s, b.tile);
-  const src = getTile(s, b.from);
+  if (b.kind === 'air') return finishAirTW(s, b);
+  const T = getAnyTile(s, b.tile);
+  const src = getAnyTile(s, b.from);
   const A = s.players[b.attacker];
   const D = s.players[b.defender];
   const aLeft = battles.survivors(b, 'A');
@@ -1528,13 +1707,41 @@ function finishBattleTW(s, b) {
     `⚔ ${winner.name} wins the battle for ${tileName(s, T)} — ${b.reason}. ${A.name} lost ${lost('A')}${surrender('A')}; ${D.name} lost ${lost('D')}${surrender('D')}.`,
     { kind: 'battle', event: 'battleEnd', battle: b.id },
   );
+  if (T.kind === 'sea') {
+    if (b.winner === 'A') {
+      T.controller = b.attacker;
+      addTroops(T, b.attacker, aLeft);
+      seaRetreat(s, T, b.defender, dLeft);
+      addLog(s, `⚓ ${A.name} takes control of ${T.id}.`, { kind: 'good' });
+    } else {
+      addTroops(T, b.defender, dLeft);
+      seaRetreat(s, src, b.attacker, aLeft, true);
+    }
+    refreshSeas(s);
+    syncUnits(s);
+    return;
+  }
+  // Aircraft never occupy ground: every plane flies back to base.
+  const [aPlanes, aGround] = splitTroops(aLeft, (k) => domainOf(k) === 'air');
+  const [dPlanes, dGround] = splitTroops(dLeft, (k) => domainOf(k) === 'air');
+  const res = b.reserve || { A: zeroTroops(), D: zeroTroops() };
+  const lostAir = b.airLosers || { A: zeroTroops(), D: zeroTroops() };
+  const addAll = (...cs) => {
+    const c = zeroTroops();
+    for (const x of cs) for (const k of battles.TYPES) c[k] += x[k] || 0;
+    return c;
+  };
+  const aHome = addAll(aPlanes, res.A, lostAir.A);
+  const dPlanesAll = addAll(dPlanes, res.D, lostAir.D);
   if (b.winner === 'A') {
     // Surviving defenders who weren't cut off fall back to a neighbouring tile.
-    retreat(s, T, b.defender, dLeft);
-    conquerTW(s, b.attacker, b.defender, T, aLeft);
+    retreat(s, T, b.defender, addAll(dGround, dPlanesAll));
+    if (battles.sum(aGround)) conquerTW(s, b.attacker, b.defender, T, aGround);
+    else addLog(s, `${A.name}'s bombers wiped out the defence of ${tileName(s, T)}, but there are no ground troops to take it.`);
+    returnStrike(s, b.attacker, src, aHome);
   } else {
-    addTroops(T, b.defender, dLeft);
-    returnStrike(s, b.attacker, src, aLeft);
+    addTroops(T, b.defender, addAll(dGround, dPlanesAll));
+    returnStrike(s, b.attacker, src, addAll(aGround, aHome));
   }
   syncUnits(s);
 }
@@ -1586,6 +1793,16 @@ function battleOrder(s, actor, { battle, dots, x, y } = {}) {
   battles.order(b, side, dots.map(Number), x, y);
 }
 
+/** { battle, formation } — choose a formation (null = free movement). */
+function battleFormation(s, actor, { battle, formation = null } = {}) {
+  const b = liveBattle(s, battle);
+  const side = sideOf(b, actor);
+  if (formation !== null && !battles.FORMATIONS[formation]) fail('Unknown formation.');
+  if (formation !== null && !battles.availableFormations(b, side).includes(formation)) fail("Your army can't use that formation (you need the right units).");
+  if (!battles.setFormation(b, side, formation)) fail('Wait a moment before changing formation again.');
+  b.ordered[side] = true;
+}
+
 /** { battle, on } — let the computer fight for you (or take back control). */
 function battleAuto(s, actor, { battle, on = true } = {}) {
   const b = liveBattle(s, battle);
@@ -1625,7 +1842,80 @@ function scoreTotalWar(s, reason) {
   return { reason, catastrophe, finalFlood: s.flood, threshold: base.threshold(s), results, winners };
 }
 
-const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto };
+// ===========================================================================
+// TOTAL WAR: RESEARCH AND UPGRADES
+// Pay for one research project at a time during Talk & Build or Trade & Build;
+// it is finished at the start of the next round. Units can then be upgraded
+// along their line (militia -> anti-tank/anti-air, infantry -> motorised ->
+// mechanised, cavalry -> light -> medium -> heavy tank, destroyer -> cruiser ->
+// battleship) by paying the difference in cost.
+// ===========================================================================
+
+function researchOf(p) {
+  if (!p.research) p.research = { done: [], current: null };
+  return p.research;
+}
+
+/** { tech, materials } */
+function research(s, actor, { tech, materials } = {}) {
+  requireBuild(s);
+  if (!TW(s)) fail('Research is part of Total War.');
+  const p = me(s, actor);
+  const r = researchOf(p);
+  const T = ARS.TECHS[tech];
+  if (!T) fail('Unknown research.');
+  if (r.done.includes(tech)) fail(`You already have ${T.name}.`);
+  if (r.current) fail(`You are already researching ${ARS.TECHS[r.current].name}. It's ready next round.`);
+  const missing = T.needs.filter((x) => !r.done.includes(x));
+  if (missing.length) fail(`Research ${missing.map((x) => ARS.TECHS[x].name).join(' and ')} first.`);
+  const cost = TWS(s).research[tech];
+  const bag = cleanBag(materials);
+  if (bagTotal(bag) !== cost) fail(`${T.name} costs ${cost} materials (any mix).`);
+  if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
+  subBag(p.materials, bag);
+  r.current = tech;
+  p.stats.researchSpent = (p.stats.researchSpent || 0) + cost;
+  addLog(s, `🔬 ${p.name} starts researching ${T.name} (ready next round).`);
+}
+
+/** Start of each round: finished research becomes available. */
+function finishResearch(s) {
+  for (const p of s.players) {
+    const r = researchOf(p);
+    if (!r.current) continue;
+    r.done.push(r.current);
+    const T = ARS.TECHS[r.current];
+    r.current = null;
+    addLog(s, `🔬 ${p.name} has ${T.name}! New: ${T.unlocks.map((k) => ARS.UNITS[k].name).join(', ')}.`, { kind: 'good' });
+  }
+}
+
+/** { tile, from, to, count, materials } — upgrade units on one of your tiles. */
+function upgradeUnits(s, actor, { tile, from, to, count = 1, materials } = {}) {
+  requireBuild(s);
+  if (!TW(s)) fail('Upgrades are part of Total War.');
+  const p = me(s, actor);
+  if (!ARS.UNITS[from] || !ARS.UNITS[to]) fail('Unknown unit type.');
+  if (!ARS.upgradePath(from, to)) fail(`${ARS.UNITS[from].name} can't be upgraded to ${ARS.UNITS[to].name}.`);
+  if (!ARS.canBuild(p, to)) fail(`Research ${ARS.TECHS[ARS.UNITS[to].tech].name} first.`);
+  if (!Number.isInteger(count) || count < 1 || count > 50) fail('Invalid number of units.');
+  const T = getAnyTile(s, tile);
+  if (T.controller !== actor) fail('Upgrade units on a tile you hold.');
+  if (troopsAt(T, actor)[from] < count) fail(`You don't have ${count} ${ARS.UNITS[from].name.toLowerCase()} there.`);
+  const cfg = TWS(s);
+  const each = Math.max(1, cfg[to].cost - cfg[from].cost);
+  const bag = cleanBag(materials);
+  if (bagTotal(bag) !== each * count) fail(`Upgrading costs ${each * count} materials (any mix).`);
+  if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
+  diplomacy.checkUnits(s, actor, p.units); // same number of units: only treaties on totals matter
+  subBag(p.materials, bag);
+  takeTroops(T, actor, { ...zeroTroops(), [from]: count });
+  addTroops(T, actor, { ...zeroTroops(), [to]: count });
+  p.stats.upgrades = (p.stats.upgrades || 0) + count;
+  addLog(s, `⬆ ${p.name} upgraded ${count} ${ARS.UNITS[from].name.toLowerCase()} to ${ARS.UNITS[to].name.toLowerCase()} on ${tileName(s, T)}.`);
+}
+
+const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits };
 
 
 

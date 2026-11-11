@@ -8,9 +8,12 @@
 import { esc, chip, PLAYER_STYLE } from './ui.js';
 import { tileLabel } from './war-ui.js';
 
-const TERRAIN_COLOR = { '.': '#dfe9c8', f: '#86b26c', h: '#cdb88c', w: '#79b6dc', '=': '#b6dbef' };
+const TERRAIN_COLOR = { '.': '#dfe9c8', f: '#86b26c', h: '#cdb88c', w: '#79b6dc', '=': '#b6dbef', o: '#3f7fae' };
+const SKY = '#cfe3f3';
 const TERRAIN_NAME = { f: 'forest', h: 'hill', w: 'river', '=': 'ford' };
-const SHAPE = { militia: '●', infantry: '■', cavalry: '▲' };
+const shapeOf = (g, t) => ((g.tw && g.tw.units.find((u) => u.type === t)) || { shape: '●' }).shape;
+const nameOf = (g, t) => ((g.tw && g.tw.units.find((u) => u.type === t)) || { name: t }).name;
+const KIND_TITLE = { land: '⚔ Battle for', air: '✈ Air battle over', sea: '⚓ Naval battle for' };
 const SNAP_MS = 200; // how often the server sends positions
 const TCOLS = 30; // territory grid (2x2 squares on a 60x40 map)
 const TROWS = 20;
@@ -31,6 +34,8 @@ export function liveBattle(store, id) {
     status: snap.status,
     winner: snap.winner,
     auto: snap.auto,
+    formation: snap.formation || full.formation,
+    forms: snap.forms,
     terr: snap.terr,
     dots: snap.dots.map(([id2, side, type, x, y, hp, cut, tx, ty, unit]) => ({ id: id2, side, type, x, y, hpPct: hp, cut: !!cut, tx, ty, unit, seat: side === 'A' ? full.attacker : full.defender })),
   };
@@ -76,6 +81,7 @@ function takeSnapshot(b) {
 // ---------------------------------------------------------------- drawing
 
 function terrainLayer(b, W) {
+  if (b.kind === 'air') return `<rect x="0" y="0" width="${W}" height="40" fill="${SKY}"/>`;
   const cell = W / b.terrain[0].length;
   return b.terrain
     .map((row, y) => [...row].map((ch, x) => `<rect x="${x * cell}" y="${y * cell}" width="${cell + 0.05}" height="${cell + 0.05}" fill="${TERRAIN_COLOR[ch] || TERRAIN_COLOR['.']}"/>`).join(''))
@@ -119,6 +125,7 @@ function territoryLayer(b) {
 }
 
 function objectiveLayer(b) {
+  if (b.kind === 'air') return '';
   const o = b.obj;
   const circ = 2 * Math.PI * o.r;
   const prog = Math.min(1, (b.capture || 0) / b.captureNeeded);
@@ -147,11 +154,10 @@ function dotsLayer(store, b, now) {
     const stroke = selected ? '#fff' : d.cut ? '#d7263d' : '#111';
     const sw = selected ? 0.35 : d.cut ? 0.3 : 0.12;
     const dash = d.cut ? ' stroke-dasharray=".4 .25"' : '';
-    let shape;
-    if (d.type === 'infantry') shape = `<rect x="${(x - 0.6).toFixed(2)}" y="${(y - 0.6).toFixed(2)}" width="1.2" height="1.2" rx=".15"`;
-    else if (d.type === 'cavalry') shape = `<polygon points="${x.toFixed(2)},${(y - 0.8).toFixed(2)} ${(x + 0.75).toFixed(2)},${(y + 0.55).toFixed(2)} ${(x - 0.75).toFixed(2)},${(y + 0.55).toFixed(2)}"`;
-    else shape = `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r=".6"`;
+    const shape = dotShape(d.type, x, y);
     parts.push(`${shape} fill="${st.color}" fill-opacity="${op}" stroke="${stroke}" stroke-width="${sw}"${dash}/>`);
+    const mark = dotMark(d.type, x, y);
+    if (mark) parts.push(mark);
     if (d.side === mySide) parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.6" fill="transparent" data-dot="${d.id}"/>`);
   }
   return parts.join('');
@@ -175,6 +181,73 @@ export function battleSvg(store, b) {
 
 // ---------------------------------------------------------------- the panel
 
+const f2 = (n) => n.toFixed(2);
+const poly = (pts) => `<polygon points="${pts.map(([a, b]) => f2(a) + ',' + f2(b)).join(' ')}"`;
+/** The outline of a dot by unit type. */
+function dotShape(type, x, y) {
+  switch (type) {
+    case 'infantry':
+    case 'motorised':
+    case 'mechanised': {
+      const s = type === 'infantry' ? 0.6 : type === 'motorised' ? 0.65 : 0.72;
+      return `<rect x="${f2(x - s)}" y="${f2(y - s)}" width="${f2(2 * s)}" height="${f2(2 * s)}" rx="${type === 'mechanised' ? 0.05 : 0.15}"`;
+    }
+    case 'cavalry':
+      return poly([[x, y - 0.8], [x + 0.75, y + 0.55], [x - 0.75, y + 0.55]]);
+    case 'lightTank':
+    case 'mediumTank':
+    case 'heavyTank': {
+      const s = type === 'lightTank' ? 0.75 : type === 'mediumTank' ? 0.9 : 1.05;
+      return poly([[x, y - s], [x + s, y], [x, y + s], [x - s, y]]);
+    }
+    case 'artillery':
+      return poly([[x - 0.25, y - 0.8], [x + 0.25, y - 0.8], [x + 0.25, y - 0.25], [x + 0.8, y - 0.25], [x + 0.8, y + 0.25], [x + 0.25, y + 0.25], [x + 0.25, y + 0.8], [x - 0.25, y + 0.8], [x - 0.25, y + 0.25], [x - 0.8, y + 0.25], [x - 0.8, y - 0.25], [x - 0.25, y - 0.25]]);
+    case 'interceptor':
+      return poly([[x + 0.9, y], [x - 0.7, y - 0.6], [x - 0.35, y], [x - 0.7, y + 0.6]]);
+    case 'bomber':
+      return poly([[x + 0.8, y], [x - 0.2, y - 1], [x - 0.8, y - 1], [x - 0.5, y], [x - 0.8, y + 1], [x - 0.2, y + 1]]);
+    case 'destroyer':
+    case 'cruiser':
+    case 'battleship': {
+      const rx = type === 'destroyer' ? 0.9 : type === 'cruiser' ? 1.1 : 1.35;
+      return `<ellipse cx="${f2(x)}" cy="${f2(y)}" rx="${rx}" ry=".45"`;
+    }
+    default:
+      return `<circle cx="${f2(x)}" cy="${f2(y)}" r=".6"`;
+  }
+}
+/** A small inner mark for units that share an outline. */
+function dotMark(type, x, y) {
+  if (type === 'antitank') return `<rect x="${f2(x - 0.4)}" y="${f2(y - 0.1)}" width=".8" height=".2" fill="#111"/>`;
+  if (type === 'antiair') return `<circle cx="${f2(x)}" cy="${f2(y)}" r=".22" fill="#fff"/>`;
+  if (type === 'motorised' || type === 'mechanised') return `<line x1="${f2(x - 0.5)}" y1="${f2(y + 0.35)}" x2="${f2(x + 0.5)}" y2="${f2(y + 0.35)}" stroke="#111" stroke-width=".15"/>`;
+  return '';
+}
+
+/** Formation buttons for my side (only the ones my units allow). */
+function formationRow(store, b, mySide) {
+  const g = store.data.game;
+  if (!mySide || b.kind === 'air' || b.status !== 'live') return '';
+  const avail = (b.forms && b.forms[mySide]) || [];
+  const cur = b.formation && b.formation[mySide];
+  const meta = (id) => g.tw.formations.find((f) => f.id === id) || { name: id };
+  const pct = (f) => {
+    const bits = [];
+    if (f.attackPct && f.attackPct !== 100) bits.push(`attack ${f.attackPct > 100 ? '+' : ''}${f.attackPct - 100}%`);
+    if (f.defencePct && f.defencePct !== 100) bits.push(`protection ${f.defencePct > 100 ? '+' : ''}${f.defencePct - 100}%`);
+    if (f.speedPct && f.speedPct !== 100) bits.push(`speed ${f.speedPct > 100 ? '+' : ''}${f.speedPct - 100}%`);
+    return bits.join(', ');
+  };
+  return `<div class="formations"><span class="small"><b>Formation:</b> ${cur ? esc(meta(cur).name) : 'free'}</span>
+    <div class="row wrap">${avail
+      .map((id) => {
+        const f = meta(id);
+        return `<button class="btn small ${cur === id ? 'primary' : ''}" data-act="battleFormation" data-id="${b.id}" data-formation="${id}" title="${esc(f.desc + ' ' + pct(f))}">${esc(f.name)}</button>`;
+      })
+      .join('')}<button class="btn small ${cur ? '' : 'primary'}" data-act="battleFormation" data-id="${b.id}" data-formation="none" title="No formation: move units freely, no bonus">Free</button></div>
+    ${cur ? `<p class="hint">${esc(meta(cur).desc)} ${esc(pct(meta(cur)))}</p>` : '<p class="hint">Pick a formation to arrange your whole army and get its bonus. Available ones depend on your units; you can switch at any time.</p>'}</div>`;
+}
+
 /** The whole battle card for the Play tab. */
 export function battlePanel(store) {
   const g = store.data.game;
@@ -190,12 +263,18 @@ export function battlePanel(store) {
     const set = new Set(b.dots.filter((d) => d.side === side && (!type || d.type === type)).map((d) => d.unit));
     return set.size;
   };
-  const army = (side) => ['militia', 'infantry', 'cavalry'].map((t) => (units(side, t) ? `${SHAPE[t]}${units(side, t)}` : '')).filter(Boolean).join(' ') || 'none left';
+  const typesIn = [...new Set(b.dots.map((d) => d.type))];
+  const army = (side) => typesIn.map((t) => (units(side, t) ? `<span title="${esc(nameOf(g, t))}">${shapeOf(g, t)}${units(side, t)}</span>` : '')).filter(Boolean).join(' ') || 'none left';
+  const myTypes = mySide ? [...new Set(b.dots.filter((d) => d.side === mySide).map((d) => d.type))] : [];
+  const kind = b.kind || 'land';
+  const extras = [];
+  if (b.airSuperiority) extras.push(`✈ air superiority: ${esc(g.players[b.airSuperiority === 'A' ? b.attacker : b.defender].name)}`);
+  if (b.bombard && (b.bombard.A || b.bombard.D)) extras.push(`🚢 shore bombardment${b.bombard.A ? ` — ${esc(A.name)} ${b.bombard.A}/s` : ''}${b.bombard.D ? ` — ${esc(D.name)} ${b.bombard.D}/s` : ''}`);
   const auto = mySide && b.auto && b.auto[mySide];
   const done = b.status !== 'live';
   const terrainKinds = [...new Set(b.terrain.join(''))].filter((c) => TERRAIN_NAME[c]).map((c) => TERRAIN_NAME[c]);
   return `<div class="card phase-card battle-card">
-    <h2>⚔ Battle for ${esc(tileLabel(g, b.tile))}</h2>
+    <h2>${KIND_TITLE[kind]} ${esc(tileLabel(g, b.tile))}</h2>
     <div class="battle-meta row wrap">
       <span>${chip(A.seat, A.name)} <small>attacking · <span class="army-A">${army('A')}</span></small></span>
       <span>vs</span>
@@ -203,7 +282,8 @@ export function battlePanel(store) {
     </div>
     <div class="battle-meta row wrap small">
       <span>⏱ <b class="battle-clock">${done ? 'over' : fmt(b.limit - b.time)}</b></span>
-      <span>⚑ capture <b class="battle-capture">${Math.min(b.capture, b.captureNeeded).toFixed(1)}</b> / ${b.captureNeeded}s</span>
+      ${kind === 'air' ? '<span>No flag: shoot down their aircraft. Winner gets air superiority.</span>' : `<span>⚑ capture <b class="battle-capture">${Math.min(b.capture, b.captureNeeded).toFixed(1)}</b> / ${b.captureNeeded}s</span>`}
+      ${extras.map((x) => `<span>${x}</span>`).join('')}
       ${terrainKinds.length ? `<span class="muted">terrain: ${terrainKinds.join(', ')}</span>` : ''}
       ${done ? `<span class="tag ${b.winner === mySide ? 'ok' : 'warn'}">${b.winner === 'A' ? esc(A.name) : esc(D.name)} won</span>` : ''}
     </div>
@@ -213,15 +293,21 @@ export function battlePanel(store) {
       mySide && !done
         ? `<div class="row wrap battle-controls">
         <button class="btn small" data-act="battleSelect" data-type="all">Select all</button>
-        <button class="btn small" data-act="battleSelect" data-type="militia">● Militia</button>
-        <button class="btn small" data-act="battleSelect" data-type="infantry">■ Infantry</button>
-        <button class="btn small" data-act="battleSelect" data-type="cavalry">▲ Cavalry</button>
+        ${myTypes.map((t) => `<button class="btn small" data-act="battleSelect" data-type="${t}">${shapeOf(g, t)} ${esc(nameOf(g, t))}</button>`).join('')}
         <button class="btn small" data-act="battleSelect" data-type="none">Clear</button>
         <button class="btn small" data-act="battleAddMode" aria-pressed="${store.ui.battleAdd ? 'true' : 'false'}">${store.ui.battleAdd ? '✓ ' : ''}Add to selection</button>
         <button class="btn small ${auto ? 'primary' : ''}" data-act="battleAuto" data-id="${b.id}" data-on="${auto ? 0 : 1}">${auto ? '🤖 Auto-battle ON' : '🤖 Auto-battle'}</button>
       </div>
-      <p class="hint">Tap a unit (or a type button), then tap the map to send it. <b>${mySide === 'A' ? 'Hold the flag ⚑ with nobody defending it' : 'Keep attackers off the flag ⚑ until time runs out'}.</b> Ground you move through becomes yours (tinted); the dark line is the <b>frontline</b>. Your supply runs through your own ground back to your edge of the map — units cut off (red outline, red pocket) take heavy damage and surrender. Hit enemies from two sides for bonus damage. Cavalry struggles against infantry — until you encircle them.</p>`
-        : `<p class="hint">You're watching. ● militia ■ infantry ▲ cavalry (each unit is a group of dots). Tinted ground = territory, dark line = frontline, red = cut off.</p>`
+      <div id="bt-forms">${formationRow(store, b, mySide)}</div>
+      ${
+        kind === 'air'
+          ? `<p class="hint">Tap your aircraft, then tap where to fly. Interceptors shred bombers; bombers are weak in a dogfight, so keep them away. The last side with planes — or the stronger side when time runs out — wins air superiority: its bombers then join the land battle, where only anti-air can shoot them down.</p>`
+          : kind === 'sea'
+            ? `<p class="hint">Tap your ships, then tap where to sail. <b>${mySide === 'A' ? 'Hold the flag ⚑ with no enemy ship on it' : 'Keep their ships off the flag ⚑ until time runs out'}.</b> Cruisers and battleships fire at range; destroyers are fast. Hit a ship from two sides for bonus damage. The winner holds the sea bay.</p>`
+            : ''
+      }
+      <p class="hint" ${kind === 'land' ? '' : 'hidden'}>Tap a unit (or a type button), then tap the map to send it. <b>${mySide === 'A' ? 'Hold the flag ⚑ with nobody defending it' : 'Keep attackers off the flag ⚑ until time runs out'}.</b> Ground you move through becomes yours (tinted); the dark line is the <b>frontline</b>. Your supply runs through your own ground back to your edge of the map — units cut off (red outline, red pocket) take heavy damage and surrender. Hit enemies from two sides for bonus damage. Cavalry struggles against infantry — until you encircle them. Tanks ignore rifle fire but fear anti-tank guns; only anti-air can hit planes.</p>`
+        : `<p class="hint">You're watching. ${typesIn.map((t) => `${shapeOf(g, t)} ${esc(nameOf(g, t).toLowerCase())}`).join(' ')} (each unit is a group of dots). Tinted ground = territory, dark line = frontline, red = cut off.</p>`
     }
   </div>`;
 }
@@ -246,6 +332,14 @@ export function refreshBattle(store) {
   // Keep the Auto-battle button in step (the computer may take over an idle side).
   const g = store.data.game;
   const side = b.attacker === g.you ? 'A' : b.defender === g.you ? 'D' : null;
+  const forms = document.getElementById('bt-forms');
+  if (forms) {
+    const html = formationRow(store, b, side);
+    if (forms.dataset.last !== html) {
+      forms.innerHTML = html;
+      forms.dataset.last = html;
+    }
+  }
   const btn = document.querySelector('[data-act="battleAuto"]');
   if (btn && side && b.auto) {
     const on = !!b.auto[side];

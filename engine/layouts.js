@@ -60,4 +60,44 @@ const standard19 = {
   },
 };
 
-module.exports = { standard19 };
+/**
+ * sea37 (Total War): 37 hexes. Village in the centre, then rings of 6, 12 and 18.
+ * Each player's wedge is a capital on an outer corner (Ck), a province on the
+ * second-ring corner (Mk) and a coastal province next to the capital (Ek).
+ * Between neighbouring wedges lies a SEA BAY (Sk) that touches both: ships hold
+ * the bays, and the bays are joined to each other by the open ocean.
+ */
+const D = [
+  [1, 0],
+  [1, -1],
+  [0, -1],
+  [-1, 0],
+  [-1, 1],
+  [0, 1],
+];
+function sea37Tiles() {
+  const tiles = [{ id: 'V', q: 0, r: 0 }];
+  for (let k = 0; k < 6; k++) tiles.push({ id: 'I' + k, q: D[k][0], r: D[k][1] });
+  for (let k = 0; k < 6; k++) {
+    const s = D[(k + 2) % 6];
+    tiles.push({ id: 'M' + k, q: 2 * D[k][0], r: 2 * D[k][1] });
+    tiles.push({ id: 'N' + k, q: 2 * D[k][0] + s[0], r: 2 * D[k][1] + s[1] });
+    tiles.push({ id: 'C' + k, q: 3 * D[k][0], r: 3 * D[k][1] });
+    tiles.push({ id: 'E' + k, q: 3 * D[k][0] + s[0], r: 3 * D[k][1] + s[1] });
+    tiles.push({ id: 'S' + k, q: 3 * D[k][0] + 2 * s[0], r: 3 * D[k][1] + 2 * s[1], sea: true });
+  }
+  return tiles;
+}
+const sea37 = {
+  description: '37 hexes with six sea bays between the players (Total War)',
+  village: 'V',
+  tiles: sea37Tiles(),
+  wedges: [0, 1, 2, 3, 4, 5].map((k) => ({ capital: 'C' + k, provinces: ['M' + k, 'E' + k] })),
+  seatsToWedges: {
+    3: [0, 2, 4],
+    4: [0, 1, 3, 4],
+    5: [0, 1, 2, 3, 4],
+  },
+};
+
+module.exports = { standard19, sea37 };

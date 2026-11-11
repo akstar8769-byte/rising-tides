@@ -127,6 +127,7 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
       hits: {}, // seat -> times that player raided/attacked this one (public)
       betrayals: 0, // pacts this player has broken (public)
       treatyBreaks: 0, // treaties this player has broken (public)
+      research: { done: [], current: null }, // Total War: finished research and the project under way
       stats: {
         attack: 0,
         revolt: 0,
@@ -173,7 +174,7 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
       },
     })),
   };
-  state.board = buildBoard(state, settings.general.boardLayout, mode !== 'base');
+  state.board = buildBoard(state, mode === 'totalwar' ? settings.totalwar.boardLayout || 'standard19' : settings.general.boardLayout, mode !== 'base');
   if (mode !== 'base' && settings.war.stationedUnits) {
     // Stationed units: everyone's starting militia stands on their capital.
     for (const p of state.players) state.board.tiles.find((t) => t.id === p.homeTile).units[p.seat] = p.units;
@@ -257,6 +258,7 @@ module.exports = {
   threshold: base.threshold,
   compareDice: war.compareDice,
   stepBattles: war.stepBattles,
+  attackSources: war.attackSources,
   battleSnapshot: require('./totalwar').snapshot,
   troopsAt: war.troopsAt,
   production: war.production,

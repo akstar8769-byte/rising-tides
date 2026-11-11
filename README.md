@@ -88,6 +88,32 @@ Bots play every mode, answer your trade offers (they accept if they get at least
 
 **⚔ Total War battles.** When your attack meets defenders (or someone attacks your defended land), the Play tab turns into a battlefield. Tap one of your units — ● militia, ■ infantry, ▲ cavalry — to select it (tap it again to unselect), or use *Select all* / a type button; turn on **Add to selection** (or hold Shift) to pick several. Then tap where to send them. Attackers win by holding the flag ⚑ alone for a few seconds; defenders win by holding out. Units cut off from their own edge of the map (red dashed outline) take heavy damage and surrender, so swing cavalry round behind the enemy. Press **Auto-battle** to let the computer fight for you. Other players' battles can be watched live.
 
+**⚔ Total War: research, air, sea and formations.** Total War is played on a bigger board (37 hexes) with six **sea bays** 🌊 between the players.
+- **Research** (Play tab → 🔬 Research): pay once during Talk & Build; it's ready at the start of next round. One project at a time.
+  - Artillery → Light tanks → Medium tanks → Heavy tanks.
+  - Motorised infantry → Mechanised infantry → Aircraft (interceptors and bombers).
+  - Anti-tank guns, and Anti-air guns.
+  - Shipyards → Cruisers → Battleships.
+- **Upgrade** units you already have (⬆ Upgrade units) by paying the difference in cost:
+  - militia → anti-tank or anti-air;
+  - infantry → motorised → mechanised;
+  - cavalry → light → medium → heavy tank;
+  - destroyer → cruiser → battleship.
+- **Matchups:** tanks shrug off rifle fire but anti-tank guns shred them. Only anti-air and aircraft can hit planes. Artillery, anti-air, cruisers and battleships fire at range.
+- **Ships** are launched into a sea bay next to your coast and can sail to any bay. Attacking a bay held by enemy ships starts a live **naval battle**. Holding a bay lets your coastal troops **land across it** (amphibious attack), and your cruisers and battleships **shell** any coastal battle next to that bay.
+- **Aircraft:** if both sides bring planes to a fight, a live **air battle** comes first. The winner's bombers then fly over the ground battle, where only anti-air can shoot them down. Planes always fly back to base afterwards.
+- **Formations:** during a battle, pick one with the Formation buttons, or **Free** for no formation. Picking one arranges your whole army and gives a bonus. Which ones you get depends on your units:
+  - Line;
+  - Defensive square;
+  - Wedge (fast units);
+  - Pincer (4+ units);
+  - Armour spearhead (tanks);
+  - Combined arms (infantry + armour + guns);
+  - Artillery screen (artillery).
+
+  You can switch at any time. **Auto-battle** picks formations for you and changes them as the fight turns (for example, closing into a square when surrounded).
+- All of the numbers are lobby settings: every unit's stats, the research costs and the formation bonuses.
+
 **Diplomacy (Trade tab).**
 - **Pacts** are promises: offer a player a non-aggression pact or an alliance against someone for 1–3 rounds. The game never stops anyone breaking a pact — but it announces it to everyone and marks the betrayer.
 - **Treaties** (switch on "Treaties" in the lobby's General settings) are binding: write rules like "no more than 2 militia" or "no Unsustainable development", invite players, and once two have signed the game blocks any move that breaks them. To get out you must openly break the treaty: everyone sees it and you lose 3 materials (adjustable).

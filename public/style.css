@@ -427,3 +427,14 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .board .fglyph { font-size: 17px; text-anchor: middle; pointer-events: none; }
 ul.plain { list-style: none; padding: 0; margin: 4px 0; }
 ul.plain li { padding: 3px 0; }
+
+/* Total War arsenal: research tree, unit groups, formations */
+.unit-domain { margin: 10px 0 4px; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.unit-card.locked { opacity: 0.55; }
+.tech-list { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 4px; }
+.tech-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; border: 1px solid #0001; }
+.tech-list li.done { background: #e8f6ec; }
+.tech-list li.now { background: #fff6dc; }
+.tech-list li.locked { opacity: 0.6; }
+.formations { margin: 6px 0; }
+.formations .row { gap: 6px; margin-top: 4px; }

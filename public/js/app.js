@@ -8,6 +8,7 @@ import { renderLobby } from './lobby.js';
 import { renderGame } from './game.js';
 import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
+import { payLargest } from './war-ui.js';
 import { refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation } from './battle-ui.js';
 
 /* global io */
@@ -37,7 +38,8 @@ function freshUi() {
     walls: 1,
     factory: { kind: 'sustainable', tile: null, picking: false },
     recruit: { count: 1, mix: { wood: 0, stone: 0, sandbag: 0 }, tile: null, unit: 'infantry' },
-    move: { from: null, to: null, count: 1, troops: { militia: 0, infantry: 0, cavalry: 0 } }, // stationed units: the "Move units" form
+    move: { from: null, to: null, count: 1, troops: {} },
+    upgrade: { key: null, count: 1 }, // stationed units: the "Move units" form
     battleSel: [], // Total War: dots selected on the battlefield
     watchBattle: null,
     cmdAttackFor: null, // Empire: which puppet we're picking an attack target for
@@ -360,6 +362,21 @@ const actions = {
     store.ui.tab = 'board';
     render();
   },
+  research: (ds) => {
+    const g = store.data.game;
+    const t = g.tw.techs.find((x) => x.id === ds.tech);
+    const pay = payLargest(g.players[g.you].materials, t.cost);
+    if (pay) act({ type: 'research', tech: t.id, materials: pay });
+  },
+  upgradeUnits: () => {
+    const g = store.data.game;
+    const [tile, from, to] = (store.ui.upgrade.key || '').split('|');
+    const each = Math.max(1, g.tw.units.find((u) => u.type === to).cost - g.tw.units.find((u) => u.type === from).cost);
+    const count = store.ui.upgrade.count || 1;
+    const pay = payLargest(g.players[g.you].materials, each * count);
+    if (pay) act({ type: 'upgradeUnits', tile, from, to, count, materials: pay });
+  },
+  battleFormation: (ds) => act({ type: 'battleFormation', battle: +ds.id, formation: ds.formation === 'none' ? null : ds.formation }),
   pickTile: (ds) => {
     // Tapped an outlined tile on the board.
     const g = store.data.game;
@@ -458,7 +475,7 @@ const actions = {
     act(msg).then((r) => {
       if (r.ok) {
         mv.count = 1;
-        mv.troops = { militia: 0, infantry: 0, cavalry: 0 };
+        mv.troops = {};
         render();
       }
     });

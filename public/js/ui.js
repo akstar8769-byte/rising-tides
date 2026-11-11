@@ -8,6 +8,7 @@ export const BIOME = {
   quarry: { label: 'Quarry', glyph: '⛰️', color: '#a3a8ae', res: 'stone' },
   riverbank: { label: 'Riverbank', glyph: '🌊', color: '#79b4d4', res: 'sandbag' },
   mixed: { label: 'Mixed', glyph: '✳️', color: '#b9a2db', res: null },
+  sea: { label: 'Sea', glyph: '🌊', color: '#1f4e79', res: null, sea: true },
 };
 
 // Okabe–Ito colour-blind-safe palette, plus a pattern and a label for each seat.

@@ -11,6 +11,7 @@ const BIOMES = {
   quarry: { label: 'Quarry', resource: 'stone' },
   riverbank: { label: 'Riverbank', resource: 'sandbag' },
   mixed: { label: 'Mixed', resource: null }, // collects any materials
+  sea: { label: 'Sea', resource: null }, // Total War sea bays: ships only, produce nothing
 };
 const SINGLE_BIOMES = ['forest', 'quarry', 'riverbank'];
 
@@ -50,8 +51,8 @@ function buildBoard(state, layoutName, withTerritories) {
     id: t.id,
     q: t.q,
     r: t.r,
-    kind: t.id === L.village ? 'village' : 'land',
-    biome: null,
+    kind: t.id === L.village ? 'village' : t.sea ? 'sea' : 'land',
+    biome: t.sea ? 'sea' : null,
     owner: null, // seat that owns it (home territory), or null for open tiles
     role: null, // 'capital' | 'province' | null
     controller: null, // seat currently holding it (differs from owner when occupied)
@@ -91,10 +92,15 @@ function areAdjacent(a, b) {
   return DIRS.some(([dq, dr]) => a.q + dq === b.q && a.r + dr === b.r);
 }
 
+/** Sea bays are joined by the open ocean: ships can sail from any bay to any other. */
+function seaLinked(a, b) {
+  return a.kind === 'sea' && b.kind === 'sea' && a.id !== b.id;
+}
+
 /** Land neighbours of a tile (the village is never a neighbour you can use). */
 function landNeighbours(board, tileId) {
   const t = board.tiles.find((x) => x.id === tileId);
   return board.tiles.filter((o) => o.kind === 'land' && areAdjacent(t, o));
 }
 
-module.exports = { BIOMES, SINGLE_BIOMES, LAYOUTS, defaultBiomeList, buildBoard, areAdjacent, landNeighbours };
+module.exports = { BIOMES, SINGLE_BIOMES, LAYOUTS, defaultBiomeList, buildBoard, areAdjacent, seaLinked, landNeighbours };

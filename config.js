@@ -128,11 +128,42 @@ const DEFAULTS = {
     upkeepPointsPerMaterial: 4,  // pay 1 material per this many upkeep points (see unit upkeep below)
     startMilitia: 2,             // militia each player starts with, on their capital
     capitalOpensAfter: 1,        // provinces that must fall before a capital can be attacked
-    // Unit types. cost = materials to recruit, upkeep = upkeep points, hp = toughness,
-    // attack = damage per second in battle, speed = map squares per second.
-    militia: { cost: 2, upkeep: 1, hp: 10, attack: 1, speed: 3 },
-    infantry: { cost: 4, upkeep: 1, hp: 18, attack: 1.5, speed: 2.5 },
-    cavalry: { cost: 5, upkeep: 2, hp: 12, attack: 1.5, speed: 5 },
+    boardLayout: 'sea37',        // Total War board: 37 hexes with sea bays between the players
+    // Unit types (what each one is: engine/arsenal.js). cost = materials to recruit,
+    // upkeep = upkeep points, hp = toughness, attack = damage per second in battle,
+    // speed = map squares per second, range = shooting range (0 = must be in contact),
+    // vsArmorPct = damage against tanks / mechanised, vsAirPct = damage against aircraft.
+    militia: { cost: 2, upkeep: 1, hp: 10, attack: 1, speed: 3, range: 0, vsArmorPct: 30, vsAirPct: 0 },
+    antitank: { cost: 4, upkeep: 1, hp: 12, attack: 1, speed: 2.5, range: 0, vsArmorPct: 300, vsAirPct: 0 },
+    antiair: { cost: 4, upkeep: 1, hp: 12, attack: 0.8, speed: 2.5, range: 7, vsArmorPct: 30, vsAirPct: 250 },
+    infantry: { cost: 4, upkeep: 1, hp: 18, attack: 1.5, speed: 2.5, range: 0, vsArmorPct: 40, vsAirPct: 0 },
+    motorised: { cost: 5, upkeep: 1, hp: 20, attack: 1.6, speed: 4, range: 0, vsArmorPct: 50, vsAirPct: 0 },
+    mechanised: { cost: 7, upkeep: 2, hp: 26, attack: 1.8, speed: 4, range: 0, vsArmorPct: 80, vsAirPct: 0 },
+    cavalry: { cost: 5, upkeep: 2, hp: 12, attack: 1.5, speed: 5, range: 0, vsArmorPct: 20, vsAirPct: 0 },
+    artillery: { cost: 6, upkeep: 1, hp: 10, attack: 2.2, speed: 1.8, range: 9, vsArmorPct: 60, vsAirPct: 0 },
+    lightTank: { cost: 6, upkeep: 2, hp: 20, attack: 2.4, speed: 5, range: 0, vsArmorPct: 100, vsAirPct: 0 },
+    mediumTank: { cost: 8, upkeep: 2, hp: 30, attack: 3, speed: 4.5, range: 0, vsArmorPct: 120, vsAirPct: 0 },
+    heavyTank: { cost: 11, upkeep: 3, hp: 45, attack: 4, speed: 3, range: 0, vsArmorPct: 150, vsAirPct: 0 },
+    interceptor: { cost: 6, upkeep: 2, hp: 14, attack: 3, speed: 9, range: 0, vsArmorPct: 0, vsAirPct: 100 },
+    bomber: { cost: 8, upkeep: 2, hp: 16, attack: 4, speed: 7, range: 0, vsArmorPct: 120, vsAirPct: 30 },
+    destroyer: { cost: 6, upkeep: 2, hp: 20, attack: 2, speed: 6, range: 0, vsArmorPct: 0, vsAirPct: 0 },
+    cruiser: { cost: 9, upkeep: 2, hp: 32, attack: 3, speed: 5, range: 6, vsArmorPct: 0, vsAirPct: 0 },
+    battleship: { cost: 13, upkeep: 3, hp: 55, attack: 5, speed: 3.5, range: 10, vsArmorPct: 0, vsAirPct: 0 },
+    // Research: materials (any mix) to research each technology; it is ready next round.
+    research: { artillery: 5, lightTanks: 6, mediumTanks: 8, heavyTanks: 10, motorised: 5, mechanised: 7, aircraft: 8, antiTank: 4, antiAir: 4, shipyards: 5, cruisers: 7, battleships: 10 },
+    // Formations: bonuses while a formation is in use (100 = no change).
+    formations: {
+      line: { attackPct: 100, defencePct: 115, speedPct: 100 },
+      square: { attackPct: 90, defencePct: 130, speedPct: 70 },
+      wedge: { attackPct: 115, defencePct: 95, speedPct: 105 },
+      pincer: { attackPct: 110, defencePct: 100, speedPct: 100 },
+      spearhead: { attackPct: 125, defencePct: 100, speedPct: 115 },
+      combined: { attackPct: 112, defencePct: 108, speedPct: 100 },
+      firebase: { attackPct: 110, defencePct: 110, speedPct: 90 },
+    },
+    airBattleSeconds: 45,        // an air battle lasts at most this long
+    bombardPct: 35,              // cruisers and battleships next to a coastal battle shell it at this % of their attack
+    amphibious: true,            // troops may attack a coast across a sea bay your ships hold
     dotsPerUnit: 3,              // each unit appears as this many dots on the battlefield (1-6)
     cavalryVsMilitiaPct: 150,    // cavalry rides down militia...
     cavalryVsInfantryPct: 70,    // ...but infantry stand firm against it...
@@ -342,12 +373,36 @@ const LIMITS = {
 };
 
 /** Settings that may have one decimal place (unit damage and speed in Total War). */
-const DECIMALS = ['militia', 'infantry', 'cavalry'].flatMap((u) => [`totalwar.${u}.attack`, `totalwar.${u}.speed`]);
+const DECIMALS = [];
 
 /** Allowed values for text settings. */
 const OPTIONS = {
   'general.boardLayout': ['standard19'],
+  'totalwar.boardLayout': ['sea37', 'standard19'],
 };
+
+// Total War units, research and formations: labels and limits are generated.
+const ARSENAL = require('./engine/arsenal');
+for (const [k, u] of Object.entries(ARSENAL.UNITS)) {
+  const names = { cost: 'cost', upkeep: 'upkeep points', hp: 'toughness (HP)', attack: 'damage per second', speed: 'speed', range: 'range (0 = melee)', vsArmorPct: 'damage vs armour (%)', vsAirPct: 'damage vs aircraft (%)' };
+  for (const [f, n] of Object.entries(names)) LABELS[`totalwar.${k}.${f}`] = `${u.name}: ${n}`;
+  LIMITS[`totalwar.${k}.cost`] = [1, 99];
+  LIMITS[`totalwar.${k}.hp`] = [1, 999];
+  LIMITS[`totalwar.${k}.speed`] = [0.5, 30];
+  DECIMALS.push(`totalwar.${k}.attack`, `totalwar.${k}.speed`);
+}
+for (const [k, t] of Object.entries(ARSENAL.TECHS)) LABELS[`totalwar.research.${k}`] = `Research cost: ${t.name}`;
+const FORMATION_NAMES = { line: 'Line', square: 'Defensive square', wedge: 'Wedge', pincer: 'Pincer', spearhead: 'Armour spearhead', combined: 'Combined arms', firebase: 'Artillery screen' };
+for (const [k, n] of Object.entries(FORMATION_NAMES)) {
+  LABELS[`totalwar.formations.${k}.attackPct`] = `Formation ${n}: attack (%)`;
+  LABELS[`totalwar.formations.${k}.defencePct`] = `Formation ${n}: protection (%)`;
+  LABELS[`totalwar.formations.${k}.speedPct`] = `Formation ${n}: speed (%)`;
+}
+LABELS['totalwar.boardLayout'] = 'Board (sea37 has sea bays for navies)';
+LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
+LABELS['totalwar.bombardPct'] = 'Shore bombardment strength (% of ship attack)';
+LABELS['totalwar.amphibious'] = 'Amphibious attacks across sea bays you hold';
+LIMITS['totalwar.airBattleSeconds'] = [10, 300];
 
 /** Which settings groups each game mode uses (the lobby only shows these). */
 const GROUPS_FOR_MODE = {

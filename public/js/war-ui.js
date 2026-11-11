@@ -12,6 +12,7 @@ export function tileLabel(g, id) {
   if (!t) return id;
   const b = BIOME[t.biome].label;
   const held = t.controller != null && t.controller !== t.owner ? ` — held by ${g.players[t.controller].name}` : '';
+  if (t.kind === 'sea') return `Sea bay ${t.id}${t.controller != null ? ' — ' + g.players[t.controller].name + "'s fleet" : ''}`;
   if (t.factory && t.owner == null) return `${b} tile ${t.id} (${g.players[t.factory.owner].name}'s factory)`;
   if (t.owner == null) return `Open ${b} tile (${t.id})${held}`;
   return `${g.players[t.owner].name}'s ${t.role === 'capital' ? 'capital' : b + ' province'} (${t.id})${held}`;
@@ -56,6 +57,7 @@ function commandText(g, cmd) {
 
 // ------------------------------------------------------------------ my panel (build phases)
 export function warMyPanel(store) {
+  store0 = store;
   const d = store.data;
   const g = d.game;
   if (!g.war) return '';
@@ -63,7 +65,14 @@ export function warMyPanel(store) {
   const w = g.settings.war;
   const canBuild = BUILD.includes(g.phase) && !d.paused;
   const r = store.ui.recruit;
+  if (g.tw) {
+    const cur = g.tw.units.find((u) => u.type === r.unit);
+    if (!cur || !cur.unlocked) r.unit = 'infantry';
+  }
   const unitInfo = g.tw ? g.tw.units.find((u) => u.type === (r.unit || 'infantry')) : null;
+  const atSea = unitInfo && unitInfo.domain === 'sea';
+  const placeIds = atSea ? g.tw.seas : g.board.tiles.filter((t) => t.kind === 'land' && t.controller === g.you).map((t) => t.id);
+  if (g.stationed && !placeIds.includes(r.tile)) r.tile = atSea ? placeIds[0] || null : me.homeTile;
   const unitCost = unitInfo ? unitInfo.cost : w.unitCost;
   const maxUnits = Math.max(1, Math.floor(bagTotal(me.materials) / unitCost));
   const count = Math.min(r.count, maxUnits);
@@ -86,7 +95,7 @@ export function warMyPanel(store) {
 
   return `<div class="war-box">
     ${me.puppetOf != null ? puppetBox(store) : ''}
-    <div class="row wrap"><span>⚔ <b>${me.units}</b> militia unit${me.units === 1 ? '' : 's'}${g.stationed ? ` — ${unitSpread(g, g.you)}` : ''}</span>
+    <div class="row wrap"><span>⚔ <b>${me.units}</b> ${g.tw ? '' : 'militia '}unit${me.units === 1 ? '' : 's'}${g.stationed ? ` — ${unitSpread(g, g.you)}` : ''}</span>
       ${g.tw ? `<span class="small">${troopSummary(g, g.you)}</span>` : ''}
       ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}</span>` : ''}
       <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span>
@@ -96,9 +105,10 @@ export function warMyPanel(store) {
       ${g.tw ? unitPicker(g, r.unit || 'infantry') : ''}
       <div class="row wrap">${stepper('recruit.count', count, { min: 1, max: maxUnits, label: 'Units' })}<span class="small muted">unit${count === 1 ? '' : 's'} — pay ${need}:</span></div>
       ${bagEditor('recruit.mix', r.mix, limit)}
-      ${g.stationed ? `<label class="inline">Place on ${tileSelect('recruit.tile', g.board.tiles.filter((t) => t.controller === g.you).map((t) => t.id), r.tile || me.homeTile, g)}</label>` : ''}
-      <button class="btn primary" data-act="recruit" ${canBuild && have === need ? '' : 'disabled'}>Recruit ${count} ${g.tw ? esc(r.unit || 'infantry') : ''} (${have}/${need})</button>
+      ${g.stationed ? (placeIds.length ? `<label class="inline">${atSea ? 'Launch into' : 'Place on'} ${tileSelect('recruit.tile', placeIds, r.tile, g)}</label>` : '<p class="warn small">No sea bay next to your coast is free for new ships.</p>') : ''}
+      <button class="btn primary" data-act="recruit" ${canBuild && have === need && (!g.stationed || placeIds.length) ? '' : 'disabled'}>Recruit ${count} ${g.tw ? esc(unitInfo.name.toLowerCase()) : ''} (${have}/${need})</button>
     </details>
+    ${g.tw ? researchPanel(store, canBuild) + upgradePanel(store, canBuild) : ''}
     ${g.stationed ? movePanel(store, canBuild) : ''}
     ${occHtml}
     ${overlordBox(store)}
@@ -175,7 +185,8 @@ function movePanel(store, canBuild) {
   const sources = g.board.tiles.filter((t) => unitsOn(t, g.you) > 0).map((t) => t.id);
   if (!sources.length) return '';
   const from = sources.includes(mv.from) ? mv.from : sources[0];
-  const dests = (g.standTiles || []).filter((id) => id !== from);
+  const fromSea = g.board.tiles.find((t) => t.id === from).kind === 'sea';
+  const dests = (fromSea ? g.seaTiles || [] : g.standTiles || []).filter((id) => id !== from);
   const to = dests.includes(mv.to) ? mv.to : dests[0];
   const max = unitsOn(g.board.tiles.find((t) => t.id === from), g.you);
   const count = Math.min(Math.max(1, mv.count), max);
@@ -183,7 +194,7 @@ function movePanel(store, canBuild) {
   mv.to = to;
   mv.count = count;
   return `<details class="tool" ${canBuild ? 'open' : ''}>
-    <summary>Move units <span class="muted small">(through your own tiles, as often as you like)</span></summary>
+    <summary>Move units <span class="muted small">(through your own tiles, as often as you like${g.tw ? '; ships sail between sea bays' : ''})</span></summary>
     <div class="move-grid">
       <label>From ${tileSelect('move.from', sources, from, g)}</label>
       <label>To ${dests.length ? tileSelect('move.to', dests, to, g) : '<span class="muted">nowhere else</span>'}</label>
@@ -212,56 +223,161 @@ function sourcePicker(store, sources) {
       c.troops = { ...have }; // default: send everyone
       c.troopsFrom = c.from;
     }
-    for (const k of ['militia', 'infantry', 'cavalry']) c.troops[k] = Math.min(c.troops[k] || 0, have[k]);
+    const T = g.board.tiles.find((x) => x.id === c.target);
+    const seaFight = T && T.kind === 'sea';
+    for (const u of g.tw.units) c.troops[u.type] = (u.domain === 'sea') === seaFight ? Math.min(c.troops[u.type] || 0, have[u.type] || 0) : 0;
   }
   const html = `<h3>Attack from</h3><div class="target-list">${sources
     .map(
       (x) =>
-        `<button class="target ${c.from === x.tile ? 'selected' : ''}" data-act="set" data-path="choice.from" data-value="${x.tile}" aria-pressed="${c.from === x.tile}"><span>${esc(tileLabel(g, x.tile))}</span><small>⚔ ${x.units} there</small></button>`,
+        `<button class="target ${c.from === x.tile ? 'selected' : ''}" data-act="set" data-path="choice.from" data-value="${x.tile}" aria-pressed="${c.from === x.tile}"><span>${esc(tileLabel(g, x.tile))}</span><small>⚔ ${x.units} there${x.amphibious ? ' · 🚢 lands by sea' : ''}</small></button>`,
     )
     .join('')}</div>
-    ${g.tw ? `<h3>Send</h3>${troopSteppers('choice.troops', c.troops, troopsOn(g, c.from))}` : ''}
+    ${g.tw ? `<h3>Send</h3>${troopSteppers('choice.troops', c.troops, sendable(g, c.from, c.target))}` : ''}
     <div class="row wrap" ${g.tw ? 'hidden' : ''}>${stepper('choice.count', c.count, { min: 1, max, label: 'Units to send' })}<span class="small">unit${c.count === 1 ? '' : 's'} sent (${Math.min(c.count, g.settings.war.maxAttackDice)} di${Math.min(c.count, g.settings.war.maxAttackDice) === 1 ? "e" : "ce"}) — ${max - c.count} stay${max - c.count === 1 ? 's' : ''} behind</span></div>
     <p class="hint">If you win, the surviving attackers move into the captured province. If you lose, survivors come back.</p>`;
   return { html, ok: g.tw ? troopCount(c.troops) > 0 : true };
 }
 
 // ------------------------------------------------------------------ Total War helpers
-const TYPES = ['militia', 'infantry', 'cavalry'];
-const SHAPES = { militia: '●', infantry: '■', cavalry: '▲' };
+// Unit types, names and shapes come from the server (engine/arsenal.js) in g.tw.units.
+const FALLBACK = ['militia', 'infantry', 'cavalry'];
+const typesOf = (g) => (g.tw ? g.tw.units.map((u) => u.type) : FALLBACK);
+const unitOf = (g, k) => (g.tw && g.tw.units.find((u) => u.type === k)) || { type: k, name: k, shape: '●', domain: 'land' };
 export function troopsOn(g, tileId) {
   const t = g.board.tiles.find((x) => x.id === tileId);
   const n = (t && t.units && t.units[g.you]) || 0;
-  const tr = t && t.troops && t.troops[g.you];
-  return tr && tr.militia + tr.infantry + tr.cavalry === n ? { ...tr } : { militia: n, infantry: 0, cavalry: 0 };
+  const tr = (t && t.troops && t.troops[g.you]) || {};
+  const out = Object.fromEntries(typesOf(g).map((k) => [k, tr[k] || 0]));
+  if (troopCount(out) !== n) return { ...Object.fromEntries(typesOf(g).map((k) => [k, 0])), militia: n };
+  return out;
 }
-const troopCount = (c) => (c ? (c.militia || 0) + (c.infantry || 0) + (c.cavalry || 0) : 0);
+const troopCount = (c) => (c ? Object.values(c).reduce((a, n) => a + (n || 0), 0) : 0);
+/** Troops on a tile that can join an attack on `target` (ships only at sea; no ships ashore). */
+function sendable(g, from, target) {
+  const have = troopsOn(g, from);
+  const T = g.board.tiles.find((x) => x.id === target);
+  const sea = T && T.kind === 'sea';
+  for (const k of Object.keys(have)) if ((unitOf(g, k).domain === 'sea') !== sea) have[k] = 0;
+  return have;
+}
 function troopSummary(g, seat) {
-  const tot = { militia: 0, infantry: 0, cavalry: 0 };
+  const tot = {};
   for (const t of g.board.tiles) {
-    const n = (t.units && t.units[seat]) || 0;
-    const tr = t.troops && t.troops[seat];
-    if (tr && tr.militia + tr.infantry + tr.cavalry === n) TYPES.forEach((k) => (tot[k] += tr[k]));
-    else tot.militia += n;
+    const tr = (t.troops && t.troops[seat]) || {};
+    for (const [k, n] of Object.entries(tr)) tot[k] = (tot[k] || 0) + n;
   }
-  return TYPES.map((k) => `${SHAPES[k]} ${tot[k]} ${k}`).join(' · ');
+  const parts = Object.entries(tot)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${unitOf(g, k).shape} ${n} ${unitOf(g, k).name.toLowerCase()}`);
+  return parts.length ? parts.join(' · ') : '';
 }
 function troopSteppers(path, c, have) {
-  c = c || { militia: 0, infantry: 0, cavalry: 0 };
-  return `<div class="bag-editor">${TYPES.filter((k) => have[k] > 0)
-    .map((k) => `<div class="bag-row"><span class="unit-shape">${SHAPES[k]}</span><span class="bag-name">${k[0].toUpperCase() + k.slice(1)} <small class="muted">(${have[k]} here)</small></span>${stepper(`${path}.${k}`, Math.min(c[k] || 0, have[k]), { max: have[k], label: k })}</div>`)
+  c = c || {};
+  return `<div class="bag-editor">${Object.keys(have)
+    .filter((k) => have[k] > 0)
+    .map((k) => {
+      const u = unitOf(store0.data.game, k);
+      return `<div class="bag-row"><span class="unit-shape">${u.shape}</span><span class="bag-name">${esc(u.name)} <small class="muted">(${have[k]} here)</small></span>${stepper(`${path}.${k}`, Math.min(c[k] || 0, have[k]), { max: have[k], label: u.name })}</div>`;
+    })
     .join('')}</div>`;
 }
+let store0 = null; // set by warMyPanel / warChoosePanel so helpers can read unit names
+const DOMAIN_TITLE = { land: 'Land', air: 'Air', sea: 'Sea' };
 function unitPicker(g, current) {
-  return `<div class="unit-picker">${g.tw.units
-    .map(
-      (u) => `<button class="unit-card ${u.type === current ? 'selected' : ''}" data-act="set" data-path="recruit.unit" data-value="${u.type}" aria-pressed="${u.type === current}">
-        <b>${SHAPES[u.type]} ${u.type[0].toUpperCase() + u.type.slice(1)}</b>
-        <span>${u.cost} materials · upkeep ${u.upkeep}</span>
-        <small>HP ${u.hp} · dmg ${u.attack}/s · speed ${u.speed}</small>
+  const techName = (id) => (g.tw.techs.find((t) => t.id === id) || { name: id }).name;
+  const groups = ['land', 'air', 'sea'].map((dom) => {
+    const cards = g.tw.units
+      .filter((u) => u.domain === dom)
+      .map(
+        (u) => `<button class="unit-card ${u.type === current ? 'selected' : ''} ${u.unlocked ? '' : 'locked'}" data-act="set" data-path="recruit.unit" data-value="${u.type}" aria-pressed="${u.type === current}" ${u.unlocked ? '' : 'disabled'}>
+        <b>${u.shape} ${esc(u.name)}</b>
+        <span>${u.unlocked ? `${u.cost} materials · upkeep ${u.upkeep}` : `🔒 Research ${esc(techName(u.tech))}`}</span>
+        <small>HP ${u.hp} · dmg ${u.attack}/s · speed ${u.speed}${u.range ? ` · range ${u.range}` : ''}</small>
       </button>`,
-    )
-    .join('')}</div><p class="hint">Cavalry is fast and rides down militia. Against infantry it struggles — unless the infantry are encircled (cut off), when cavalry tears them apart. It's slow in forests. Infantry is tough. Militia is cheap.</p>`;
+      )
+      .join('');
+    return `<h4 class="unit-domain">${DOMAIN_TITLE[dom]}</h4><div class="unit-picker">${cards}</div>`;
+  });
+  return `${groups.join('')}<p class="hint">Tanks shrug off rifles; anti-tank guns shred tanks. Only anti-air and aircraft can hit planes. Artillery, anti-air, cruisers and battleships fire at range. Cavalry rides down militia and encircled infantry. Ships hold sea bays, shell coastal battles and carry your troops across.</p>`;
+}
+
+/** Pay n materials from the biggest piles (research and upgrades). */
+export function payLargest(mats, n) {
+  const pool = { ...mats };
+  const out = { wood: 0, stone: 0, sandbag: 0 };
+  for (let i = 0; i < n; i++) {
+    const m = MATS.reduce((a, x) => (pool[x] > pool[a] ? x : a), MATS[0]);
+    if (pool[m] <= 0) return null;
+    pool[m]--;
+    out[m]++;
+  }
+  return out;
+}
+
+/** The research tree: one project at a time, ready next round. */
+function researchPanel(store, canBuild) {
+  const g = store.data.game;
+  const me = g.players[g.you];
+  const r = me.research || { done: [], current: null };
+  const total = bagTotal(me.materials);
+  const rows = g.tw.techs.map((t) => {
+    const done = r.done.includes(t.id);
+    const now = r.current === t.id;
+    const ready = t.needs.every((x) => r.done.includes(x));
+    const pay = payLargest(me.materials, t.cost);
+    let right;
+    if (done) right = '<span class="tag ok">✔ done</span>';
+    else if (now) right = '<span class="tag">🔬 ready next round</span>';
+    else if (!ready) right = `<span class="muted small">needs ${t.needs.map((x) => esc(g.tw.techs.find((y) => y.id === x).name)).join(', ')}</span>`;
+    else right = `<button class="btn small" data-act="research" data-tech="${t.id}" ${canBuild && !r.current && pay ? '' : 'disabled'} title="Paid from your biggest piles">Research (${t.cost})</button>`;
+    const unlocks = t.unlocks.map((k) => `${unitOf(g, k).shape} ${esc(unitOf(g, k).name)}`).join(', ');
+    return `<li class="tech ${done ? 'done' : now ? 'now' : ready ? 'ready' : 'locked'}"><div><b>${esc(t.name)}</b> <small class="muted">→ ${unlocks}</small></div>${right}</li>`;
+  });
+  return `<details class="tool research" ${canBuild && !r.current ? 'open' : ''}>
+    <summary>🔬 Research <span class="muted small">(${r.current ? 'researching ' + esc(g.tw.techs.find((t) => t.id === r.current).name) : `${r.done.length}/${g.tw.techs.length} done`}; you have ${total} materials)</span></summary>
+    <ul class="tech-list">${rows.join('')}</ul>
+    <p class="hint">One project at a time; it is finished at the start of next round. Paid from your biggest piles. Tanks: Artillery → Light → Medium → Heavy. Infantry: Motorised → Mechanised → Aircraft (interceptors and bombers). Militia can become anti-tank or anti-air. Shipyards → Cruisers → Battleships.</p>
+  </details>`;
+}
+
+/** Upgrade units on one of your tiles along their line, paying the difference. */
+function upgradePanel(store, canBuild) {
+  const g = store.data.game;
+  const me = g.players[g.you];
+  const ug = store.ui.upgrade;
+  const chain = (to) => {
+    const out = [];
+    let k = unitOf(g, to).from;
+    while (k) {
+      out.push(k);
+      k = unitOf(g, k).from;
+    }
+    return out;
+  };
+  // Every (tile, from -> to) we could do
+  const options = [];
+  for (const t of g.board.tiles) {
+    if (t.controller !== g.you) continue;
+    const have = troopsOn(g, t.id);
+    for (const to of g.tw.units.filter((u) => u.unlocked && u.from)) for (const from of chain(to.type)) if (have[from] > 0) options.push({ tile: t.id, from, to: to.type, have: have[from] });
+  }
+  if (!options.length) return '';
+  const key = (o) => `${o.tile}|${o.from}|${o.to}`;
+  let sel = options.find((o) => key(o) === ug.key) || options[0];
+  ug.key = key(sel);
+  const each = Math.max(1, unitOf(g, sel.to).cost - unitOf(g, sel.from).cost);
+  const count = Math.min(Math.max(1, ug.count || 1), sel.have);
+  ug.count = count;
+  const pay = payLargest(me.materials, each * count);
+  return `<details class="tool">
+    <summary>⬆ Upgrade units <span class="muted small">(pay the difference in cost)</span></summary>
+    <label class="inline">Upgrade <select data-model="upgrade.key">${options
+      .map((o) => `<option value="${key(o)}" ${key(o) === ug.key ? 'selected' : ''}>${esc(o.tile)}: ${esc(unitOf(g, o.from).name)} → ${esc(unitOf(g, o.to).name)} (${o.have} there)</option>`)
+      .join('')}</select></label>
+    <div class="row wrap">${stepper('upgrade.count', count, { min: 1, max: sel.have, label: 'Units to upgrade' })}<span class="small muted">× ${each} = ${each * count} materials (from your biggest piles)</span></div>
+    <button class="btn" data-act="upgradeUnits" ${canBuild && pay ? '' : 'disabled'}>Upgrade ${count}</button>
+  </details>`;
 }
 
 // ------------------------------------------------------------------ choose panel
@@ -269,7 +385,8 @@ function targetNote(g, id) {
   const t = g.board.tiles.find((x) => x.id === id);
   const notes = [];
   const exempt = t.controller == null || t.owner === g.you;
-  if (t.controller == null) notes.push('claim — automatic win, no loot');
+  if (t.kind === 'sea') notes.push(t.controller == null ? 'empty sea bay — sail in' : 'sea bay — naval battle');
+  else if (t.controller == null) notes.push('claim — automatic win, no loot');
   else if (t.owner === g.you) notes.push('retake your land — ties go to you');
   else if (t.role === 'capital') notes.push(`capital — defender +${g.settings.war.capitalExtraDefenceDice} die${g.mode === 'empire' ? '; win = they become your puppet' : '; win = loot, no capture'}`);
   else notes.push('province');
@@ -284,6 +401,7 @@ function targetNote(g, id) {
 }
 
 export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
+  store0 = store;
   const g = store.data.game;
   const me = g.players[g.you];
   const c = store.ui.choice;

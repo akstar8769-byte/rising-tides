@@ -88,13 +88,56 @@ function reserve(g, me, extraUnits = 0) {
   return upkeep + (me.garrisonDue || 0);
 }
 
-/** Total War: warlike bots like cavalry, others build solid infantry; militia when money is short. */
+/**
+ * Total War: pick the best land unit we have unlocked and can afford. Warlike bots
+ * like tanks and cavalry, balanced bots a mix with guns, cautious bots solid infantry
+ * and anti-tank / anti-air. Militia when money is short.
+ */
+const UNIT_WISHES = {
+  warlike: [['heavyTank', 'mediumTank', 'lightTank', 'cavalry'], ['mechanised', 'motorised', 'infantry'], ['artillery'], ['bomber', 'interceptor']],
+  balanced: [['mechanised', 'motorised', 'infantry'], ['mediumTank', 'lightTank', 'cavalry'], ['artillery', 'antitank'], ['interceptor', 'bomber']],
+  cautious: [['mechanised', 'motorised', 'infantry'], ['antitank', 'antiair'], ['artillery'], ['interceptor']],
+};
 function pickUnitType(g, me, P) {
-  const cost = (t) => g.tw.units.find((u) => u.type === t).cost;
+  const unit = (t) => g.tw.units.find((u) => u.type === t);
   const budget = total(me.materials) - reserve(g, me, 1);
-  const wish = P === PERSONALITIES.warlike ? (chance(0.6) ? 'cavalry' : 'infantry') : P === PERSONALITIES.balanced ? (chance(0.3) ? 'cavalry' : 'infantry') : chance(0.5) ? 'infantry' : 'militia';
-  if (budget >= cost(wish)) return wish;
-  return budget >= cost('infantry') ? 'infantry' : 'militia';
+  const name = P === PERSONALITIES.warlike ? 'warlike' : P === PERSONALITIES.balanced ? 'balanced' : 'cautious';
+  const groups = UNIT_WISHES[name];
+  // Mostly the first group, sometimes another, so armies are mixed.
+  const r = Math.random();
+  const order = r < 0.5 ? [0, 1, 2, 3] : r < 0.75 ? [1, 0, 2, 3] : r < 0.9 ? [2, 0, 1, 3] : [3, 0, 1, 2];
+  for (const gi of order) {
+    for (const t of groups[gi]) {
+      const u = unit(t);
+      if (u && u.unlocked && budget >= u.cost) return t;
+    }
+  }
+  return budget >= unit('infantry').cost ? 'infantry' : 'militia';
+}
+
+/** Total War research plans, in order, by personality. */
+const RESEARCH_PLAN = {
+  warlike: ['artillery', 'lightTanks', 'motorised', 'mediumTanks', 'mechanised', 'aircraft', 'heavyTanks', 'antiAir', 'shipyards', 'cruisers'],
+  balanced: ['motorised', 'artillery', 'antiTank', 'lightTanks', 'mechanised', 'antiAir', 'aircraft', 'shipyards', 'mediumTanks'],
+  cautious: ['antiTank', 'motorised', 'antiAir', 'artillery', 'mechanised', 'shipyards'],
+};
+function researchIdea(g, me, P) {
+  if (!me.research || me.research.current) return null;
+  const name = P === PERSONALITIES.warlike ? 'warlike' : P === PERSONALITIES.balanced ? 'balanced' : 'cautious';
+  const done = new Set(me.research.done);
+  const tech = RESEARCH_PLAN[name].map((id) => g.tw.techs.find((t) => t.id === id)).find((t) => t && !done.has(t.id) && t.needs.every((x) => done.has(x)));
+  if (!tech) return null;
+  // Keep enough for upkeep and a unit or two.
+  if (total(me.materials) - tech.cost < reserve(g, me) + 4) return null;
+  return { key: `research-${tech.id}`, action: { type: 'research', tech: tech.id, materials: payFromLargest(me, tech.cost) } };
+}
+
+/** Total War: now and then launch a ship into a bay next to our coast. */
+function shipIdea(g, me, P) {
+  if (P === PERSONALITIES.cautious || !g.tw.seas || !g.tw.seas.length || !chance(0.25)) return null;
+  const t = ['battleship', 'cruiser', 'destroyer'].map((k) => g.tw.units.find((u) => u.type === k)).find((u) => u.unlocked && total(me.materials) - u.cost >= reserve(g, me, 1) + 2);
+  if (!t) return null;
+  return { key: `ship-${g.round}`, action: { type: 'recruit', count: 1, unit: t.type, tile: g.tw.seas[0], materials: payFromLargest(me, t.cost) } };
 }
 
 /**
@@ -209,12 +252,18 @@ function buildStep(g, me, P, mem, fresh) {
     if (armyPollutes) target = Math.min(target, w.armyFloodPerUnits - 1);
     const wallsOk = me.protection >= g.flood + 1 || P === PERSONALITIES.warlike;
     // Total War: pick a unit type that suits the personality and the budget.
+    if (g.tw) {
+      const r = researchIdea(g, me, P);
+      if (r && fresh(r.key)) return r;
+      const sh = shipIdea(g, me, P);
+      if (sh && fresh(sh.key)) return sh;
+    }
     const unit = g.tw ? pickUnitType(g, me, P) : 'militia';
     const unitCost = g.tw ? g.tw.units.find((u) => u.type === unit).cost : w.unitCost;
     if (me.units < target && wallsOk && total(me.materials) - unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
       const action = { type: 'recruit', count: 1, materials: payFromLargest(me, unitCost) };
       if (g.tw) action.unit = unit;
-      if (g.stationed) action.tile = frontier(g)[0] || me.homeTile;
+      if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land') || me.homeTile;
       return { key: `recruit-${me.units}`, action };
     }
     // 4. Stationed units: put units where they're useful.

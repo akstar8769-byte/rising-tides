@@ -14,9 +14,12 @@ const CFG = cloneDefaults().totalwar;
 const BIOMES = ['forest', 'quarry', 'riverbank', 'forest'];
 const tile = (s, id) => s.board.tiles.find((t) => t.id === id);
 const rich = { wood: 30, stone: 30, sandbag: 30 };
+/** Just the three original unit types (troop objects now list every type). */
+const pick3 = (c) => ({ militia: c.militia, infantry: c.infantry, cavalry: c.cavalry });
 
 function twGame(tweak) {
-  let s = newGame({ n: 4, mode: 'totalwar', biomes: BIOMES, settings: tweak });
+  // These tests use the 19-hex board (the sea board has its own tests in arsenal.test.js).
+  let s = newGame({ n: 4, mode: 'totalwar', biomes: BIOMES, settings: (c) => { c.totalwar.boardLayout = 'standard19'; if (tweak) tweak(c); } });
   s = structuredClone(s);
   for (const t of s.board.tiles) if (t.kind === 'land') t.biome = t.owner != null ? s.players[t.owner].biome : 'quarry';
   return s;
@@ -72,7 +75,7 @@ test('total war: 12 rounds, 2 militia on the capital, high catastrophe line, no 
   const s = twGame();
   assert.equal(s.settings.war.rounds, 12);
   assert.equal(engine.threshold(s), 30);
-  for (const p of s.players) assert.deepEqual(engine.troopsAt(tile(s, p.homeTile), p.seat), { militia: 2, infantry: 0, cavalry: 0 });
+  for (const p of s.players) assert.deepEqual(pick3(engine.troopsAt(tile(s, p.homeTile), p.seat)), { militia: 2, infantry: 0, cavalry: 0 });
   const v = engine.viewFor(s, 0);
   assert.equal(v.war.noAccord, true);
   assert.equal(v.players[0].aidEligible, false);
@@ -83,7 +86,7 @@ test('total war: unit types cost different amounts; upkeep is by unit type', () 
   s = act(s, 0, 'recruit', { unit: 'cavalry', count: 2, materials: { wood: 10 }, tile: 'I0' });
   s = act(s, 0, 'recruit', { unit: 'infantry', count: 1, materials: { stone: 4 } });
   assert.throws(() => act(s, 0, 'recruit', { unit: 'cavalry', count: 1, materials: { wood: 4 } }), /5 materials/);
-  assert.deepEqual(engine.troopsAt(tile(s, 'I0'), 0), { militia: 0, infantry: 0, cavalry: 2 });
+  assert.deepEqual(pick3(engine.troopsAt(tile(s, 'I0'), 0)), { militia: 0, infantry: 0, cavalry: 2 });
   // 2 militia (1 each) + 1 infantry (1) + 2 cavalry (2 each) = 7 points -> 1 material per 4 points
   assert.equal(engine.viewFor(s, 0).players[0].upkeepDue, 1);
   assert.throws(() => act(newGame({ n: 3, mode: 'war' }), 0, 'recruit', { unit: 'cavalry', count: 1, materials: { wood: 2 } }), /Unknown unit type/);
@@ -309,9 +312,9 @@ test('battle: surviving dots are grouped back into whole units (rounding up)', (
   const b = bareBattle({ infantry: 2 }, { militia: 1 }, CFG);
   const a = b.dots.filter((d) => d.side === 'A');
   b.dots = b.dots.filter((d) => d !== a[0] && d !== a[1]); // 4 of 6 infantry dots left
-  assert.deepEqual(tw.survivors(b, 'A'), { militia: 0, infantry: 2, cavalry: 0 });
+  assert.deepEqual(pick3(tw.survivors(b, 'A')), { militia: 0, infantry: 2, cavalry: 0 });
   b.dots = b.dots.filter((d) => d.side !== 'A' || d === a[5]); // 1 dot left
-  assert.deepEqual(tw.survivors(b, 'A'), { militia: 0, infantry: 1, cavalry: 0 });
+  assert.deepEqual(pick3(tw.survivors(b, 'A')), { militia: 0, infantry: 1, cavalry: 0 });
   assert.equal(tw.unitsLost(b, 'A'), 1);
 });
 

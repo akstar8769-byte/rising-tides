@@ -279,3 +279,65 @@ Decided while building (all numbers are lobby settings):
 
 ## Total War: picking a unit (fixed 11 November 2026)
 The battlefield redraws its dots every animation frame, so a tap on a unit often lost its target and nothing was selected. Taps are now matched to the nearest of your units on screen. Tapping a unit selects just that unit; **Add to selection** (or Shift/Ctrl) builds a group. The recruit picker also remembers the unit type you last chose.
+
+
+## ⚔ Total War: research, aircraft, navies and formations (added 11 November 2026)
+
+What the group asked for:
+- A research system like Call of War. Artillery → light → medium → heavy tanks; infantry → motorised → mechanised; then aircraft (interceptors and bombers); militia upgrade to anti-tank or anti-air.
+- A bigger map with naval battles fought the same way as land battles.
+- Air battles.
+- Formations, preset by what you have, that change mid-battle by themselves or by hand.
+
+Decided with the group:
+- **Research:** pay materials during a build phase. It's done at the start of the next round. One project at a time.
+- **Map:** a bigger board with sea bays between the players.
+- **Air:** a separate live air battle first. The winner gets air superiority, and its bombers join the land battle.
+- **Formations:** presets you pick during a battle, depending on your units, with small bonuses. You can change them at any time; Auto-battle changes them by itself.
+
+Decided while building (all numbers are lobby settings in the Total War group):
+- **Research tree:**
+  - Artillery → Light tanks → Medium tanks → Heavy tanks.
+  - Motorised → Mechanised → Aircraft (both plane types).
+  - Anti-tank guns; Anti-air guns.
+  - Shipyards → Cruisers → Battleships.
+  - Costs: 4 to 10 materials, any mix, paid from your biggest piles.
+- **Upgrades** pay the cost difference (at least 1 per unit), along these lines:
+  - militia → anti-tank or anti-air;
+  - infantry → motorised → mechanised (you can skip a step);
+  - cavalry → light → medium → heavy tank;
+  - destroyer → cruiser → battleship.
+- **Matchups:** each unit has a damage-vs-armour % and a damage-vs-aircraft %.
+  - Tanks and mechanised infantry are armour.
+  - Only anti-air and aircraft can hurt planes.
+  - Ships only fight ships, apart from shore bombardment.
+  - Anti-tank guns do 60% against soft targets.
+  - The old cavalry rules still apply to militia and to infantry, and now also to anti-tank, anti-air and motorised units.
+- **Ranged units:** artillery (9), anti-air (7, aircraft only), cruisers (6) and battleships (10) fire at range when nothing is in contact. Artillery fights at 40% up close. The Artillery screen formation adds +3 to artillery range.
+- **Board:** Total War now uses `sea37` (37 hexes) by default. Each wedge is:
+  - capital Ck;
+  - province Mk on the second ring;
+  - coastal province Ek.
+
+  Sea bay Sk sits between neighbouring wedges and touches both. The bays are joined by the open ocean, so ships can sail between any two of them. The 19-hex board can still be chosen in the lobby.
+- **Ships:**
+  - Ships are launched into a bay next to land you hold, and no enemy fleet may be in that bay.
+  - A bay belongs to whoever has ships in it; an empty bay belongs to nobody.
+  - Sea bays produce nothing and don't score.
+  - The loser of a naval battle withdraws to another bay it holds, or an empty one. If there's nowhere to go, the ships are scuttled.
+- **Amphibious attacks** (on by default): you can attack a land tile next to a bay your ships hold, from any of your coastal tiles that has troops. Ships themselves never go ashore.
+- **Shore bombardment:** cruisers and battleships in bays next to a land battle add 35% of their attack per second. They hit the enemy troops nearest the flag.
+- **Air battles** happen only when both sides send or hold aircraft at the fought-over tile.
+  - Interceptors do 150% against bombers. Bombers do 30% in a dogfight.
+  - Air battles have no flag. They last at most 45 s; then the side with more health left wins, and ties go to the defender.
+  - The winner's surviving bombers join the land battle.
+  - Interceptors, and the loser's planes, sit the land battle out.
+  - If only one side has planes, it has air superiority automatically.
+- **Planes never hold ground:** after the land battle, every plane flies back (attackers to the tile they came from). A bomber-only attack can wipe out the defenders, but it doesn't take the tile.
+- **Formations:**
+  - A formation arranges your units around their centre, facing the enemy.
+  - It gives an attack, protection or speed bonus until you change it (2 s between changes).
+  - Air battles have none; naval battles only have Line and Defensive square.
+  - Auto-battle uses Defensive square when outnumbered or cut off. Otherwise attackers favour Pincer when much stronger, then Armour spearhead or Combined arms, and defenders favour Artillery screen or Combined arms.
+- **Bots** follow a research plan by personality (warlike: tanks first; cautious: anti-tank and anti-air first). They recruit the best units they have unlocked and sometimes launch ships.
+- **Older tests** still use the 19-hex board (test/totalwar.test.js); the new rules are tested in test/arsenal.test.js.

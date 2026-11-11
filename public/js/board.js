@@ -76,6 +76,23 @@ export function renderBoard(game, opts = {}) {
         <text x="${x}" y="${y + 25}" class="tsub">Seawall ${game.seawall}${bonus ? ` (+${bonus})` : ''}</text>
       </g>`;
     }
+    if (t.kind === 'sea') {
+      // Sea bay: water, with the holder's colour as a ring and their ships as a badge.
+      const hold = t.controller != null ? PLAYER_STYLE[t.controller] : null;
+      let act = '';
+      let cls = 'tile sea';
+      let ring = '';
+      if (highlight.has(t.id)) {
+        cls += opts.selected === t.id ? ' target selected' : ' target';
+        act = ` data-act="pickTile" data-tile="${t.id}" role="button" tabindex="0"`;
+        ring = `<polygon points="${hexPoints(x, y, SIZE - 4)}" class="target-ring"/>`;
+      }
+      return `<g class="${cls}"${act}><title>Sea bay ${t.id}${hold ? ' — ' + esc(game.players[t.controller].name) + "'s fleet" : ''}</title>
+        <polygon points="${hexPoints(x, y, SIZE - 2)}" fill="#1f4e79" stroke="${hold ? hold.color : '#ffffff'}" stroke-width="${hold ? 6 : 2}"/>
+        <text x="${x}" y="${y - 4}" class="glyph">🌊</text>
+        <text x="${x}" y="${y + 38}" class="tid" style="fill:#fff">${t.id}</text>
+        ${game.stationed ? unitBadge(t, x, y) : ''}${ring}</g>`;
+    }
     const b = BIOME[t.biome];
     const owner = t.owner != null ? game.players[t.owner] : null;
     const isCapital = owner && t.role === 'capital';
@@ -133,7 +150,8 @@ export function renderBoard(game, opts = {}) {
     : '';
   return `<svg class="board" viewBox="${minX.toFixed(0)} ${minY.toFixed(0)} ${w.toFixed(0)} ${h.toFixed(0)}" role="img" aria-label="Game board">${parts.join('')}</svg>
   <div class="legend">${Object.values(BIOME)
-    .map((b) => `<span><i style="background:${b.color}"></i>${b.glyph} ${b.label}${b.res ? ` (${b.res === 'sandbag' ? 'sandbags' : b.res})` : ' (any)'}</span>`)
+    .filter((b) => !b.sea || tiles.some((t) => t.kind === 'sea'))
+    .map((b) => `<span><i style="background:${b.color}"></i>${b.glyph} ${b.label}${b.sea ? ' (ships only)' : b.res ? ` (${b.res === 'sandbag' ? 'sandbags' : b.res})` : ' (any)'}</span>`)
     .join('')}${legendExtra}${factoryLegend}</div>
   ${highlight.size ? '<p class="hint">Tap an outlined tile to choose it.</p>' : ''}`;
 }

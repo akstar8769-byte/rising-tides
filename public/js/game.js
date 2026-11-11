@@ -158,7 +158,7 @@ function phasePanel(store) {
     const next = g.phase === 'talk' ? 'When everyone is Ready, you choose actions secretly.' : 'When everyone is Ready, the round ends and the starting player moves clockwise.';
     return `<div class="card phase-card">
       <h2>${title}</h2>
-      <p class="hint">Trade, give, build walls${g.factories ? ' and factories' : ''}, use the market, donate to the seawall${g.war ? ', recruit militia' : ''}${g.mode === 'empire' ? ', command your puppets' : ''}. ${next}</p>
+      <p class="hint">Trade, give, build walls${g.factories ? ' and factories' : ''}, use the market, donate to the seawall${g.tw ? ', research, recruit and upgrade troops' : g.war ? ', recruit militia' : ''}${g.mode === 'empire' ? ', command your puppets' : ''}. ${next}</p>
       ${
         me.ready
           ? `<button class="btn big ready-done" data-act="unready">✔ Ready — tap to undo</button>`
