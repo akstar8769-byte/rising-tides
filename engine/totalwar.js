@@ -176,7 +176,10 @@ function setFormation(b, side, id, { arrangeNow = true } = {}) {
   if (b.time - (b.formationAt[side] ?? -99) < FORMATION_COOLDOWN && b.formation[side] != null) return false;
   b.formation[side] = id;
   b.formationAt[side] = b.time;
-  if (id && arrangeNow) arrange(b, side, id);
+  if (id && arrangeNow) {
+    arrange(b, side, id);
+    if (b.gunsHeld) b.gunsHeld[side] = {}; // guns rejoin the formation and follow the army again
+  }
   return true;
 }
 
@@ -273,6 +276,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     captureNeeded: cfg.captureSeconds,
     auto: { A: false, D: false },
     ordered: { A: false, D: false },
+    gunsHeld: { A: {}, D: {} }, // artillery units the player parked by hand (they stop following the army)
     ai: { A: 0, D: 0 },
     formation: { A: null, D: null },
     formationAt: { A: null, D: null },
@@ -327,10 +331,43 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
 function order(b, side, ids, x, y) {
   const tx = clamp(Number(x), 1, MAP_W - 1);
   const ty = clamp(Number(y), 1, MAP_H - 1);
-  const units = new Set(b.dots.filter((d) => d.side === side && ids.includes(d.id)).map((d) => d.unit));
-  sendUnits(b, side, units, tx, ty);
+  const picked = b.dots.filter((d) => d.side === side && ids.includes(d.id));
+  const units = new Set(picked.map((d) => d.unit));
+  b.gunsHeld = b.gunsHeld || { A: {}, D: {} };
+  for (const d of picked) if (d.type === 'artillery') b.gunsHeld[side][d.unit] = true;
+  if (units.size > 1) {
+    // Several units move as one block: the whole group shifts so its centre lands on the
+    // spot, and every unit keeps its place in the formation.
+    const group = b.dots.filter((d) => d.side === side && units.has(d.unit));
+    const c = centroid(group);
+    const dx = tx - c.x;
+    const dy = ty - c.y;
+    for (const d of group) {
+      d.tx = clamp(d.x + dx, 0.5, MAP_W - 0.5);
+      d.ty = clamp(d.y + dy, 0.5, MAP_H - 0.5);
+    }
+  } else sendUnits(b, side, units, tx, ty);
   b.ordered[side] = true;
   return units.size;
+}
+
+/**
+ * Artillery follows the army: every so often, guns the player hasn't parked by hand
+ * move to just inside their range of the nearest enemy, staying behind the line.
+ */
+function gunsFollow(b, side, cfg) {
+  const foes = b.dots.filter((d) => d.side !== side && !isAir(d));
+  if (!foes.length) return;
+  const held = (b.gunsHeld && b.gunsHeld[side]) || {};
+  for (const u of unitsOf(b, side)) {
+    if (u.type !== 'artillery' || held[u.unit]) continue;
+    const t = foes.reduce((a, f) => (dist(u, f) < dist(u, a) ? f : a));
+    let range = cfg.artillery.range || 9;
+    if (b.formation[side] === 'firebase') range += 3;
+    const keep = range * 0.8; // a little inside the range so small moves don't take them out of it
+    const d = dist(u, t) || 1;
+    if (d > range * 0.95 || d < keep * 0.6) sendUnits(b, side, new Set([u.unit]), u.x + ((t.x - u.x) * (d - keep)) / d, u.y + ((t.y - u.y) * (d - keep)) / d);
+  }
 }
 
 function sendUnits(b, side, units, tx, ty) {
@@ -453,7 +490,7 @@ function aiFormation(b, side) {
   if (want && want !== b.formation[side]) setFormation(b, side, want, { arrangeNow: false });
 }
 
-function runAI(b, side) {
+function runAI(b, side, cfg) {
   if (b.kind !== 'air') aiFormation(b, side);
   const mine = unitsOf(b, side);
   const foes = b.dots.filter((d) => d.side !== side);
@@ -480,7 +517,7 @@ function runAI(b, side) {
     } else if (['artillery', 'antiair'].includes(u.type)) {
       // Guns stay behind the line, in range of the enemy.
       const t = foeGround.length ? nearest(u, foeGround) : o;
-      const rng = u.type === 'artillery' ? 7 : 5;
+      const rng = Math.max(3, ((cfg && cfg[u.type] && cfg[u.type].range) || (u.type === 'artillery' ? 9 : 7)) * 0.8);
       const d = dist(u, t) || 1;
       go(u, d > rng ? { x: u.x + ((t.x - u.x) * (d - rng)) / d, y: u.y + ((t.y - u.y) * (d - rng)) / d } : u);
     }
@@ -565,10 +602,19 @@ function stepBattle(b, dt, cfg) {
   // Sides that never gave an order get the computer's help.
   for (const side of SIDES) {
     if (!b.ordered[side] && b.time > IDLE_AUTO) b.auto[side] = true;
+    if (!b.auto[side] && b.kind !== 'air') {
+      // Guns follow the army even while the player gives the orders.
+      b.gunT = b.gunT || { A: 0, D: 0 };
+      b.gunT[side] -= dt;
+      if (b.gunT[side] <= 0) {
+        gunsFollow(b, side, cfg);
+        b.gunT[side] = AI_EVERY;
+      }
+    }
     if (b.auto[side]) {
       b.ai[side] -= dt;
       if (b.ai[side] <= 0) {
-        runAI(b, side);
+        runAI(b, side, cfg);
         b.ai[side] = AI_EVERY;
       }
     }

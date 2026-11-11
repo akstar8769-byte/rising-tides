@@ -3,7 +3,7 @@
 import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
 import { renderBoard } from './board.js';
 import { renderLog, renderChat } from './log.js';
-import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel } from './war-ui.js';
+import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest } from './war-ui.js';
 export { tileLabel };
 import { diplomacyPanel, diploTags, limitsNote, myPactWith } from './diplomacy-ui.js';
 import { battlePanel } from './battle-ui.js';
@@ -357,6 +357,10 @@ function myPanel(store) {
     <details class="tool">
       <summary>Village seawall <span class="muted small">(${b.seawallPerStep} donated = +1 threshold, max +${b.seawallMaxSteps}; ${b.seawallPointsPerMaterial} pt each)</span></summary>
       ${bagEditor('donate', store.ui.donate, me.materials)}
+      ${(() => {
+        const pay = payLargest(me.materials, Math.min(b.seawallPerStep, bagTotal(me.materials)));
+        return `<div class="row wrap">${pay && bagTotal(pay) ? `<button class="btn small" data-act="set" data-path="donate" data-json="${esc(JSON.stringify(pay))}">⚡ Auto-fill ${bagTotal(pay)}</button>` : ''}<button class="btn small" data-act="set" data-path="donate" data-json="{&quot;wood&quot;:0,&quot;stone&quot;:0,&quot;sandbag&quot;:0}">Clear</button></div>`;
+      })()}
       <button class="btn" data-act="donate" ${canBuild && donateTotal ? '' : 'disabled'}>Donate ${donateTotal || ''}</button>
       <p class="hint">Donated materials are discarded, but each one scores ${b.seawallPointsPerMaterial} point${b.seawallPointsPerMaterial === 1 ? '' : 's'} if your home survives.</p>
     </details>

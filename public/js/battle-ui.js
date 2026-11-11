@@ -20,6 +20,14 @@ const TROWS = 20;
 
 // ---------------------------------------------------------------- data
 
+/** Battles waiting for you to finish this one (each player fights one at a time). */
+function waitingLine(g) {
+  const mine = (g.battleWaiting || []).filter((w) => w.attacker === g.you || w.defender === g.you);
+  if (!mine.length) return '';
+  const say = (w) => (w.attacker === g.you ? `you attack ${esc(w.name)}` : `${esc(g.players[w.attacker].name)} attacks ${esc(w.name)}`);
+  return `<p class="small muted">⏳ Next up for you: ${mine.map(say).join(' · ')} (starts when this battle ends)</p>`;
+}
+
 /** The battle with the latest positions from the server merged in. */
 export function liveBattle(store, id) {
   const g = store.data.game;
@@ -339,11 +347,12 @@ export function battlePanel(store) {
       ${done ? `<span class="tag ${b.winner === mySide ? 'ok' : 'warn'}">${b.winner === 'A' ? esc(A.name) : esc(D.name)} won</span>` : ''}
     </div>
     ${others.length ? `<div class="row wrap">${others.map((x) => `<button class="btn small" data-act="watchBattle" data-id="${x.id}">Watch: ${esc(g.players[x.attacker].name)} vs ${esc(g.players[x.defender].name)}</button>`).join('')}</div>` : ''}
+    ${waitingLine(g)}
     <div id="battle-wrap">${battleSvg(store, b)}</div>
     ${
       mySide && !done
         ? `<div class="row wrap battle-controls">
-        <button class="btn small" data-act="battleSelect" data-type="all">Select all</button>
+        <button class="btn small" data-act="battleSelect" data-type="all" title="Select every unit: tap the map and the whole formation moves there, keeping its shape">⬢ Whole army</button>
         ${myTypes.map((t) => `<button class="btn small" data-act="battleSelect" data-type="${t}">${shapeOf(g, t)} ${esc(nameOf(g, t))}</button>`).join('')}
         <button class="btn small" data-act="battleSelect" data-type="none">Clear</button>
         <button class="btn small" data-act="battleAddMode" aria-pressed="${store.ui.battleAdd ? 'true' : 'false'}">${store.ui.battleAdd ? '✓ ' : ''}Add to selection</button>
@@ -357,7 +366,7 @@ export function battlePanel(store) {
             ? `<p class="hint">Tap your ships, then tap where to sail. <b>${mySide === 'A' ? 'Hold the flag ⚑ with no enemy ship on it' : 'Keep their ships off the flag ⚑ until time runs out'}.</b> Cruisers and battleships fire at range; destroyers are fast. Hit a ship from two sides for bonus damage. The winner holds the sea bay.</p>`
             : ''
       }
-      <p class="hint" ${kind === 'land' ? '' : 'hidden'}>Tap a unit (or a type button), then tap the map to send it. <b>${mySide === 'A' ? 'Hold the flag ⚑ with nobody defending it' : 'Keep attackers off the flag ⚑ until time runs out'}.</b> Ground you move through becomes yours (tinted); the dark line is the <b>frontline</b>. Your supply runs through your own ground back to your edge of the map — units cut off (red outline, red pocket) take heavy damage and surrender. Hit enemies from two sides for bonus damage. Cavalry struggles against infantry — until you encircle them. Tanks ignore rifle fire but fear anti-tank guns; only anti-air can hit planes.</p>`
+      <p class="hint" ${kind === 'land' ? '' : 'hidden'}>Tap a unit (or a type button), then tap the map to send it. Several units move together and keep their formation — tap ⬢ Whole army to move everything. Your artillery follows the army by itself until you move it by hand (picking a formation sends it back to following). <b>${mySide === 'A' ? 'Hold the flag ⚑ with nobody defending it' : 'Keep attackers off the flag ⚑ until time runs out'}.</b> Ground you move through becomes yours (tinted); the dark line is the <b>frontline</b>. Your supply runs through your own ground back to your edge of the map — units cut off (red outline, red pocket) take heavy damage and surrender. Hit enemies from two sides for bonus damage. Cavalry struggles against infantry — until you encircle them. Tanks ignore rifle fire but fear anti-tank guns; only anti-air can hit planes.</p>`
         : `<p class="hint">You're watching. ${typesIn.map((t) => `${shapeOf(g, t)} ${esc(nameOf(g, t).toLowerCase())}`).join(' ')} (each unit is a group of dots). Tinted ground = territory, dark line = frontline, red = cut off.</p>`
     }
   </div>`;

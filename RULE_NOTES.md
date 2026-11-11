@@ -315,7 +315,7 @@ Decided while building (all numbers are lobby settings in the Total War group):
   - Ships only fight ships, apart from shore bombardment.
   - Anti-tank guns do 60% against soft targets.
   - The old cavalry rules still apply to militia and to infantry, and now also to anti-tank, anti-air and motorised units.
-- **Ranged units:** artillery (9), anti-air (7, aircraft only), cruisers (6) and battleships (10) fire at range when nothing is in contact. Artillery fights at 40% up close. The Artillery screen formation adds +3 to artillery range.
+- **Ranged units:** artillery (14), anti-air (7, aircraft only), cruisers (6) and battleships (10) fire at range when nothing is in contact. Artillery fights at 40% up close. The Artillery screen formation adds +3 to artillery range.
 - **Board:** Total War now uses `sea37` (37 hexes) by default. Each wedge is:
   - capital Ck;
   - province Mk on the second ring;
@@ -347,3 +347,7 @@ Decided while building (all numbers are lobby settings in the Total War group):
 ## Artillery: visible fire, helpless up close (11 November 2026)
 - Guns now show their fire on the battlefield. Artillery, ships and anti-air shells fly from the gun to the target and burst on impact, about one visible shell per gun dot each second (damage is still dealt continuously). Shore bombardment comes in from the map edge, and anti-air shows as yellow tracers.
 - Artillery caught in close combat does only 15% of its damage (was 40%) and takes 150% damage. Both numbers are lobby settings (`artilleryMeleeAttackPct`, `artilleryMeleeDamageTakenPct`). Keep your guns behind the line.
+- **Artillery range 14 (was 9), and the guns follow the army.** About once a second, artillery you haven't moved yourself moves to just inside its range of the nearest enemy, so it keeps firing as the front advances. Once you move a gun by hand it stays where you put it; picking a formation sends it back to following. Its speed is unchanged, and it's still weak in close combat.
+- **Moving in formation:** when you order several units at once, the whole group shifts together and keeps its shape, with the group's centre landing where you tap. A single unit still goes straight to the spot. The **⬢ Whole army** button selects everything.
+- **One battle at a time:** a player fights one battle at a time. When two attacks hit the same player, the second waits and starts as soon as the first ends. Battles between other players still run at the same time. The battle screen shows what's next for you.
+- **Auto-fill:** the recruit payment fills itself in from your biggest piles whenever you change the unit or the number. You can still adjust it by hand, or use ⚡ Auto-fill and Clear. The village seawall has the same buttons.

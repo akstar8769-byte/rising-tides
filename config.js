@@ -141,7 +141,7 @@ const DEFAULTS = {
     motorised: { cost: 5, upkeep: 1, hp: 20, attack: 1.6, speed: 4, range: 0, vsArmorPct: 50, vsAirPct: 0 },
     mechanised: { cost: 7, upkeep: 2, hp: 26, attack: 1.8, speed: 4, range: 0, vsArmorPct: 80, vsAirPct: 0 },
     cavalry: { cost: 5, upkeep: 2, hp: 12, attack: 1.5, speed: 5, range: 0, vsArmorPct: 20, vsAirPct: 0 },
-    artillery: { cost: 6, upkeep: 1, hp: 10, attack: 2.2, speed: 1.8, range: 9, vsArmorPct: 60, vsAirPct: 0 },
+    artillery: { cost: 6, upkeep: 1, hp: 10, attack: 2.2, speed: 1.8, range: 14, vsArmorPct: 60, vsAirPct: 0 },
     lightTank: { cost: 6, upkeep: 2, hp: 20, attack: 2.4, speed: 5, range: 0, vsArmorPct: 100, vsAirPct: 0 },
     mediumTank: { cost: 8, upkeep: 2, hp: 30, attack: 3, speed: 4.5, range: 0, vsArmorPct: 120, vsAirPct: 0 },
     heavyTank: { cost: 11, upkeep: 3, hp: 45, attack: 4, speed: 3, range: 0, vsArmorPct: 150, vsAirPct: 0 },

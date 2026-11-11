@@ -980,6 +980,12 @@ function decorateView(v, s, seat) {
   v.commandTargets = {};
   if (mine) for (const q of puppetsOf(s, seat)) v.commandTargets[q] = attackTargets(s, q);
   delete v.battleQueue;
+  // Battles waiting their turn (each player fights one at a time). Troop details stay hidden.
+  v.battleWaiting = (s.battleQueueTW || []).map((e) => {
+    const T = getAnyTile(s, e.tile);
+    return { attacker: e.seat, defender: T.controller, tile: e.tile, name: tileName(s, T) };
+  });
+  delete v.battleQueueTW;
   if (TW(s)) {
     v.war.noAccord = true;
     const cfg = TWS(s);
@@ -1471,14 +1477,24 @@ function startBattles(s, entries) {
 
 /** Start every battle that can start now; take empty land immediately. */
 function nextWave(s) {
+  // Each player fights one battle at a time: a battle waits while either side is
+  // already fighting (or its tiles are). Battles between other players run alongside.
   const busy = new Set();
+  const fighting = new Set();
+  for (const b of s.battles) {
+    if (b.status !== 'live') continue;
+    busy.add(b.tile);
+    busy.add(b.from);
+    fighting.add(b.attacker);
+    fighting.add(b.defender);
+  }
   const later = [];
   let rise = 0;
   for (const e of s.battleQueueTW) {
     const A = s.players[e.seat];
     const T = getAnyTile(s, e.tile);
     const src = getAnyTile(s, e.from);
-    if (busy.has(T.id) || busy.has(src.id)) {
+    if (busy.has(T.id) || busy.has(src.id) || fighting.has(e.seat) || (T.controller != null && fighting.has(T.controller))) {
       later.push(e);
       continue;
     }
@@ -1536,6 +1552,8 @@ function nextWave(s) {
     setTroops(T, D, zeroTroops()); // the defenders are in the battle now
     busy.add(T.id);
     busy.add(src.id);
+    fighting.add(e.seat);
+    fighting.add(D);
     rise += TWS(s).battleFlood;
     const b = beginBattleTW(s, { attacker: e.seat, defender: D, T, src, sent, defenders });
     addLog(s, `⚔ ${T.kind === 'sea' ? 'NAVAL BATTLE' : 'BATTLE'} for ${name}: ${A.name} (${describeTroops(sent)}) attacks ${s.players[D].name} (${describeTroops(defenders)}).${b.kind === 'air' ? ' Both sides have aircraft: the air battle comes first!' : ''}`, { kind: 'battle', event: 'battleStart', battle: b.id });
@@ -1769,9 +1787,10 @@ function stepBattles(s, dt) {
       if (s.phase === 'ended') return true;
     }
   }
-  if (ended && !s.battles.some((b) => b.status === 'live')) {
+  if (ended) {
+    // Start any waiting battle whose players are free again (others keep fighting).
     if (s.battleQueueTW.length) nextWave(s);
-    else {
+    else if (!s.battles.some((b) => b.status === 'live')) {
       s.battles = [];
       base.startTradePhase(s);
     }

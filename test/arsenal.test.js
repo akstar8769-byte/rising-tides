@@ -310,3 +310,34 @@ test('artillery: very weak up close (deals 15%, takes 150%), and its shots are s
   assert.deepEqual(snap.shots[0].slice(2, 4), [47, 20]);
   assert.equal(tw.snapshot(b).shots.length, 0, 'each shot is sent once');
 });
+
+test('several units ordered together move as one block and keep their shape', () => {
+  const T = { id: 'X', biome: 'quarry' };
+  const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { infantry: 3 }, dTroops: { infantry: 1 }, cfg: CFG, rand: () => 0.5 });
+  const mine = b.dots.filter((d) => d.side === 'A');
+  const before = mine.map((d) => [d.x, d.y]);
+  const c = { x: mine.reduce((a, d) => a + d.x, 0) / mine.length, y: mine.reduce((a, d) => a + d.y, 0) / mine.length };
+  tw.order(b, 'A', mine.map((d) => d.id), c.x + 5, c.y + 2);
+  mine.forEach((d, i) => {
+    assert.ok(Math.abs(d.tx - (before[i][0] + 5)) < 1e-6 && Math.abs(d.ty - (before[i][1] + 2)) < 1e-6, 'each dot shifts by the same amount');
+  });
+});
+
+test('artillery follows the army until the player parks it by hand', () => {
+  const T = { id: 'X', biome: 'quarry' };
+  const cfg = { ...CFG, dotsPerUnit: 1 };
+  const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { artillery: 1, infantry: 1 }, dTroops: { infantry: 1 }, cfg, rand: () => 0.5 });
+  b.ordered.A = true; // the player is in charge (not auto-battle)
+  const art = b.dots.find((d) => d.side === 'A' && d.type === 'artillery');
+  const foe = b.dots.find((d) => d.side === 'D');
+  Object.assign(art, { x: 5, y: 20, tx: 5, ty: 20 });
+  Object.assign(foe, { x: 50, y: 20, tx: 50, ty: 20 });
+  tw.stepBattle(b, 0.1, cfg);
+  assert.ok(art.tx > 30, 'guns head towards the enemy, to just inside their range');
+  assert.ok(50 - art.tx <= cfg.artillery.range, 'and stop within range');
+  assert.ok(50 - art.tx >= cfg.artillery.range * 0.5, 'but stay well back');
+  // The player parks the guns: they stay put.
+  tw.order(b, 'A', [art.id], 8, 20);
+  for (let i = 0; i < 30; i++) tw.stepBattle(b, 0.1, cfg);
+  assert.ok(Math.abs(art.tx - 8) < 2, 'parked guns stay where they were put');
+});

@@ -79,6 +79,14 @@ export function warMyPanel(store) {
   const maxUnits = Math.max(1, Math.floor(bagTotal(me.materials) / unitCost));
   const count = Math.min(r.count, maxUnits);
   const need = count * unitCost;
+  // Auto-fill: whenever the unit, the number or your stock changes, pay from your
+  // biggest piles. You can still change the mix by hand (or Clear it).
+  const autoKey = `${r.unit}|${count}|${MATS.map((m) => me.materials[m]).join(',')}`;
+  if (r.autoKey !== autoKey) {
+    r.autoKey = autoKey;
+    const pay = payLargest(me.materials, need);
+    if (pay) r.mix = pay;
+  }
   const have = bagTotal(r.mix);
   const left = need - have;
   const limit = {};
@@ -107,6 +115,7 @@ export function warMyPanel(store) {
       ${g.tw ? unitPicker(g, r.unit || 'infantry') : ''}
       <div class="row wrap">${stepper('recruit.count', count, { min: 1, max: maxUnits, label: 'Units' })}<span class="small muted">unit${count === 1 ? '' : 's'} — pay ${need}:</span></div>
       ${bagEditor('recruit.mix', r.mix, limit)}
+      <div class="row wrap"><button class="btn small" data-act="set" data-path="recruit.autoKey" data-json="null">⚡ Auto-fill</button><button class="btn small" data-act="set" data-path="recruit.mix" data-json="{&quot;wood&quot;:0,&quot;stone&quot;:0,&quot;sandbag&quot;:0}">Clear</button></div>
       ${g.stationed ? (placeIds.length ? `<label class="inline">${atSea ? 'Launch into' : 'Place on'} ${tileSelect('recruit.tile', placeIds, r.tile, g)}</label>` : '<p class="warn small">No sea bay next to your coast is free for new ships.</p>') : ''}
       <button class="btn primary" data-act="recruit" ${canBuild && have === need && (!g.stationed || placeIds.length) ? '' : 'disabled'}>Recruit ${count} ${g.tw ? esc(unitInfo.name.toLowerCase()) : ''} (${have}/${need})</button>
     </details>

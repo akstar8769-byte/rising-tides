@@ -135,7 +135,8 @@ test('total war: battle orders only move your own dots', () => {
   const b = s.battles[0];
   const mine = b.dots.filter((d) => d.side === 'A').map((d) => d.id);
   s = act(s, 0, 'battleOrder', { battle: b.id, dots: mine, x: 40, y: 20 });
-  const near40 = (st) => st.battles[0].dots.filter((d) => d.side === 'A').every((d) => Math.abs(d.tx - 40) < 2);
+  // Several units move as a block: the group's centre lands on the spot.
+  const near40 = (st) => { const a = st.battles[0].dots.filter((d) => d.side === 'A'); return Math.abs(a.reduce((t, d) => t + d.tx, 0) / a.length - 40) < 1; };
   assert.ok(near40(s));
   assert.throws(() => act(s, 2, 'battleOrder', { battle: b.id, dots: mine, x: 1, y: 1 }), /not fighting/);
   s = act(s, 1, 'battleOrder', { battle: b.id, dots: mine, x: 1, y: 1 }); // seat 1 can't move seat 0's dots
@@ -425,4 +426,42 @@ test('total war: battles run in slow motion at battleSpeedPct', () => {
   };
   assert.ok(Math.abs(timeAfter(100) - 1) < 1e-6);
   assert.ok(Math.abs(timeAfter(50) - 0.5) < 1e-6);
+});
+
+test('total war: a player fights one battle at a time; the next one waits', () => {
+  // Seats 0 and 2 both attack seat 1 in the same round.
+  let s = edit(twGame(), (c) => (tile(c, 'I2').controller = 2)); // seat 2 holds I2, next to E1
+  s = place(s, { 0: { I0: { infantry: 2 } }, 1: { I1: { militia: 2 }, E1: { militia: 2 } }, 2: { I2: { infantry: 2 } } });
+  s = chooseAll(allReady(s), {
+    0: { action: 'attack', target: 'I1', from: 'I0', troops: { infantry: 2 } },
+    2: { action: 'attack', target: 'E1', from: 'I2', troops: { infantry: 2 } },
+  });
+  assert.equal(s.phase, 'battle');
+  assert.equal(s.battles.filter((b) => b.status === 'live').length, 1, 'seat 1 only fights one battle at once');
+  const first = s.battles[0];
+  const view = engine.viewFor(s, 1);
+  assert.equal(view.battleWaiting.length, 1);
+  assert.equal(view.battleWaiting[0].defender, 1);
+  assert.equal(view.battleQueueTW, undefined, 'queued troops stay hidden');
+  // Finish the first battle: the second starts while the phase stays 'battle'.
+  s = structuredClone(s);
+  for (const b of s.battles) b.auto = { A: true, D: true };
+  let guard = 0;
+  while (s.battles.length < 2 && guard++ < 5000) engine.stepBattles(s, 0.1);
+  assert.equal(s.phase, 'battle');
+  assert.notEqual(s.battles.find((b) => b.status === 'live').id, first.id);
+  assert.equal(s.battleQueueTW.length, 0);
+  s = fightOut(s);
+  assert.notEqual(s.phase, 'battle');
+});
+
+test('total war: battles between different players still run at the same time', () => {
+  // Seat 0 attacks seat 1 at I1, seat 3 attacks seat 2 at I3: nobody is in both.
+  let s = edit(twGame(), (c) => (tile(c, 'I4').controller = 3));
+  s = place(s, { 0: { I0: { infantry: 2 } }, 1: { I1: { militia: 2 } }, 2: { I3: { militia: 2 } }, 3: { I4: { infantry: 2 } } });
+  s = chooseAll(allReady(s), {
+    0: { action: 'attack', target: 'I1', from: 'I0', troops: { infantry: 2 } },
+    3: { action: 'attack', target: 'I3', from: 'I4', troops: { infantry: 2 } },
+  });
+  assert.equal(s.battles.filter((b) => b.status === 'live').length, 2);
 });
