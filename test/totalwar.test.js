@@ -71,9 +71,9 @@ function fightOut(s) {
 }
 
 // ---------------------------------------------------------------- setup and economy
-test('total war: 12 rounds, 2 militia on the capital, high catastrophe line, no Accord', () => {
+test('total war: 18 rounds, 2 militia on the capital, high catastrophe line, no Accord', () => {
   const s = twGame();
-  assert.equal(s.settings.war.rounds, 12);
+  assert.equal(s.settings.war.rounds, 18);
   assert.equal(engine.threshold(s), 30);
   for (const p of s.players) assert.deepEqual(pick3(engine.troopsAt(tile(s, p.homeTile), p.seat)), { militia: 2, infantry: 0, cavalry: 0 });
   const v = engine.viewFor(s, 0);

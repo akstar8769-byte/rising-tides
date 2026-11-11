@@ -116,7 +116,7 @@ const DEFAULTS = {
 
   // ---- Total War mode only (a just-for-fun mode where war is the point) ----
   totalwar: {
-    rounds: 12,
+    rounds: 18,                  // longer games so research has time to pay off
     catastrophe: { 3: 28, 4: 30, 5: 32 }, // light Flood: the line is much higher than in War
     battleFlood: 1,              // Flood rise for each real battle (claiming empty land is free)
     passivePerTile: 1,           // every tile you hold gives this much of its resource every round

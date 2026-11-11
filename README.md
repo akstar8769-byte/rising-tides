@@ -3,7 +3,7 @@
 An online version of **Rising Tides**, our JA Company Programme board game, for 3–5 players on phones or laptops. It's for our own playtesting only, not for sale.
 
 - The host creates a room and shares a 4-letter code or link. Everyone else opens the link, types a name and joins. No accounts, no installs.
-- **Modes:** Base, War (territories, militia, the Climate Accord), War + Empire (puppets, tribute, revolts), and **⚔ Total War** — a just-for-fun mode where war is the point: 12 rounds, militia / infantry / cavalry, and **live battles** where you move your units on a battlefield and encircle the enemy. The host picks one in the lobby.
+- **Modes:** Base, War (territories, militia, the Climate Accord), War + Empire (puppets, tribute, revolts), and **⚔ Total War** — a just-for-fun mode where war is the point: 18 rounds, militia / infantry / cavalry, and **live battles** where you move your units on a battlefield and encircle the enemy. The host picks one in the lobby.
 - **Every number in the rules** can be changed in the lobby before a game starts (defaults live in `config.js`).
 
 ---

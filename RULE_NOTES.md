@@ -206,7 +206,7 @@ In 60 bot-only War games this cut catastrophes from about 15–20 to 8 (3 with t
 A separate fourth mode where war is the point. Base, War and War + Empire are unchanged. Every number is in `config.js` under `totalwar` and in the lobby.
 
 **The strategic game** (built on the War rules with stationed units)
-- **12 rounds.** Light Flood: no Accord, sanctions or aid; no army, destruction or occupation Flood. Each real battle adds Flood +1 (claiming empty land is free), and the catastrophe line is much higher (28 / 30 / 32 for 3 / 4 / 5 players).
+- **18 rounds.** Light Flood: no Accord, sanctions or aid; no army, destruction or occupation Flood. Each real battle adds Flood +1 (claiming empty land is free), and the catastrophe line is much higher (28 / 30 / 32 for 3 / 4 / 5 players).
 - **Unit types:**
 
   | Type | Cost | Upkeep pts | HP | Damage/s | Speed | Notes |
@@ -222,7 +222,7 @@ A separate fourth mode where war is the point. Base, War and War + Empire are un
   - **Capitals can be captured and held.** Their owner keeps playing and can try to win them back.
   - A capital opens to attack once 1 of its provinces has fallen.
   - Holding **every capital** ends the game at once.
-- **Score after 12 rounds:**
+- **Score after 18 rounds:**
   - 2 points per tile held;
   - +3 for each enemy capital held;
   - 1 point per 3 spare materials;
@@ -339,7 +339,7 @@ Decided while building (all numbers are lobby settings in the Total War group):
   - It gives an attack, protection or speed bonus until you change it (2 s between changes).
   - Air battles have none; naval battles only have Line and Defensive square.
   - Auto-battle uses Defensive square when outnumbered or cut off. Otherwise attackers favour Pincer when much stronger, then Armour spearhead or Combined arms, and defenders favour Artillery screen or Combined arms.
-- **Bots** follow a research plan by personality (warlike: tanks first; cautious: anti-tank and anti-air first). They recruit the best units they have unlocked and sometimes launch ships.
+- **Bots** research before anything else, each following a plan that suits its personality (warlike: tanks first; cautious: anti-tank first; everyone gets to tanks and aircraft eventually). Once their army is a decent size they upgrade old units to the best type they have unlocked. They recruit bigger armies than in War, build walls only when the Flood is a real threat, and sometimes launch ships.
 - **Older tests** still use the 19-hex board (test/totalwar.test.js); the new rules are tested in test/arsenal.test.js.
 
 ## Artillery: visible fire, helpless up close (11 November 2026)

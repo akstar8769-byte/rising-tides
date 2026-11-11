@@ -117,9 +117,9 @@ function pickUnitType(g, me, P) {
 
 /** Total War research plans, in order, by personality. */
 const RESEARCH_PLAN = {
-  warlike: ['artillery', 'lightTanks', 'motorised', 'mediumTanks', 'mechanised', 'aircraft', 'heavyTanks', 'antiAir', 'shipyards', 'cruisers'],
-  balanced: ['motorised', 'artillery', 'antiTank', 'lightTanks', 'mechanised', 'antiAir', 'aircraft', 'shipyards', 'mediumTanks'],
-  cautious: ['antiTank', 'motorised', 'antiAir', 'artillery', 'mechanised', 'shipyards'],
+  warlike: ['artillery', 'lightTanks', 'motorised', 'mediumTanks', 'mechanised', 'aircraft', 'heavyTanks', 'antiAir', 'antiTank', 'shipyards', 'cruisers', 'battleships'],
+  balanced: ['artillery', 'motorised', 'lightTanks', 'antiTank', 'mechanised', 'mediumTanks', 'aircraft', 'antiAir', 'heavyTanks', 'shipyards', 'cruisers', 'battleships'],
+  cautious: ['antiTank', 'motorised', 'artillery', 'lightTanks', 'mechanised', 'antiAir', 'mediumTanks', 'aircraft', 'heavyTanks', 'shipyards', 'cruisers'],
 };
 function researchIdea(g, me, P) {
   if (!me.research || me.research.current) return null;
@@ -127,9 +127,50 @@ function researchIdea(g, me, P) {
   const done = new Set(me.research.done);
   const tech = RESEARCH_PLAN[name].map((id) => g.tw.techs.find((t) => t.id === id)).find((t) => t && !done.has(t.id) && t.needs.every((x) => done.has(x)));
   if (!tech) return null;
-  // Keep enough for upkeep and a unit or two.
-  if (total(me.materials) - tech.cost < reserve(g, me) + 4) return null;
+  // Research comes first in Total War: keep only a little back for upkeep.
+  if (total(me.materials) - tech.cost < reserve(g, me) + 1) return null;
   return { key: `research-${tech.id}`, action: { type: 'research', tech: tech.id, materials: payFromLargest(me, tech.cost) } };
+}
+
+/**
+ * Total War: upgrade old units on our tiles to the best type we have unlocked
+ * (infantry to mechanised, light tanks to heavy...). One unit at a time.
+ */
+function upgradeIdea(g, me, P) {
+  const unit = (t) => g.tw.units.find((u) => u.type === t);
+  // Build up numbers first: only upgrade once the army is a decent size.
+  if (me.units < P.army + 2) return null;
+  const spare = total(me.materials) - reserve(g, me) - 1;
+  const owned = {};
+  for (const t of g.board.tiles) for (const [k, n] of Object.entries((t.troops || {})[g.you] || {})) owned[k] = (owned[k] || 0) + n;
+  for (const t of g.board.tiles) {
+    if (t.controller !== g.you) continue;
+    const here = (t.troops || {})[g.you] || {};
+    for (const [from, n] of Object.entries(here)) {
+      if (!n) continue;
+      // Walk up the upgrade chain and take the highest unlocked step we can pay for.
+      let best = null;
+      for (const u of g.tw.units) {
+        if (!u.unlocked || u.domain !== unit(from).domain) continue;
+        let k = u.type;
+        const seen = new Set();
+        let ok = false;
+        while (unit(k) && unit(k).from && !seen.has(k)) {
+          seen.add(k);
+          if (unit(k).from === from) { ok = true; break; }
+          k = unit(k).from;
+        }
+        if (!ok) continue;
+        // Militia make cheap anti-tank / anti-air squads, but only a few of each.
+        if (from === 'militia' && (owned[u.type] || 0) >= 3) continue;
+        const each = Math.max(1, u.cost - unit(from).cost);
+        if (each > spare) continue;
+        if (!best || u.cost > best.u.cost) best = { u, each };
+      }
+      if (best) return { key: `upgrade-${g.round}-${t.id}-${from}-${n}`, action: { type: 'upgradeUnits', tile: t.id, from, to: best.u.type, count: 1, materials: payFromLargest(me, best.each) } };
+    }
+  }
+  return null;
 }
 
 /** Total War: now and then launch a ship into a bay next to our coast. */
@@ -223,6 +264,14 @@ function buildStep(g, me, P, mem, fresh) {
   if (d) return d;
   if (me.ready) return null; // already done building this phase
 
+  // 1c. Total War: research first, then upgrade old units — that's what wins wars.
+  if (g.tw && g.war) {
+    const r = researchIdea(g, me, P);
+    if (r && fresh(r.key)) return r;
+    const up = upgradeIdea(g, me, P);
+    if (up && fresh(up.key)) return up;
+  }
+
   // 2. Build a wall only if we expect to need it by the end of the game, at most a
   //    couple per round — spare materials are points, so bots save like people do.
   if (mem.wallRound !== g.round) {
@@ -230,7 +279,7 @@ function buildStep(g, me, P, mem, fresh) {
     mem.wallsThisRound = 0;
   }
   const wallKey = `wall-${me.walls}`;
-  if (has(me.materials, cost) && total(me.materials) - total(cost) >= reserve(g, me) && fresh(wallKey) && mem.wallsThisRound < P.wallsPerRound && me.protection < wallTarget(g, P)) {
+  if ((!g.tw || floodDanger(g, me)) && has(me.materials, cost) && total(me.materials) - total(cost) >= reserve(g, me) && fresh(wallKey) && mem.wallsThisRound < P.wallsPerRound && me.protection < wallTarget(g, P)) {
     mem.wallsThisRound++;
     return { key: wallKey, action: { type: 'buildWall', count: 1 } };
   }
@@ -245,16 +294,14 @@ function buildStep(g, me, P, mem, fresh) {
     const w = g.settings.war;
     // 3. Recruit up to the personality's army size — but walls come first unless warlike,
     //    and cautious/balanced bots stay under the army-emissions limit.
-    let target = g.tw ? P.army + 3 : P.army;
+    let target = g.tw ? P.army * 2 + 6 : P.army;
     // Big armies pollute (army emissions). Careful bots always stay under that size;
     // warlike bots too once the Flood is getting high or their own home is at risk.
     const armyPollutes = w.armyFloodPerUnits > 0 && (P !== PERSONALITIES.warlike || g.threshold - g.flood <= 8 || floodDanger(g, me));
     if (armyPollutes) target = Math.min(target, w.armyFloodPerUnits - 1);
-    const wallsOk = me.protection >= g.flood + 1 || P === PERSONALITIES.warlike;
+    const wallsOk = g.tw || me.protection >= g.flood + 1 || P === PERSONALITIES.warlike;
     // Total War: pick a unit type that suits the personality and the budget.
     if (g.tw) {
-      const r = researchIdea(g, me, P);
-      if (r && fresh(r.key)) return r;
       const sh = shipIdea(g, me, P);
       if (sh && fresh(sh.key)) return sh;
     }
