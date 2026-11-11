@@ -170,6 +170,25 @@ export function toast(text, kind = 'info') {
 // ---------------------------------------------------------------- drawing
 const root = document.getElementById('app');
 
+// Every redraw rebuilds the page, which would reset each collapsible panel to its
+// default (often "open"). Remember what the player opened or closed by hand and
+// put it back after each redraw. Panels are keyed by the plain text of their title.
+const panelOpen = new Map();
+const panelKey = (det) => {
+  const s = det.querySelector(':scope > summary');
+  const first = s && [...s.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+  return first ? first.textContent.trim() : null;
+};
+// Only a click on a panel title counts as the player's choice (the click runs
+// before the panel flips, so the new state is the opposite of the current one).
+root.addEventListener('click', (e) => {
+  const summary = e.target.closest('summary');
+  const det = summary && summary.parentElement;
+  if (!det || det.tagName !== 'DETAILS') return;
+  const key = panelKey(det);
+  if (key) panelOpen.set(key, !det.open);
+});
+
 export function render() {
   // Remember which text box had focus so redrawing doesn't interrupt typing.
   const active = document.activeElement;
@@ -181,6 +200,11 @@ export function render() {
   else if (!d.game) root.innerHTML = renderLobby(store);
   else if (d.game.phase === 'ended') root.innerHTML = renderEnd(store);
   else root.innerHTML = renderGame(store);
+
+  for (const det of root.querySelectorAll('details')) {
+    const key = panelKey(det);
+    if (key && panelOpen.has(key)) det.open = panelOpen.get(key);
+  }
 
   for (const [key, top] of scrollers) {
     const el = root.querySelector(`[data-keep-scroll="${key}"]`);
