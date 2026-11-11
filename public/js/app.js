@@ -222,7 +222,7 @@ const emptyBag = () => ({ wood: 0, stone: 0, sandbag: 0 });
 const actions = {
   // UI-only
   step: (ds) => {
-    const v = Math.min(+ds.max, Math.max(+ds.min, getPath(ds.path) + +ds.d));
+    const v = Math.min(+ds.max, Math.max(+ds.min, (Number(getPath(ds.path)) || 0) + +ds.d)); // a count not set yet is 0
     setPath(ds.path, v);
     render();
   },
