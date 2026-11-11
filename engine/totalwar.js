@@ -276,6 +276,8 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     formation: { A: null, D: null },
     formationAt: { A: null, D: null },
     bombard: bombard || { A: 0, D: 0 },
+    bombardAt: { A: null, D: null },
+    shots: [], // recent shells, for the battle screen
     supplyTimer: 0,
     losses: { A: zero(), D: zero() }, // dots destroyed
     surrendered: { A: zero(), D: zero() }, // dots that surrendered
@@ -537,6 +539,21 @@ function canMelee(d, e) {
   return da && d.type === 'bomber';
 }
 
+/**
+ * Shots for the battle screen to animate: a gun fires a visible shell about once a
+ * second (damage itself is dealt every tick). Kept until the next snapshot is sent.
+ */
+function shoot(b, d, target, type) {
+  if (b.time - (d.firedAt ?? -9) < 1) return;
+  d.firedAt = b.time;
+  addShot(b, d, target, type);
+}
+function addShot(b, from, to, type) {
+  if (!b.shots) b.shots = [];
+  if (b.shots.length >= 80) return;
+  b.shots.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y, k: type });
+}
+
 /** Advance one battle by dt seconds. Returns true if it just ended. */
 function stepBattle(b, dt, cfg) {
   if (b.status !== 'live') return false;
@@ -603,7 +620,8 @@ function stepBattle(b, dt, cfg) {
       const useful = foes.filter((f) => ARS.matchup(d.type, f.type, cfg) > 0);
       if (!useful.length) continue;
       const target = useful.reduce((a, f) => (dist(d, f) < dist(d, a) ? f : a));
-      hit(d, target, d.type === 'artillery' ? 0.4 : 1); // guns are poor at close quarters
+      // Artillery is almost helpless at close quarters.
+      hit(d, target, d.type === 'artillery' ? (cfg.artilleryMeleeAttackPct ?? 15) / 100 : 1);
       continue;
     }
     let range = cfg[d.type].range || 0;
@@ -620,7 +638,10 @@ function stepBattle(b, dt, cfg) {
         target = e;
       }
     }
-    if (target) hit(d, target, 1);
+    if (target) {
+      hit(d, target, 1);
+      shoot(b, d, target, d.type);
+    }
   }
   // Shore bombardment: ships offshore shell the enemy troops nearest the flag.
   for (const side of SIDES) {
@@ -630,12 +651,18 @@ function stepBattle(b, dt, cfg) {
     if (!foes.length) continue;
     const t = foes.reduce((a, f) => (dist(f, b.obj) < dist(a, b.obj) ? f : a));
     damage.set(t, (damage.get(t) || 0) + dps * dt);
+    // A shell from offshore (the top or bottom edge), about once a second.
+    if (b.time - (b.bombardAt[side] ?? -9) >= 1) {
+      b.bombardAt[side] = b.time;
+      addShot(b, { x: t.x + (side === 'A' ? -6 : 6), y: t.y < MAP_H / 2 ? 0 : MAP_H }, t, 'ship');
+    }
   }
   for (const [t, dmg] of damage) {
     let mult = isAir(t) ? 1 : 1 / defenceFactor(terrainAt(b, t.x, t.y), cfg);
     mult /= bonus[t.side].def;
     if (t.cut) mult *= cfg.cutOffDamagePct / 100;
     if (flanked(t, contact.get(t))) mult *= cfg.flankDamagePct / 100;
+    if (t.type === 'artillery' && contact.get(t).length) mult *= (cfg.artilleryMeleeDamageTakenPct ?? 150) / 100; // overrun guns
     t.hp -= dmg * mult;
   }
   b.dots = b.dots.filter((d) => {
@@ -719,6 +746,8 @@ function unitsSurrendered(b, side) {
   return Math.min(unitsLost(b, side), Math.round(sum(b.surrendered[side]) / (b.dpu || 1)));
 }
 
+const r1 = (n) => Math.round(n * 10) / 10;
+
 /** A small copy of a battle for sending to browsers several times a second. */
 function snapshot(b) {
   return {
@@ -732,6 +761,8 @@ function snapshot(b) {
     formation: b.formation,
     forms: { A: availableFormations(b, 'A'), D: availableFormations(b, 'D') },
     terr: territoryString(b),
+    // Shells fired since the last snapshot (each is sent once, then forgotten)
+    shots: (b.shots || []).splice(0).map((s) => [r1(s.x1), r1(s.y1), r1(s.x2), r1(s.y2), s.k]),
     dots: b.dots.map((d) => [
       d.id,
       d.side,

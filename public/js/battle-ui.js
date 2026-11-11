@@ -160,7 +160,58 @@ function dotsLayer(store, b, now) {
     if (mark) parts.push(mark);
     if (d.side === mySide) parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.6" fill="transparent" data-dot="${d.id}"/>`);
   }
+  parts.push(shellsLayer(b.id, now));
   return parts.join('');
+}
+
+// ---------------------------------------------------------------- gunfire
+// The server sends the shells fired since its last update. Each one flies from the
+// gun to its target and bursts there, so you can see who is shelling whom.
+const shells = []; // { battle, x1, y1, x2, y2, k, t0, flight }
+
+/** Called when battle positions arrive: queue the new shells for animation. */
+export function addShells(snaps) {
+  const now = performance.now();
+  for (const s of snaps) {
+    (s.shots || []).forEach(([x1, y1, x2, y2, k], i) => {
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const flight = k === 'antiair' ? 160 : Math.min(700, 220 + len * 30);
+      // Spread the shots of one update over its 200 ms so volleys ripple.
+      shells.push({ battle: s.id, x1, y1, x2, y2, k, t0: now + ((i * 37) % SNAP_MS), flight });
+    });
+  }
+  while (shells.length > 150) shells.shift();
+}
+
+const BURST_MS = 380;
+function shellsLayer(battleId, now) {
+  const out = [];
+  for (let i = shells.length - 1; i >= 0; i--) {
+    const s = shells[i];
+    const age = now - s.t0;
+    if (age > s.flight + BURST_MS) {
+      shells.splice(i, 1);
+      continue;
+    }
+    if (s.battle !== battleId || age < 0) continue;
+    if (age < s.flight) {
+      // In flight: a dark shell with a short smoky trail (anti-air: a quick yellow tracer).
+      const p = age / s.flight;
+      const x = s.x1 + (s.x2 - s.x1) * p;
+      const y = s.y1 + (s.y2 - s.y1) * p - (s.k === 'antiair' ? 0 : Math.sin(p * Math.PI) * Math.min(4, Math.hypot(s.x2 - s.x1, s.y2 - s.y1) * 0.25));
+      const q = Math.max(0, p - 0.15);
+      const tx = s.x1 + (s.x2 - s.x1) * q;
+      const ty = s.y1 + (s.y2 - s.y1) * q - (s.k === 'antiair' ? 0 : Math.sin(q * Math.PI) * Math.min(4, Math.hypot(s.x2 - s.x1, s.y2 - s.y1) * 0.25));
+      if (s.k === 'antiair') out.push(`<line x1="${tx.toFixed(2)}" y1="${ty.toFixed(2)}" x2="${x.toFixed(2)}" y2="${y.toFixed(2)}" stroke="#ffd84d" stroke-width=".3" stroke-linecap="round"/>`);
+      else out.push(`<line x1="${tx.toFixed(2)}" y1="${ty.toFixed(2)}" x2="${x.toFixed(2)}" y2="${y.toFixed(2)}" stroke="#555" stroke-opacity=".5" stroke-width=".6" stroke-linecap="round"/><circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r=".65" fill="#222"/>`);
+    } else {
+      // Impact: an orange burst that grows and fades.
+      const p = (age - s.flight) / BURST_MS;
+      const r = (s.k === 'antiair' ? 0.6 : 0.9) + p * (s.k === 'ship' ? 3 : 2.3);
+      out.push(`<circle cx="${s.x2}" cy="${s.y2}" r="${r.toFixed(2)}" fill="#ff8a1f" fill-opacity="${(0.85 * (1 - p)).toFixed(2)}" stroke="#c0392b" stroke-opacity="${(1 - p).toFixed(2)}" stroke-width=".2"/>`);
+    }
+  }
+  return `<g class="shells" pointer-events="none">${out.join('')}</g>`;
 }
 
 /** The battlefield SVG for one battle (all layers). */

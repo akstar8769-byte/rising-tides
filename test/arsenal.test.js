@@ -281,3 +281,32 @@ test('view: unit catalogue with what I have unlocked, the research tree and form
   assert.deepEqual(v.players[0].research.done, ['artillery']);
   assert.ok(v.tw.seas.includes('S0')); // a bay next to my coast where ships can be launched
 });
+
+test('artillery: very weak up close (deals 15%, takes 150%), and its shots are sent for animation', () => {
+  const T = { id: 'X', biome: 'plain' };
+  const cfg1 = { ...CFG, dotsPerUnit: 1 };
+  const duel = (type) => {
+    const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { [type]: 1 }, dTroops: { militia: 1 }, cfg: cfg1, rand: () => 0.5 });
+    const [a, d] = [b.dots.find((x) => x.side === 'A'), b.dots.find((x) => x.side === 'D')];
+    Object.assign(a, { x: 46, y: 20, tx: 46, ty: 20 });
+    Object.assign(d, { x: 47, y: 20, tx: 47, ty: 20 });
+    tw.stepBattle(b, 1, cfg1);
+    return { dealt: d.max - d.hp, taken: a.max - a.hp };
+  };
+  const art = duel('artillery');
+  const inf = duel('infantry');
+  // 2.2 attack x 15% = 0.33 per second, far below infantry's 1.5
+  assert.ok(Math.abs(art.dealt - CFG.artillery.attack * 0.15) < 1e-9, `artillery dealt ${art.dealt}`);
+  assert.ok(art.dealt < inf.dealt / 4);
+  assert.ok(Math.abs(art.taken - inf.taken * 1.5) < 1e-9, 'overrun guns take 150%');
+  // Firing at range records a shot; the snapshot hands it over once
+  const b = tw.createBattle({ id: 2, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { artillery: 1 }, dTroops: { infantry: 1 }, cfg: cfg1, rand: () => 0.5 });
+  Object.assign(b.dots.find((x) => x.side === 'A'), { x: 40, y: 20, tx: 40, ty: 20 });
+  Object.assign(b.dots.find((x) => x.side === 'D'), { x: 47, y: 20, tx: 47, ty: 20 });
+  for (let i = 0; i < 5; i++) tw.stepBattle(b, 0.1, cfg1);
+  const snap = tw.snapshot(b);
+  assert.equal(snap.shots.length, 1, 'about one visible shell a second');
+  assert.equal(snap.shots[0][4], 'artillery');
+  assert.deepEqual(snap.shots[0].slice(2, 4), [47, 20]);
+  assert.equal(tw.snapshot(b).shots.length, 0, 'each shot is sent once');
+});

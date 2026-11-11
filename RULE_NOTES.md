@@ -341,3 +341,7 @@ Decided while building (all numbers are lobby settings in the Total War group):
   - Auto-battle uses Defensive square when outnumbered or cut off. Otherwise attackers favour Pincer when much stronger, then Armour spearhead or Combined arms, and defenders favour Artillery screen or Combined arms.
 - **Bots** follow a research plan by personality (warlike: tanks first; cautious: anti-tank and anti-air first). They recruit the best units they have unlocked and sometimes launch ships.
 - **Older tests** still use the 19-hex board (test/totalwar.test.js); the new rules are tested in test/arsenal.test.js.
+
+## Artillery: visible fire, helpless up close (11 November 2026)
+- Guns now show their fire on the battlefield. Artillery, ships and anti-air shells fly from the gun to the target and burst on impact, about one visible shell per gun dot each second (damage is still dealt continuously). Shore bombardment comes in from the map edge, and anti-air shows as yellow tracers.
+- Artillery caught in close combat does only 15% of its damage (was 40%) and takes 150% damage. Both numbers are lobby settings (`artilleryMeleeAttackPct`, `artilleryMeleeDamageTakenPct`). Keep your guns behind the line.

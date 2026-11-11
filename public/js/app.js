@@ -9,7 +9,7 @@ import { renderGame } from './game.js';
 import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
 import { payLargest } from './war-ui.js';
-import { refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation } from './battle-ui.js';
+import { addShells, refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation } from './battle-ui.js';
 
 /* global io */
 const socket = io();
@@ -118,6 +118,7 @@ function announceEvents(d) {
 // Total War: battle positions arrive 5 times a second; redraw just the battlefield.
 socket.on('battles', (snaps) => {
   store.battleSnaps = Object.fromEntries(snaps.map((b) => [b.id, b]));
+  addShells(snaps); // artillery, anti-air and ships' shells to animate
   refreshBattle(store);
 });
 

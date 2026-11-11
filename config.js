@@ -162,6 +162,8 @@ const DEFAULTS = {
       firebase: { attackPct: 110, defencePct: 110, speedPct: 90 },
     },
     airBattleSeconds: 45,        // an air battle lasts at most this long
+    artilleryMeleeAttackPct: 15,  // artillery caught up close does only this % of its damage...
+    artilleryMeleeDamageTakenPct: 150, // ...and takes this % damage (guns being overrun)
     bombardPct: 35,              // cruisers and battleships next to a coastal battle shell it at this % of their attack
     amphibious: true,            // troops may attack a coast across a sea bay your ships hold
     dotsPerUnit: 3,              // each unit appears as this many dots on the battlefield (1-6)
@@ -400,6 +402,8 @@ for (const [k, n] of Object.entries(FORMATION_NAMES)) {
 }
 LABELS['totalwar.boardLayout'] = 'Board (sea37 has sea bays for navies)';
 LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
+LABELS['totalwar.artilleryMeleeAttackPct'] = 'Artillery in close combat: damage dealt (%)';
+LABELS['totalwar.artilleryMeleeDamageTakenPct'] = 'Artillery in close combat: damage taken (%)';
 LABELS['totalwar.bombardPct'] = 'Shore bombardment strength (% of ship attack)';
 LABELS['totalwar.amphibious'] = 'Amphibious attacks across sea bays you hold';
 LIMITS['totalwar.airBattleSeconds'] = [10, 300];
