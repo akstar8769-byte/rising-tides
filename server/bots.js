@@ -97,6 +97,37 @@ function pickUnitType(g, me, P) {
   return budget >= cost('infantry') ? 'infantry' : 'militia';
 }
 
+/**
+ * Factories (Base). Cautious bots only build sustainable ones; balanced bots build a dirty
+ * one now and then while the Flood is low; warlike bots like cheap dirty factories.
+ * Everyone but warlike bots demolishes a dirty factory when the Flood gets close.
+ */
+function factoryIdea(g, me, P, mem) {
+  const b = g.settings.base;
+  const F = g.factories;
+  const danger = g.threshold - g.flood;
+  const mineDirty = F.mine.filter((x) => x.kind === 'unsustainable');
+  if (mineDirty.length && (danger <= 2 || (P !== PERSONALITIES.warlike && (danger <= 3 || floodDanger(g, me))))) {
+    return { key: `demolish-${mineDirty[0].tile}-${g.round}`, action: { type: 'demolishFactory', tile: mineDirty[0].tile } };
+  }
+  if (mem.factoryRound === g.round || !F.sites.length) return null;
+  const cost = (k) => (k === 'sustainable' ? { wood: b.factorySusWood, stone: b.factorySusStone, sandbag: b.factorySusSandbag } : { wood: b.factoryUnsWood, stone: b.factoryUnsStone, sandbag: b.factoryUnsSandbag });
+  const affordable = (k) => has(me.materials, cost(k)) && total(me.materials) - total(cost(k)) >= reserve(g, me);
+  const dirtyOk = !g.limits.noUnsustainable && mineDirty.length < F.unsMax && danger > (P === PERSONALITIES.warlike ? 3 : P === PERSONALITIES.balanced ? 5 : 99);
+  let kind = null;
+  if (dirtyOk && affordable('unsustainable') && (!affordable('sustainable') || chance(P.unsus))) kind = 'unsustainable';
+  else if (affordable('sustainable')) kind = 'sustainable';
+  if (!kind) return null;
+  // Build where the resource we have least of comes from.
+  const res = (id) => {
+    const t = g.board.tiles.find((x) => x.id === id);
+    return t.biome === 'forest' ? 'wood' : t.biome === 'quarry' ? 'stone' : t.biome === 'riverbank' ? 'sandbag' : null;
+  };
+  const site = F.sites.slice().sort((a, c) => (me.materials[res(a)] ?? 0) - (me.materials[res(c)] ?? 0))[0];
+  mem.factoryRound = g.round;
+  return { key: `factory-${site}`, action: { type: 'buildFactory', tile: site, kind } };
+}
+
 /** Pay n materials from the biggest piles. */
 function payFromLargest(me, n) {
   const left = { ...me.materials };
@@ -161,6 +192,12 @@ function buildStep(g, me, P, mem, fresh) {
     return { key: wallKey, action: { type: 'buildWall', count: 1 } };
   }
 
+  // 2b. Factories (Base): build one a round when we can spare it; tear down dirty ones when the Flood is close.
+  if (g.factories) {
+    const f = factoryIdea(g, me, P, mem);
+    if (f && fresh(f.key)) return f;
+  }
+
   if (g.war) {
     const w = g.settings.war;
     // 3. Recruit up to the personality's army size — but walls come first unless warlike,
@@ -223,7 +260,8 @@ function buildStep(g, me, P, mem, fresh) {
 function wallTarget(g, P) {
   const rounds = g.mode === 'base' ? g.settings.base.rounds : g.settings.war.rounds;
   const done = Math.max(1, g.round - (g.phase === 'talk' ? 1 : 0)); // rounds whose Flood we've seen
-  const rate = Math.max(0.5, (g.flood - g.settings.general.startingFlood) / done);
+  const start = g.mode === 'base' ? g.settings.base.startingFlood : g.settings.general.startingFlood;
+  const rate = Math.max(0.5, (g.flood - start) / done);
   const left = Math.max(0, rounds - g.round + (g.phase === 'talk' ? 1 : 0));
   const expected = g.flood + Math.ceil(rate * left);
   if (left === 0) return g.flood; // last chance: only build what keeps the home dry
@@ -275,7 +313,15 @@ function baseIdeas(g, me, P, danger) {
   const ideas = [];
   const sustainable = { key: 'sus', action: { type: 'choose', action: 'sustainable' } };
   if (me.biome === 'mixed') sustainable.action.mix = pickMix(g, me, b.sustainableCollect);
-  if (me.materials.wood >= b.raidCostWood + 1 && chance(P.raid) && !g.limits.noAttacks) {
+  if (g.factories && me.materials.wood >= b.claimCostWood + 1 && chance(P.raid + 0.1) && !g.limits.noAttacks) {
+    // Claim a factory: prefer unsustainable ones (they make more) of players we're willing to hit.
+    const t = g.factories.claimTargets
+      .map((id) => g.board.tiles.find((x) => x.id === id))
+      .filter((x) => !g.limits.protectedSeats[x.factory.owner] && willHit(g, x.factory.owner, P))
+      .sort((a, c) => (c.factory.kind === 'unsustainable') - (a.factory.kind === 'unsustainable'))[0];
+    if (t) ideas.push({ key: 'claim', action: { type: 'choose', action: 'claim', target: t.id } });
+  }
+  if (!g.factories && me.materials.wood >= b.raidCostWood + 1 && chance(P.raid) && !g.limits.noAttacks) {
     const target = g.players
       .filter((p) => p.seat !== g.you && !g.limits.protectedSeats[p.seat] && willHit(g, p.seat, P))
       .sort((a, c) => raidValue(g, c) - raidValue(g, a))[0];

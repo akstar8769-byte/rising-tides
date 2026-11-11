@@ -20,7 +20,7 @@
 
 const DEFAULTS = {
   general: {
-    startingFlood: 2,            // Flood level at the start of the game
+    startingFlood: 2,            // Flood level at the start of War / War + Empire / Total War (Base has its own)
     diceSides: 6,                // sides on each die (6 = normal die)
     lootPickSeconds: 30,         // seconds a winning raider has to pick loot before it is chosen at random (Q2)
     hostHandoverSeconds: 60,     // if the host is disconnected this long, another player becomes host
@@ -35,6 +35,7 @@ const DEFAULTS = {
 
   base: {
     rounds: 7,                   // number of rounds in a Base game
+    startingFlood: 5,            // Flood level at the start of a Base game (playtest change)
     catastrophe: { 3: 8, 4: 9, 5: 10 }, // Flood level that destroys everyone, by player count
 
     startWalls: 1,               // walls each player starts with
@@ -50,6 +51,23 @@ const DEFAULTS = {
     sustainableCollect: 2,       // Sustainable: materials of your home resource collected (Mixed: any mix)
     unsustainableCollect: 4,     // Unsustainable: materials collected, any mix
     unsustainableFlood: 1,       // Flood rise for each Unsustainable action
+
+    // Factories (Base game). Built during Talk & Build / Trade & Build on your home tile
+    // or an empty tile next to your home or one of your factories — that's how you expand.
+    factoriesEnabled: true,
+    factorySusWood: 1,           // a SUSTAINABLE factory costs this much wood...
+    factorySusStone: 2,          // ...stone...
+    factorySusSandbag: 1,        // ...and sandbags
+    factorySusMakes: 1,          // materials it makes every round (its tile's resource)
+    factoryUnsWood: 1,           // an UNSUSTAINABLE factory costs this much wood...
+    factoryUnsStone: 1,          // ...stone...
+    factoryUnsSandbag: 0,        // ...and sandbags
+    factoryUnsMakes: 2,          // materials it makes every round
+    factoryUnsMax: 3,            // most unsustainable factories one player may own
+    factoryUnsFlood: 1,          // Flood rise per unsustainable factory, every round
+    factoryGreenPer: 3,          // every this many sustainable factories on the board (everyone's together)...
+    factoryGreenDrop: 1,         // ...lower the Flood this much every round
+    claimCostWood: 1,            // wood paid to try to claim someone's factory
 
     raidCostWood: 1,             // wood the raider pays when the raid resolves
     raidDefenceWood: 1,          // wood the defender pays (if they have it) to roll a defence die
@@ -146,7 +164,7 @@ const DEFAULTS = {
 
 /** Human-readable names shown in the lobby. Key = "group.setting". */
 const LABELS = {
-  'general.startingFlood': 'Starting Flood level',
+  'general.startingFlood': 'Starting Flood level (War modes)',
   'general.diceSides': 'Sides on each die',
   'general.lootPickSeconds': 'Seconds to pick loot',
   'general.hostHandoverSeconds': 'Seconds before an absent host is replaced',
@@ -159,6 +177,7 @@ const LABELS = {
   'general.treatyBreakPenalty': 'Materials lost for breaking a treaty',
 
   'base.rounds': 'Number of rounds',
+  'base.startingFlood': 'Starting Flood level',
   'base.catastrophe.3': 'Catastrophe threshold (3 players)',
   'base.catastrophe.4': 'Catastrophe threshold (4 players)',
   'base.catastrophe.5': 'Catastrophe threshold (5 players)',
@@ -173,6 +192,20 @@ const LABELS = {
   'base.sustainableCollect': 'Sustainable: materials collected',
   'base.unsustainableCollect': 'Unsustainable: materials collected',
   'base.unsustainableFlood': 'Unsustainable: Flood rise',
+  'base.factoriesEnabled': 'Factories (build to expand; claim with dice)',
+  'base.factorySusWood': 'Sustainable factory cost: wood',
+  'base.factorySusStone': 'Sustainable factory cost: stone',
+  'base.factorySusSandbag': 'Sustainable factory cost: sandbags',
+  'base.factorySusMakes': 'Sustainable factory: materials per round',
+  'base.factoryUnsWood': 'Unsustainable factory cost: wood',
+  'base.factoryUnsStone': 'Unsustainable factory cost: stone',
+  'base.factoryUnsSandbag': 'Unsustainable factory cost: sandbags',
+  'base.factoryUnsMakes': 'Unsustainable factory: materials per round',
+  'base.factoryUnsMax': 'Most unsustainable factories per player',
+  'base.factoryUnsFlood': 'Flood rise per unsustainable factory each round',
+  'base.factoryGreenPer': 'Sustainable factories (all players) per Flood drop',
+  'base.factoryGreenDrop': 'Flood drop each round per group of sustainable factories',
+  'base.claimCostWood': 'Claim a factory: wood paid',
   'base.raidCostWood': 'Raid: wood paid by raider',
   'base.raidDefenceWood': 'Raid: wood paid by defender',
   'base.raidMaxLoot': 'Raid: most tokens stolen',
@@ -269,6 +302,7 @@ const LABELS = {
 
 /** Allowed ranges. Anything not listed here may be 0 to 999. */
 const LIMITS = {
+  'base.factoryGreenPer': [1, 50],
   'general.diceSides': [2, 20],
   'general.lootPickSeconds': [5, 600],
   'general.hostHandoverSeconds': [5, 3600],

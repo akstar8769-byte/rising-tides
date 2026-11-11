@@ -255,3 +255,27 @@ After the first playtest ("a bit laggy, fast and weird; War of Dots shows a fron
 - **Supply through your own territory.** A dot is supplied if it can trace a path to its side's map edge without crossing **enemy territory** (empty ground is fine). Cutting a corridor through the enemy's ground behind them encircles them; cut-off ground shows as a red pocket. Marching forward lays your own corridor, so a normal advance stays supplied.
 - **Slower:** movement speeds and damage roughly halved, battles last up to 120 seconds, and capturing the flag takes 10 seconds. Unit damage and speed may now have one decimal place in the lobby.
 - **Smoother:** the browser slides dots between the server's 5-a-second updates and redraws only what changed.
+
+
+## 🏭 Factories in the Base game (added 11 November 2026, from the in-person playtest)
+
+What the group asked for: the Flood starts at 5; you expand only by building factories; claiming someone's factory is a dice "battle"; sustainable and unsustainable factories, unsustainable cheaper but at most 3; if everyone builds sustainable factories the Flood can go down.
+
+Decided with the group:
+- **Green factories:** at Reveal & collect, the Flood drops 1 for every 3 sustainable factories on the board (everyone's counted together).
+- **Dirty factories:** each unsustainable factory adds +1 Flood every round while it stands.
+- **Claiming:** both roll one die, higher wins, ties go to the owner. The winner takes the factory.
+- **Round actions stay:** Sustainable / Unsustainable still happen as before; factories produce on top. "Claim a factory" replaces Raid while factories are on.
+
+Decided while building (all numbers are lobby settings):
+- **Starting Flood 5 is for Base only** (setting: base.startingFlood). War, Empire and Total War keep their own starting Flood (2), because their catastrophe lines are much higher.
+- **Costs and output:** sustainable = 1 wood + 2 stone + 1 sandbag, makes 1 a round; unsustainable = 1 wood + 1 stone, makes 2 a round. A factory makes its tile's resource; one on a Mixed home tile makes whatever the owner has least of.
+- **Where you can build:** your home tile, or an empty land tile next to your home or to one of your factories. One factory per tile; never on another player's home tile or the village.
+- **Claims:** cost the claimer 1 wood (like a raid). Factories on a home tile can't be claimed, so nobody loses their home. You can't claim an unsustainable factory if you already own 3. Claims resolve in clockwise order after collecting; if two players claim the same factory, the second one fights whoever owns it by then. A claim counts as hostile: it breaks a pact and a "no attacks" treaty forbids it.
+- **Demolish:** you may demolish your own factory during a build phase (no refund), so a group can replace dirty factories with clean ones.
+- **Timing:** factory output and the factory Flood change happen at Reveal & collect, together with the round's Unsustainable actions, then the catastrophe check. The Flood never goes below 0.
+- **Scoring is unchanged:** factories aren't worth points themselves; what they make is.
+- **Older tests** still check the rulebook game (factories off, Flood 2); the factory rules have their own tests in test/factories.test.js.
+
+## Total War: picking a unit (fixed 11 November 2026)
+The battlefield redraws its dots every animation frame, so a tap on a unit often lost its target and nothing was selected. Taps are now matched to the nearest of your units on screen. Tapping a unit selects just that unit; **Add to selection** (or Shift/Ctrl) builds a group. The recruit picker also remembers the unit type you last chose.

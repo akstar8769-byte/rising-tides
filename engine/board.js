@@ -56,6 +56,7 @@ function buildBoard(state, layoutName, withTerritories) {
     role: null, // 'capital' | 'province' | null
     controller: null, // seat currently holding it (differs from owner when occupied)
     units: {}, // War with stationed units: { seat: number of units on this tile }
+    factory: null, // Base with factories: { owner, kind: 'sustainable' | 'unsustainable', built }
   }));
   const byId = Object.fromEntries(tiles.map((t) => [t.id, t]));
 

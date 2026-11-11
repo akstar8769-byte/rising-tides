@@ -32,9 +32,10 @@ const {
 } = require('./util');
 const { BIOMES } = require('./board');
 const diplomacy = require('./diplomacy');
+const factories = require('./factories');
 
 const BUILD_PHASES = ['talk', 'trade'];
-const ACTION_NAMES = { sustainable: 'Sustainable', unsustainable: 'Unsustainable', raid: 'Raid', attack: 'Attack' };
+const ACTION_NAMES = { sustainable: 'Sustainable', unsustainable: 'Unsustainable', raid: 'Raid', attack: 'Attack', claim: 'Claim a factory' };
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -258,6 +259,7 @@ function startChoosing(state) {
  *   { action: 'sustainable' }                       (Mixed home: also mix: {..} totalling 2)
  *   { action: 'unsustainable', mix: { wood: 2, stone: 1, sandbag: 1 } }
  *   { action: 'raid', target: 2 }
+ *   { action: 'claim', target: 'C3' }   (factories on: replaces Raid)
  */
 function choose(state, actor, { action, mix, target } = {}) {
   if (state.phase !== 'choose') fail('It is not time to choose an action.');
@@ -273,14 +275,18 @@ function choose(state, actor, { action, mix, target } = {}) {
     diplomacy.checkMove(state, actor, 'unsustainable');
     choice.mix = cleanBag(mix, 'mix');
     if (bagTotal(choice.mix) !== c.unsustainableCollect) fail(`Pick exactly ${c.unsustainableCollect} materials.`);
+  } else if (action === 'claim') {
+    if (state.mode !== 'base') fail('Claims are a Base-game rule.');
+    Object.assign(choice, factories.checkClaim(state, actor, target));
   } else if (action === 'raid') {
     if (state.mode !== 'base') fail('Raids are replaced by attacks in War mode.');
+    if (factories.factoriesOn(state)) fail('With factories on, Raid is replaced by "Claim a factory".');
     otherPlayer(state, actor, target);
     diplomacy.checkMove(state, actor, 'attack', target);
     if (p.materials.wood < c.raidCostWood) fail(`You need at least ${c.raidCostWood} wood to raid.`);
     choice.target = target;
   } else {
-    fail('Choose Sustainable, Unsustainable or Raid.');
+    fail(factories.factoriesOn(state) ? 'Choose Sustainable, Unsustainable or Claim a factory.' : 'Choose Sustainable, Unsustainable or Raid.');
   }
   p.choice = choice;
   if (state.players.every((x) => x.choice)) reveal(state);
@@ -293,6 +299,7 @@ function choose(state, actor, { action, mix, target } = {}) {
 function choiceText(state, p) {
   const ch = p.choice;
   if (ch.action === 'raid') return `Raid on ${state.players[ch.target].name}`;
+  if (ch.action === 'claim') return `Claim the factory on ${ch.target}`;
   return ACTION_NAMES[ch.action];
 }
 
@@ -319,11 +326,30 @@ function reveal(state) {
       addLog(state, `${p.name} collected ${describeBag(ch.mix)} (Flood +${c.unsustainableFlood}).`);
     }
   }
-  if (rise > 0) {
-    state.flood += rise;
-    addLog(state, `The Flood rises by ${rise} to ${state.flood} (catastrophe at ${threshold(state)}).`, { kind: 'flood' });
+  let drop = 0;
+  if (factories.factoriesOn(state)) {
+    factories.produce(state);
+    const e = factories.floodEffect(state);
+    const n = factories.counts(state);
+    if (e.up) addLog(state, `${n.unsustainable} unsustainable factor${n.unsustainable === 1 ? 'y pollutes' : 'ies pollute'}: Flood +${e.up}.`);
+    if (e.down) addLog(state, `${n.sustainable} sustainable factories working together: Flood −${e.down}.`, { kind: 'good' });
+    rise += e.up;
+    drop = e.down;
+  }
+  const net = Math.max(-state.flood, rise - drop); // the Flood never goes below 0
+  if (net > 0) {
+    state.flood += net;
+    addLog(state, `The Flood rises by ${net} to ${state.flood} (catastrophe at ${threshold(state)}).`, { kind: 'flood' });
+  } else if (net < 0) {
+    state.flood += net;
+    addLog(state, `The Flood falls by ${-net} to ${state.flood}!`, { kind: 'good' });
+  } else if (rise > 0) {
+    addLog(state, `The Flood stays at ${state.flood}: green factories cancel out the pollution.`, { kind: 'good' });
   }
   if (checkCatastrophe(state)) return;
+
+  // Factory claims (dice) resolve in clockwise order, before raids.
+  for (const i of order) if (state.players[i].choice.action === 'claim') factories.resolveClaim(state, i, state.players[i].choice.target);
 
   state.raidQueue = order.filter((i) => state.players[i].choice.action === 'raid').map((i) => ({ raider: i, target: state.players[i].choice.target }));
   continueRaids(state);

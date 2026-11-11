@@ -175,7 +175,7 @@ test('choices can be changed until the last player locks in', () => {
 
 // ---------------------------------------------------------------- catastrophe
 test('catastrophe: Flood reaching the threshold ends the game for everyone', () => {
-  let s = newGame({ settings: (c) => (c.general.startingFlood = 6) }); // threshold 8
+  let s = newGame({ settings: (c) => (c.base.startingFlood = 6) }); // threshold 8
   s = allReady(s);
   s = allChoose(s, { 0: { action: 'unsustainable', mix: U4 }, 1: { action: 'unsustainable', mix: U4 } });
   assert.equal(s.flood, 8);
@@ -187,7 +187,7 @@ test('catastrophe: Flood reaching the threshold ends the game for everyone', () 
 });
 
 test('catastrophe: one below the threshold is still safe; seawall bonus counts', () => {
-  let s = newGame({ settings: (c) => (c.general.startingFlood = 7) });
+  let s = newGame({ settings: (c) => (c.base.startingFlood = 7) });
   s = setMats(s, 0, { wood: 6 });
   s = act(s, 0, 'donate', { materials: { wood: 6 } }); // threshold 9
   s = allReady(s);

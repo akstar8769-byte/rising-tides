@@ -37,6 +37,17 @@ function unitBadge(t, x, y) {
     <text x="${bx + w / 2}" y="${by + 16.5}" class="ubadge">${label}</text></g>`;
 }
 
+/** Factory: 🌿 green ring (sustainable) or 🏭 grey ring with smoke (unsustainable), in the owner's colour. */
+function factoryBadge(t, x, y) {
+  const st = PLAYER_STYLE[t.factory.owner];
+  const green = t.factory.kind === 'sustainable';
+  const cx = x + 26;
+  const cy = y - (t.role === 'capital' ? 30 : 4);
+  return `<g class="factory"><circle cx="${cx}" cy="${cy}" r="15" fill="${st.color}" stroke="${green ? '#1e8449' : '#555'}" stroke-width="4" ${green ? '' : 'stroke-dasharray="4 2"'}/>
+    <text x="${cx}" y="${cy + 6}" class="fglyph">${green ? '🌿' : '🏭'}</text>
+    ${t.role === 'capital' ? '' : `<text x="${x}" y="${y + 38}" class="tid">${t.id} · ${st.label}</text>`}</g>`;
+}
+
 /**
  * opts.highlight: tile ids to outline as possible targets (clickable)
  * opts.selected:  the currently chosen target
@@ -102,6 +113,8 @@ export function renderBoard(game, opts = {}) {
     }
     if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
     if (game.stationed) inner += unitBadge(t, x, y);
+    if (t.factory) inner += factoryBadge(t, x, y);
+    else if (t.controller == null && !owner && game.factories) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
     let cls = 'tile';
     if (unheld) cls += ' open';
     let act = '';
@@ -114,12 +127,13 @@ export function renderBoard(game, opts = {}) {
     return `<g class="${cls}"${act}><title>${esc(title)}</title>${inner}</g>`;
   });
 
+  const factoryLegend = game.factories ? '<span>🌿 sustainable factory · 🏭 unsustainable factory (ring = owner)</span>' : '';
   const legendExtra = war
     ? `<span>⚑P2 = occupied by P2</span><span>⚔ units${game.stationed ? ' on that tile' : ''}</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
     : '';
   return `<svg class="board" viewBox="${minX.toFixed(0)} ${minY.toFixed(0)} ${w.toFixed(0)} ${h.toFixed(0)}" role="img" aria-label="Game board">${parts.join('')}</svg>
   <div class="legend">${Object.values(BIOME)
     .map((b) => `<span><i style="background:${b.color}"></i>${b.glyph} ${b.label}${b.res ? ` (${b.res === 'sandbag' ? 'sandbags' : b.res})` : ' (any)'}</span>`)
-    .join('')}${legendExtra}</div>
+    .join('')}${legendExtra}${factoryLegend}</div>
   ${highlight.size ? '<p class="hint">Tap an outlined tile to choose it.</p>' : ''}`;
 }

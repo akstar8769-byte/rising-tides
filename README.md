@@ -79,7 +79,14 @@ We use **Render** (free plan). You do this once; after that, Render updates the 
 
 Bots play every mode, answer your trade offers (they accept if they get at least as much as they give), follow or revolt against Empire commands, and only see what a human in their seat could see. Change **"Bot thinking time"** in the General settings to speed them up (0 = instant) or slow them down. The playtest CSV marks bot players in a `bot` column so you can filter them out.
 
-**⚔ Total War battles.** When your attack meets defenders (or someone attacks your defended land), the Play tab turns into a battlefield. Tap your units — ● militia, ■ infantry, ▲ cavalry — or use *Select all*, then tap where to send them. Attackers win by holding the flag ⚑ alone for a few seconds; defenders win by holding out. Units cut off from their own edge of the map (red dashed outline) take heavy damage and surrender, so swing cavalry round behind the enemy. Press **Auto-battle** to let the computer fight for you. Other players' battles can be watched live.
+**🏭 Factories (Base game, from our in-person playtest — on by default).** The Flood starts at **5**.
+- In Talk & Build or Trade & Build, open **Factories** on the Play tab: pick 🌿 **Sustainable** (costs more, makes 1 a round) or 🏭 **Unsustainable** (cheap, makes 2 a round), pick a tile, press **Build**. You can build on your home tile or an empty tile next to your home or one of your factories — that's how you spread across the board.
+- Every factory makes its tile's resource every round, whatever action you choose.
+- Each 🏭 unsustainable factory adds **+1 Flood every round** it stands, and nobody may own more than 3. For every **3 🌿 sustainable factories on the board (everyone's together)** the Flood **drops 1** every round — so if the group cooperates, the Flood goes down. You can demolish your own factory any time you're building.
+- **Claim a factory** replaces Raid: pay 1 wood, you and the owner each roll a die, higher wins (ties to the owner), and the factory becomes yours. Factories on someone's home tile can't be claimed.
+- All of the numbers are in the lobby's Base settings, and the host can switch factories off to play the original rulebook (Flood 2, raids).
+
+**⚔ Total War battles.** When your attack meets defenders (or someone attacks your defended land), the Play tab turns into a battlefield. Tap one of your units — ● militia, ■ infantry, ▲ cavalry — to select it (tap it again to unselect), or use *Select all* / a type button; turn on **Add to selection** (or hold Shift) to pick several. Then tap where to send them. Attackers win by holding the flag ⚑ alone for a few seconds; defenders win by holding out. Units cut off from their own edge of the map (red dashed outline) take heavy damage and surrender, so swing cavalry round behind the enemy. Press **Auto-battle** to let the computer fight for you. Other players' battles can be watched live.
 
 **Diplomacy (Trade tab).**
 - **Pacts** are promises: offer a player a non-aggression pact or an alliance against someone for 1–3 rounds. The game never stops anyone breaking a pact — but it announces it to everyone and marks the betrayer.

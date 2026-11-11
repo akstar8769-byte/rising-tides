@@ -34,6 +34,16 @@ function randomAction(s, rnd) {
     () => [seat, { type: 'signTreaty', id: s.treaties.length ? pick(s.treaties).id : 0 }],
     () => [seat, { type: 'breakTreaty', id: s.treaties.length ? pick(s.treaties).id : 0 }],
   ];
+  if (s.mode === 'base' && s.settings.base.factoriesEnabled) {
+    const tiles = s.board.tiles.filter((t) => t.kind === 'land').map((t) => t.id);
+    options.push(
+      () => [seat, { type: 'buildFactory', tile: pick(tiles), kind: pick(['sustainable', 'unsustainable']) }],
+      () => [seat, { type: 'buildFactory', tile: pick(tiles), kind: pick(['sustainable', 'unsustainable']) }],
+      () => [seat, { type: 'demolishFactory', tile: pick(tiles) }],
+      () => [seat, { type: 'choose', action: 'claim', target: pick(tiles) }],
+      () => [seat, { type: 'choose', action: 'claim', target: pick(tiles) }],
+    );
+  }
   if (s.mode !== 'base') {
     const tiles = s.board.tiles.filter((t) => t.kind === 'land').map((t) => t.id);
     options.push(
@@ -60,18 +70,20 @@ function randomAction(s, rnd) {
 const PER_MODE = Number(process.env.RANDOM_GAMES) || 12;
 const VARIANTS = [
   ['base', false],
+  ['base', true], // with factories (playtest rules)
   ['war', true],
   ['empire', true],
   ['war', false], // PDF rules: one army everywhere
   ['empire', false],
 ];
-for (const [mode, stationed] of VARIANTS) test(`random ${mode}${mode === 'base' ? '' : stationed ? ' (stationed units)' : ' (one army)'} games: no crashes, no negative materials or units, always finishes`, () => {
+for (const [mode, stationed] of VARIANTS) test(`random ${mode}${mode === 'base' ? (stationed ? ' (factories)' : '') : stationed ? ' (stationed units)' : ' (one army)'} games: no crashes, no negative materials or units, always finishes`, () => {
   const games = PER_MODE;
   let seed = 1;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   for (let g = 0; g < games; g++) {
     const n = 3 + (g % 3);
     let s = newGame({
+      factories: mode === 'base' && stationed,
       n,
       mode,
       seed: g + 1,
@@ -95,8 +107,10 @@ for (const [mode, stationed] of VARIANTS) test(`random ${mode}${mode === 'base' 
         assert.ok(p.units >= 0, 'negative units');
         if (p.puppetOf != null) assert.equal(s.players[p.puppetOf].puppetOf, null, 'a puppet has a puppet');
       }
+      for (const p of s.players) assert.ok(s.board.tiles.filter((t) => t.factory && t.factory.owner === p.seat && t.factory.kind === 'unsustainable').length <= s.settings.base.factoryUnsMax, 'too many dirty factories');
+      assert.ok(s.flood >= 0, 'negative Flood');
       for (const t of s.board.tiles) if (t.role === 'capital') assert.equal(t.controller, t.owner, 'capital changed hands');
-      if (stationed) {
+      if (stationed && mode !== 'base') {
         const totals = s.players.map(() => 0);
         for (const t of s.board.tiles) {
           for (const [k, n] of Object.entries(t.units)) {

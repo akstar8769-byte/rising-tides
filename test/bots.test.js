@@ -9,8 +9,9 @@ const bots = require('../server/bots');
 const { startServer } = require('../server');
 
 /** Play a game with only bots, the way the server does: one action at a time. */
-function botsOnlyGame(mode, n, stationed, seed) {
+function botsOnlyGame(mode, n, stationed, seed, factories = false) {
   let s = newGame({
+    factories,
     n,
     mode,
     seed,
@@ -45,6 +46,26 @@ function botsOnlyGame(mode, n, stationed, seed) {
   }
   return { s, steps, skips };
 }
+
+test('bots finish Base games with factories, build them and claim them', () => {
+  let built = 0;
+  let green = 0;
+  let claims = 0;
+  for (let g = 0; g < 8; g++) {
+    const { s, steps, skips } = botsOnlyGame('base', 3 + (g % 3), false, g + 1, true);
+    assert.equal(s.phase, 'ended', 'game ' + g + ' did not finish (' + steps + ' steps)');
+    assert.ok(skips <= 3, 'bots needed ' + skips + ' skips in game ' + g);
+    for (const p of s.players) {
+      built += p.stats.factoriesBuilt;
+      green += p.stats.greenFactories;
+      claims += p.stats.claim;
+      assert.equal(p.stats.raid, 0, 'raids are replaced by claims');
+    }
+  }
+  assert.ok(built > 0 && green > 0, 'bots never built factories');
+  assert.ok(claims > 0, 'bots never claimed a factory');
+});
+
 
 for (const [mode, stationed] of [
   ['base', false],

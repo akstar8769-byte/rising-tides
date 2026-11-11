@@ -4,6 +4,7 @@ import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, st
 import { renderBoard } from './board.js';
 import { renderLog, renderChat } from './log.js';
 import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel } from './war-ui.js';
+export { tileLabel };
 import { diplomacyPanel, diploTags, limitsNote, myPactWith } from './diplomacy-ui.js';
 import { battlePanel } from './battle-ui.js';
 
@@ -51,8 +52,13 @@ export function renderGame(store) {
 /** Which tiles to outline on the board (attack targets while choosing / commanding). */
 function boardOptions(store) {
   const g = store.data.game;
-  if (!g.war) return {};
   const ui = store.ui;
+  if (g.factories) {
+    if (g.phase === 'choose' && ui.choice.action === 'claim') return { highlight: g.factories.claimTargets, selected: ui.choice.target };
+    if (BUILD.includes(g.phase) && ui.factory.picking) return { highlight: g.factories.sites, selected: ui.factory.tile };
+    return {};
+  }
+  if (!g.war) return {};
   if (ui.cmdAttackFor != null && g.commandTargets[ui.cmdAttackFor]) return { highlight: g.commandTargets[ui.cmdAttackFor], selected: null };
   if (g.phase === 'choose' && ui.choice.action === 'attack' && g.players[g.you].puppetOf == null) return { highlight: g.attackTargets, selected: ui.choice.target };
   return {};
@@ -138,6 +144,7 @@ function floodTrack(g, me) {
       ${g.war && !g.war.noAccord ? `<span><i class="k accord"></i>Accord line ${g.war.accordLine}</span>` : ''}
     </div>
     ${accordCard(g)}
+    ${g.factories ? `<p class="small">Factories each round: 🏭 Flood +${g.factories.effect.up}, 🌿 Flood −${g.factories.effect.down} (every ${g.settings.base.factoryGreenPer} sustainable factories on the board, everyone's together).</p>` : ''}
     <p class="${safe ? 'ok' : 'warn'} small">${safe ? `✔ Your home is safe at Flood ${g.flood}.` : `✖ Your home would flood at Flood ${g.flood}. You need ${g.flood - me.protection} more protection.`}
     Seawall: ${g.seawall} donated${capped ? ' (bonus maxed)' : `, ${toNext} more for +1`}.</p>`;
 }
@@ -151,7 +158,7 @@ function phasePanel(store) {
     const next = g.phase === 'talk' ? 'When everyone is Ready, you choose actions secretly.' : 'When everyone is Ready, the round ends and the starting player moves clockwise.';
     return `<div class="card phase-card">
       <h2>${title}</h2>
-      <p class="hint">Trade, give, build walls, use the market, donate to the seawall${g.war ? ', recruit militia' : ''}${g.mode === 'empire' ? ', command your puppets' : ''}. ${next}</p>
+      <p class="hint">Trade, give, build walls${g.factories ? ' and factories' : ''}, use the market, donate to the seawall${g.war ? ', recruit militia' : ''}${g.mode === 'empire' ? ', command your puppets' : ''}. ${next}</p>
       ${
         me.ready
           ? `<button class="btn big ready-done" data-act="unready">✔ Ready — tap to undo</button>`
@@ -183,6 +190,7 @@ function choiceLabel(g, c) {
   if (c.action === 'attack') return `<span class="act raid">Attack → ${esc(tileLabel(g, c.target))}</span>`;
   if (c.action === 'revolt') return `<span class="act unsus">Revolt!</span>`;
   if (c.action === 'raid') return `<span class="act raid">Raid → ${esc(g.players[c.target].name)}</span>`;
+  if (c.action === 'claim') return `<span class="act raid">Claim → ${esc(c.target)}</span>`;
   if (c.action === 'unsustainable') return `<span class="act unsus">Unsustainable</span>`;
   return `<span class="act sus">Sustainable</span>`;
 }
@@ -197,6 +205,7 @@ function choosePanel(store) {
   if (me.choice && !c.editing) {
     const ch = me.choice;
     const detail =
+      ch.action === 'claim' ? `(${esc(tileLabel(g, ch.target))})` :
       ch.action === 'raid' ? `on ${esc(g.players[ch.target].name)}` : ch.mix ? `(${bagText(ch.mix)})` : `(${b.sustainableCollect} ${homeRes === 'sandbag' ? 'sandbags' : homeRes})`;
     return `<div class="card phase-card">
       <h2>2. Choose secretly</h2>
@@ -223,6 +232,22 @@ function choosePanel(store) {
     const n = bagTotal(c.mix);
     extra = `<h3>Pick ${b.unsustainableCollect} materials (${n}/${b.unsustainableCollect})</h3>${bagEditor('choice.mix', c.mix, capped(c.mix, b.unsustainableCollect))}`;
     canLock = n === b.unsustainableCollect;
+  } else if (c.action === 'claim') {
+    const F = g.factories;
+    extra = `<h3>Claim which factory?</h3>${
+      F.claimTargets.length
+        ? `<div class="target-list">${F.claimTargets
+            .map((id) => {
+              const t = g.board.tiles.find((x) => x.id === id);
+              const o = g.players[t.factory.owner];
+              const bad = L.protectedSeats[o.seat];
+              return `<button class="target ${c.target === id ? 'selected' : ''}" data-act="set" data-path="choice.target" data-value="${id}" aria-pressed="${c.target === id}" ${bad ? 'disabled' : ''}>${chip(o.seat, o.name)} <span>${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(id)}</span><small>${BIOME[t.biome].label}${bad ? ' · 📜 treaty' : myPactWith(g, o.seat) ? ' · ⚠ breaks your pact' : ''}</small></button>`;
+            })
+            .join('')}</div>`
+        : '<p class="muted">No factories you can claim (factories on home tiles are safe).</p>'
+    }
+      <p class="hint">You pay ${b.claimCostWood} wood. You and the owner each roll a die — higher wins, ties go to the owner. Win: the factory becomes yours. You can also tap an outlined tile on the Board tab.</p>`;
+    canLock = c.target != null;
   } else if (c.action === 'raid') {
     extra = `<h3>Raid whom?</h3><div class="target-list">${g.players
       .filter((p) => p.seat !== g.you)
@@ -242,10 +267,14 @@ function choosePanel(store) {
     <div class="action-cards">
       ${card('sustainable', 'Sustainable', susDesc, 'No Flood change')}
       ${card('unsustainable', 'Unsustainable', `Collect any ${b.unsustainableCollect}`, `Flood +${b.unsustainableFlood}`, !!L.noUnsustainable, L.noUnsustainable ? '📜 Treaty forbids' : '')}
-      ${card('raid', 'Raid', 'Steal from a player', 'No Flood change', noWood || !!L.noAttacks, L.noAttacks ? '📜 Treaty forbids' : noWood ? `Needs ${b.raidCostWood} wood` : '')}
+      ${
+        g.factories
+          ? card('claim', 'Claim a factory', "Roll for another player's factory", 'No Flood change', me.materials.wood < b.claimCostWood || !!L.noAttacks || !g.factories.claimTargets.length, L.noAttacks ? '📜 Treaty forbids' : me.materials.wood < b.claimCostWood ? `Needs ${b.claimCostWood} wood` : !g.factories.claimTargets.length ? 'No factories to claim' : '')
+          : card('raid', 'Raid', 'Steal from a player', 'No Flood change', noWood || !!L.noAttacks, L.noAttacks ? '📜 Treaty forbids' : noWood ? `Needs ${b.raidCostWood} wood` : '')
+      }
     </div>
     ${extra}
-    ${c.action ? `<button class="btn primary big" data-act="lockIn" ${canLock ? '' : 'disabled'}>Lock in ${c.action === 'raid' ? 'raid' : c.action}</button>` : ''}
+    ${c.action ? `<button class="btn primary big" data-act="lockIn" ${canLock ? '' : 'disabled'}>Lock in ${c.action === 'raid' ? 'raid' : c.action === 'claim' ? 'claim' : c.action}</button>` : ''}
     ${me.choice ? `<button class="btn link" data-act="set" data-path="choice.editing" data-json="false">Keep my current choice</button>` : ''}
   </div>`;
 }
@@ -304,6 +333,7 @@ function myPanel(store) {
     <div class="walls-line">🧱 <b>${me.walls}</b> wall${me.walls === 1 ? '' : 's'} = <b>${me.protection}</b> protection · Seawall donated: ${me.donated}</div>
     ${g.war ? `<div class="row wrap small">${warTags(g, me)}</div>` : ''}
     ${warMyPanel(store)}
+    ${factoryPanel(store, canBuild)}
 
     <details class="tool" ${canBuild ? 'open' : ''}>
       <summary>Build walls <span class="muted small">(${bagText(cost)} each)</span></summary>
@@ -331,6 +361,55 @@ function myPanel(store) {
       <p class="hint">Donated materials are discarded, but each one scores ${b.seawallPointsPerMaterial} point${b.seawallPointsPerMaterial === 1 ? '' : 's'} if your home survives.</p>
     </details>
   </div>`;
+}
+
+// ------------------------------------------------------------------ factories (Base)
+function factoryPanel(store, canBuild) {
+  const g = store.data.game;
+  const F = g.factories;
+  if (!F) return '';
+  const me = g.players[g.you];
+  const b = g.settings.base;
+  const f = store.ui.factory;
+  const cost = (k) => (k === 'sustainable' ? { wood: b.factorySusWood, stone: b.factorySusStone, sandbag: b.factorySusSandbag } : { wood: b.factoryUnsWood, stone: b.factoryUnsStone, sandbag: b.factoryUnsSandbag });
+  const can = (k) => MATS.every((m) => me.materials[m] >= cost(k)[m]);
+  const myUns = F.mine.filter((x) => x.kind === 'unsustainable').length;
+  const unsFull = myUns >= F.unsMax;
+  const L = g.limits || {};
+  const kindCard = (k) => {
+    const sus = k === 'sustainable';
+    const off = !sus && (unsFull || L.noUnsustainable);
+    return `<button class="action-card ${sus ? 'sustainable' : 'unsustainable'} ${f.kind === k ? 'selected' : ''}" data-act="set" data-path="factory.kind" data-value="${k}" aria-pressed="${f.kind === k}" ${off ? 'disabled' : ''}>
+      <b>${sus ? '🌿 Sustainable' : '🏭 Unsustainable'}</b><span>${bagText(cost(k))} · makes ${sus ? b.factorySusMakes : b.factoryUnsMakes}/round</span>
+      <em>${sus ? `Every ${b.factoryGreenPer} on the board: Flood −${b.factoryGreenDrop}/round` : `Flood +${b.factoryUnsFlood} every round`}</em>
+      ${off ? `<small>${L.noUnsustainable ? '📜 Treaty forbids' : `You have ${F.unsMax} (max)`}</small>` : sus ? '' : `<small>${myUns}/${F.unsMax} used</small>`}</button>`;
+  };
+  const tileOk = f.tile && F.sites.includes(f.tile);
+  const sites = F.sites.length
+    ? `<div class="target-list">${F.sites
+        .map((id) => `<button class="target ${f.tile === id ? 'selected' : ''}" data-act="set" data-path="factory.tile" data-value="${id}" aria-pressed="${f.tile === id}"><span>${esc(tileLabel(g, id))}</span><small>makes ${BIOME[g.board.tiles.find((t) => t.id === id).biome].res || 'any'}</small></button>`)
+        .join('')}</div>`
+    : '<p class="muted small">Nowhere to build — every tile next to your land is taken.</p>';
+  const mine = F.mine.length
+    ? `<ul class="plain">${F.mine
+        .map((x) => `<li>${x.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(tileLabel(g, x.tile))} <button class="btn small link" data-act="demolishFactory" data-tile="${x.tile}" ${canBuild ? '' : 'disabled'}>Demolish</button></li>`)
+        .join('')}</ul>`
+    : '<p class="muted small">You have no factories yet.</p>';
+  const e = F.effect;
+  return `<details class="tool" ${canBuild ? 'open' : ''}>
+      <summary>Factories <span class="muted small">(board: 🌿${F.counts.sustainable} 🏭${F.counts.unsustainable} → Flood ${e.up - e.down > 0 ? '+' : ''}${e.up - e.down} per round)</span></summary>
+      <p class="hint">Factories make materials every round and are how you expand: build on your home tile or an empty tile next to your home or your factories. Others can try to claim factories that aren't on a home tile.</p>
+      <div class="action-cards two">${kindCard('sustainable')}${kindCard('unsustainable')}</div>
+      <h3>Where?</h3>
+      ${sites}
+      <div class="row wrap">
+        <button class="btn" data-act="factoryPickOnBoard">🗺️ Pick on the board</button>
+        <button class="btn primary" data-act="buildFactory" ${canBuild && tileOk && can(f.kind) && !(f.kind === 'unsustainable' && unsFull) ? '' : 'disabled'}>Build ${f.kind} factory${tileOk ? ' on ' + esc(f.tile) : ''}</button>
+      </div>
+      ${can(f.kind) ? '' : `<p class="muted small">Needs ${bagText(cost(f.kind))}.</p>`}
+      <h3>Your factories</h3>
+      ${mine}
+    </details>`;
 }
 
 function matPicker(path, value) {

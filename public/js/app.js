@@ -8,7 +8,7 @@ import { renderLobby } from './lobby.js';
 import { renderGame } from './game.js';
 import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
-import { refreshBattle, svgPoint, liveBattle, toggleUnit, startBattleAnimation } from './battle-ui.js';
+import { refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation } from './battle-ui.js';
 
 /* global io */
 const socket = io();
@@ -35,6 +35,7 @@ function freshUi() {
     trade: { to: null, give: { wood: 0, stone: 0, sandbag: 0 }, get: { wood: 0, stone: 0, sandbag: 0 } },
     loot: { wood: 0, stone: 0, sandbag: 0 },
     walls: 1,
+    factory: { kind: 'sustainable', tile: null, picking: false },
     recruit: { count: 1, mix: { wood: 0, stone: 0, sandbag: 0 }, tile: null, unit: 'infantry' },
     move: { from: null, to: null, count: 1, troops: { militia: 0, infantry: 0, cavalry: 0 } }, // stationed units: the "Move units" form
     battleSel: [], // Total War: dots selected on the battlefield
@@ -304,7 +305,7 @@ const actions = {
   pickAction: (ds) => {
     const c = store.ui.choice;
     c.action = ds.value;
-    if (ds.value !== 'raid') c.target = null;
+    if (ds.value !== 'raid' && ds.value !== 'claim') c.target = null;
     c.from = null;
     c.count = null;
     c.mix = emptyBag();
@@ -313,8 +314,8 @@ const actions = {
   lockIn: () => {
     const c = store.ui.choice;
     const msg = { type: 'choose', action: c.action };
-    if (c.action === 'raid' || c.action === 'attack') msg.target = c.target;
-    else if (c.action !== 'revolt') msg.mix = c.mix;
+    if (c.action === 'raid' || c.action === 'attack' || c.action === 'claim') msg.target = c.target;
+    else if (c.action !== 'revolt' && c.action !== 'claim') msg.mix = c.mix;
     if (store.data.game.stationed && (c.action === 'attack' || c.action === 'revolt')) Object.assign(msg, { from: c.from, count: c.count });
     if (store.data.game.tw && c.action === 'attack' && c.troops) msg.troops = c.troops;
     if (c.aid) msg.aid = c.aid;
@@ -335,13 +336,41 @@ const actions = {
     if (store.data.game.stationed) msg.tile = r.tile || store.data.game.players[store.data.game.you].homeTile;
     act(msg).then((res) => {
       if (res.ok) {
-        store.ui.recruit = { count: 1, mix: emptyBag(), tile: r.tile };
+        store.ui.recruit = { count: 1, mix: emptyBag(), tile: r.tile, unit: r.unit }; // remember the unit type
         render();
       }
     });
   },
+  buildFactory: () => {
+    const f = store.ui.factory;
+    act({ type: 'buildFactory', tile: f.tile, kind: f.kind }).then((r) => {
+      if (r.ok) {
+        f.tile = null;
+        f.picking = false;
+        render();
+      }
+    });
+  },
+  demolishFactory: (ds) => {
+    if (!confirm(`Demolish your factory on ${ds.tile}? You don't get the materials back.`)) return;
+    act({ type: 'demolishFactory', tile: ds.tile });
+  },
+  factoryPickOnBoard: () => {
+    store.ui.factory.picking = true;
+    store.ui.tab = 'board';
+    render();
+  },
   pickTile: (ds) => {
     // Tapped an outlined tile on the board.
+    const g = store.data.game;
+    if (g.factories && store.ui.factory.picking && ['talk', 'trade'].includes(g.phase)) {
+      store.ui.factory.tile = ds.tile;
+      store.ui.factory.picking = false;
+      store.ui.tab = 'play';
+      toast(`Site ${ds.tile} chosen — press Build on the Play tab.`);
+      render();
+      return;
+    }
     if (store.ui.cmdAttackFor != null) {
       actions.setCommand({ puppet: String(store.ui.cmdAttackFor), action: 'attack', target: ds.tile });
       return;
@@ -377,6 +406,10 @@ const actions = {
     const mine = b.dots.filter((d) => d.side === side && (ds.type === 'all' || d.type === ds.type));
     store.ui.battleSel = ds.type === 'none' ? [] : mine.map((d) => d.id);
     refreshBattle(store);
+  },
+  battleAddMode: () => {
+    store.ui.battleAdd = !store.ui.battleAdd;
+    render();
   },
   battleAuto: (ds) => act({ type: 'battleAuto', battle: +ds.id, on: ds.on === '1' }),
 
@@ -451,20 +484,28 @@ const actions = {
   },
 };
 
-document.addEventListener('click', (e) => {
-  const svg = e.target.closest('#battle-svg');
-  if (svg) {
-    const dotEl = e.target.closest('[data-dot]');
-    if (dotEl) {
-      toggleUnit(store, Number(dotEl.dataset.dot)); // a tap selects the dot's whole unit
-      return;
-    }
-    const sel = new Set(store.ui.battleSel);
-    if (!sel.size) return toast('Tap one of your units first (or use Select all).');
-    const p = svgPoint(svg, e);
-    if (p) act({ type: 'battleOrder', battle: Number(svg.dataset.battle), dots: [...sel], x: p.x, y: p.y });
+// Battlefield taps use pointerdown: the dots are redrawn every animation frame, so a
+// normal click often loses its target between press and release.
+document.addEventListener('pointerdown', (e) => {
+  const svg = e.target.closest && e.target.closest('#battle-svg');
+  if (!svg || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  e.preventDefault();
+  const b = liveBattle(store, Number(svg.dataset.battle));
+  const p = svgPoint(svg, e);
+  if (!b || !p) return;
+  const unit = unitAt(store, b, p);
+  if (unit != null) {
+    selectUnit(store, b, unit, store.ui.battleAdd || e.shiftKey || e.ctrlKey || e.metaKey);
+    refreshBattle(store);
     return;
   }
+  const sel = store.ui.battleSel;
+  if (!sel.length) return toast('Tap one of your units first (or use Select all).');
+  act({ type: 'battleOrder', battle: b.id, dots: [...sel], x: p.x, y: p.y });
+});
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#battle-svg')) return; // handled on pointerdown
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
   e.preventDefault();

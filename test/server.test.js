@@ -65,7 +65,7 @@ test('server: create, join, start, play a full Base game, rejoin by name', async
     }
     await tick();
     assert.equal(a.last.game.phase, 'ended');
-    assert.equal(a.last.game.flood, 4);
+    assert.equal(a.last.game.flood, 7); // Base starts at Flood 5 (playtest default), +1 per Unsustainable round
     assert.ok(a.last.record);
     assert.match(a.last.recordCsv, /^date,mode/);
 

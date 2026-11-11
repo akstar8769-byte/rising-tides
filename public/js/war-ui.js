@@ -12,6 +12,7 @@ export function tileLabel(g, id) {
   if (!t) return id;
   const b = BIOME[t.biome].label;
   const held = t.controller != null && t.controller !== t.owner ? ` — held by ${g.players[t.controller].name}` : '';
+  if (t.factory && t.owner == null) return `${b} tile ${t.id} (${g.players[t.factory.owner].name}'s factory)`;
   if (t.owner == null) return `Open ${b} tile (${t.id})${held}`;
   return `${g.players[t.owner].name}'s ${t.role === 'capital' ? 'capital' : b + ' province'} (${t.id})${held}`;
 }

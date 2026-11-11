@@ -217,6 +217,7 @@ export function battlePanel(store) {
         <button class="btn small" data-act="battleSelect" data-type="infantry">■ Infantry</button>
         <button class="btn small" data-act="battleSelect" data-type="cavalry">▲ Cavalry</button>
         <button class="btn small" data-act="battleSelect" data-type="none">Clear</button>
+        <button class="btn small" data-act="battleAddMode" aria-pressed="${store.ui.battleAdd ? 'true' : 'false'}">${store.ui.battleAdd ? '✓ ' : ''}Add to selection</button>
         <button class="btn small ${auto ? 'primary' : ''}" data-act="battleAuto" data-id="${b.id}" data-on="${auto ? 0 : 1}">${auto ? '🤖 Auto-battle ON' : '🤖 Auto-battle'}</button>
       </div>
       <p class="hint">Tap a unit (or a type button), then tap the map to send it. <b>${mySide === 'A' ? 'Hold the flag ⚑ with nobody defending it' : 'Keep attackers off the flag ⚑ until time runs out'}.</b> Ground you move through becomes yours (tinted); the dark line is the <b>frontline</b>. Your supply runs through your own ground back to your edge of the map — units cut off (red outline, red pocket) take heavy damage and surrender. Hit enemies from two sides for bonus damage. Cavalry struggles against infantry — until you encircle them.</p>`
@@ -270,18 +271,45 @@ export function startBattleAnimation(store) {
   requestAnimationFrame(frame);
 }
 
-/** Tapping a dot selects (or unselects) its whole unit. */
-export function toggleUnit(store, dotId) {
-  const svg = document.getElementById('battle-svg');
-  const b = svg && liveBattle(store, Number(svg.dataset.battle));
-  if (!b) return;
-  const dot = b.dots.find((d) => d.id === dotId);
-  if (!dot) return;
-  const unitDots = b.dots.filter((d) => d.unit === dot.unit).map((d) => d.id);
+/**
+ * Which of my units is under this point? The dots are redrawn every frame, so we
+ * hit-test against where they are drawn rather than relying on the clicked element.
+ * Returns the unit id, or null.
+ */
+export function unitAt(store, b, p) {
+  const g = store.data.game;
+  const mySide = b.attacker === g.you ? 'A' : b.defender === g.you ? 'D' : null;
+  if (!mySide) return null;
+  const now = performance.now();
+  let best = null;
+  let bestD = 2.2; // tap radius in map squares
+  for (const d of b.dots) {
+    if (d.side !== mySide) continue;
+    const pos = (anim.battle === b.id && drawnPos(d.id, now)) || d;
+    const dist = Math.hypot(pos.x - p.x, pos.y - p.y);
+    if (dist < bestD) {
+      bestD = dist;
+      best = d.unit;
+    }
+  }
+  return best;
+}
+
+/**
+ * Tapping a unit selects just that unit (tap it again to unselect).
+ * With add = true (Shift/Ctrl, or "Add to selection" switched on) it joins the selection.
+ */
+export function selectUnit(store, b, unit, add) {
+  const ids = b.dots.filter((d) => d.unit === unit).map((d) => d.id);
   const sel = new Set(store.ui.battleSel);
-  const on = !sel.has(dotId);
-  for (const id of unitDots) on ? sel.add(id) : sel.delete(id);
-  store.ui.battleSel = [...sel];
+  const already = ids.every((id) => sel.has(id));
+  if (add) {
+    for (const id of ids) already ? sel.delete(id) : sel.add(id);
+    store.ui.battleSel = [...sel];
+  } else {
+    const onlyThis = already && sel.size === ids.length;
+    store.ui.battleSel = onlyThis ? [] : ids;
+  }
 }
 
 /** Turn a click on the battlefield into map coordinates. */

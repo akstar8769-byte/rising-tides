@@ -421,3 +421,9 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .unit-card.selected { border-color: var(--sea); background: #eef7fd; }
 .unit-card span, .unit-card small { color: var(--muted); }
 .unit-shape { width: 22px; text-align: center; font-size: 1.1rem; }
+
+/* Factories (Base game) */
+.action-cards.two { grid-template-columns: repeat(2, 1fr); }
+.board .fglyph { font-size: 17px; text-anchor: middle; pointer-events: none; }
+ul.plain { list-style: none; padding: 0; margin: 4px 0; }
+ul.plain li { padding: 3px 0; }

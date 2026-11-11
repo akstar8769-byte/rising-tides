@@ -17,6 +17,7 @@ const { BIOMES, buildBoard, defaultBiomeList } = require('./board');
 const base = require('./base');
 const war = require('./war');
 const diplomacy = require('./diplomacy');
+const factories = require('./factories');
 const { playtestRecord, recordToCsv } = require('./record');
 
 const MODES = ['base', 'war', 'empire', 'totalwar'];
@@ -24,7 +25,7 @@ const BUILT_MODES = ['base', 'war', 'empire', 'totalwar'];
 
 // Which actions exist in each mode. War modes add/replace some Base actions.
 const HANDLERS = {
-  base: { ...base.handlers, ...diplomacy.handlers },
+  base: { ...base.handlers, ...factories.handlers, ...diplomacy.handlers },
   war: { ...base.handlers, ...war.handlers, ...diplomacy.handlers },
   empire: { ...base.handlers, ...war.handlers, ...diplomacy.handlers },
   totalwar: { ...base.handlers, ...war.handlers, ...diplomacy.handlers },
@@ -86,7 +87,7 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
     round: 1,
     phase: 'talk',
     startingPlayer: 0,
-    flood: settings.general.startingFlood,
+    flood: mode === 'base' ? settings.base.startingFlood : settings.general.startingFlood,
     seawall: 0, // total materials donated by everyone
     nextTradeId: 1,
     trades: [],
@@ -154,6 +155,13 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
         sustainable: 0,
         unsustainable: 0,
         raid: 0,
+        claim: 0,
+        claimsWon: 0,
+        claimsLost: 0,
+        factoriesBuilt: 0,
+        greenFactories: 0,
+        factoriesLost: 0,
+        factoryMade: 0,
         raidsWon: 0,
         raidsLost: 0,
         timesRaided: 0,
@@ -233,6 +241,7 @@ function viewFor(state, seat) {
   // Battles are public: anyone can watch. Send the territory as a short string, not the raw grids.
   if (state.mode === 'totalwar') v.battles = (state.battles || []).map(({ reach, territory, ...b }) => ({ ...b, terr: require('./totalwar').territoryString({ territory, reach }) }));
   diplomacy.decorateView(v, state, seat);
+  factories.decorateView(v, state, seat);
   return v;
 }
 

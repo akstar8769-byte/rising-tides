@@ -10,6 +10,12 @@ const BIOMES4 = ['forest', 'quarry', 'riverbank', 'mixed', 'forest'];
 function newGame(opts = {}) {
   const n = opts.n || 3;
   const settings = cloneDefaults();
+  // The older Base tests check the rulebook game: Flood starts at 2, no factories.
+  // Factory tests pass { factories: true } to get the playtest defaults.
+  if (!opts.factories) {
+    settings.base.startingFlood = 2;
+    settings.base.factoriesEnabled = false;
+  }
   if (opts.settings) opts.settings(settings);
   const biomes = opts.biomes || BIOMES4.slice(0, n);
   return engine.createGame({
