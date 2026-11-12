@@ -222,6 +222,20 @@ function movePanel(store, canBuild) {
   const to = dests.includes(mv.to) ? mv.to : dests[0];
   const max = unitsOn(g.board.tiles.find((t) => t.id === from), g.you);
   const count = Math.min(Math.max(1, mv.count), max);
+  // The picked troops belong to one tile: start fresh when the tile changes, and
+  // keep only types that are actually there (no more than are there), so hidden
+  // leftovers can't inflate the count or make the move fail.
+  if (mv.troopsFrom !== from) mv.troops = {};
+  mv.troopsFrom = from;
+  if (g.tw) {
+    const here = troopsOn(g, from);
+    const clean = {};
+    for (const [k, n] of Object.entries(mv.troops || {})) {
+      const m = Math.min(Number(n) || 0, here[k] || 0);
+      if (m > 0) clean[k] = m;
+    }
+    mv.troops = clean;
+  }
   mv.from = from;
   mv.to = to;
   mv.count = count;
