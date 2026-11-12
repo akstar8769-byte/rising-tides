@@ -313,7 +313,7 @@ Decided while building (all numbers are lobby settings in the Total War group):
   - Tanks and mechanised infantry are armour.
   - Only anti-air and aircraft can hurt planes.
   - Ships only fight ships, apart from shore bombardment.
-  - Anti-tank guns do 60% against soft targets.
+  - **Specialists:** anti-tank guns do 600% against tanks and mechanised infantry, and anti-air guns do 500% against aircraft. Both do only 15% against troops, and anti-air does 10% against tanks. Up close they always go for the target they are best against first. (`vsSoftPct` is a new per-unit lobby setting, "damage vs troops (%)".)
   - The old cavalry rules still apply to militia and to infantry, and now also to anti-tank, anti-air and motorised units.
 - **Ranged units:** artillery (14), anti-air (7, aircraft only), cruisers (6) and battleships (10) fire at range when nothing is in contact. Artillery fights at 40% up close. The Artillery screen formation adds +3 to artillery range.
 - **Board:** Total War now uses `sea37` (37 hexes) by default. Each wedge is:
@@ -341,7 +341,8 @@ Decided while building (all numbers are lobby settings in the Total War group):
   - It gives an attack, protection or speed bonus until you change it (2 s between changes).
   - Air battles have none; naval battles only have Line and Defensive square.
   - Auto-battle uses Defensive square when outnumbered or cut off. Otherwise attackers favour Pincer when much stronger, then Armour spearhead or Combined arms, and defenders favour Artillery screen or Combined arms.
-- **Bots** research before anything else, each following a plan that suits its personality (warlike: tanks first; cautious: anti-tank first; everyone gets to tanks and aircraft eventually). Once their army is a decent size they upgrade old units to the best type they have unlocked. They recruit bigger armies than in War, build walls only when the Flood is a real threat, and sometimes launch ships.
+- **Bot difficulty** (lobby, next to Add bot): Normal, Hard (+3 materials a round for each bot) or Brutal (+6). The bonus is paid at the start of every round and spread across each bot's smallest piles. Both amounts are lobby settings.
+- **Bots** research an army-focused plan that suits their personality (warlike: tanks and aircraft first; cautious: motorised and anti-tank first). Only the warlike bot researches ships, and only at the end. After the first tech they research only while they have a few units in the field. Once they have 3 units they save up for good units (tanks, aircraft, mechanised infantry) instead of filling up on militia, and they upgrade old units. While the Flood is far from the line they choose Unsustainable much more often, for the income. They recruit bigger armies than in War, build walls only when the Flood is a real threat, and sometimes launch ships.
 - **Older tests** still use the 19-hex board (test/totalwar.test.js); the new rules are tested in test/arsenal.test.js.
 
 ## Artillery: visible fire, helpless up close (11 November 2026)

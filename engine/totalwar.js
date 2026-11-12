@@ -666,7 +666,9 @@ function stepBattle(b, dt, cfg) {
     if (foes.length) {
       const useful = foes.filter((f) => ARS.matchup(d.type, f.type, cfg) > 0);
       if (!useful.length) continue;
-      const target = useful.reduce((a, f) => (dist(d, f) < dist(d, a) ? f : a));
+      // Hit what we're best against (anti-tank goes for tanks), then the nearest.
+      const score = (f) => ARS.matchup(d.type, f.type, cfg) * 100 - dist(d, f);
+      const target = useful.reduce((a, f) => (score(f) > score(a) ? f : a));
       // Artillery is almost helpless at close quarters.
       hit(d, target, d.type === 'artillery' ? (cfg.artilleryMeleeAttackPct ?? 15) / 100 : 1);
       continue;

@@ -465,3 +465,23 @@ test('total war: battles between different players still run at the same time', 
   });
   assert.equal(s.battles.filter((b) => b.status === 'live').length, 2);
 });
+
+test('total war: bot difficulty gives bots extra materials every round', () => {
+  const { cloneDefaults } = require('../config');
+  const war = require('../engine/war');
+  const make = (diff) => {
+    const settings = cloneDefaults();
+    settings.totalwar.botDifficulty = diff;
+    return engine.createGame({ mode: 'totalwar', settings, players: [{ name: 'Me', biome: 'forest' }, { name: 'Bot A', biome: 'quarry', bot: true }, { name: 'Bot B', biome: 'riverbank', bot: true }], seed: 5 });
+  };
+  const total = (p) => p.materials.wood + p.materials.stone + p.materials.sandbag;
+  for (const [diff, extra] of [['normal', 0], ['hard', 3], ['brutal', 6]]) {
+    const s = structuredClone(make(diff));
+    const before = s.players.map(total);
+    war.upkeep(s);
+    const after = s.players.map(total);
+    assert.equal(after[0] - before[0], 0, 'the human gets nothing extra');
+    assert.equal(after[1] - before[1], extra, `${diff}: bot A +${extra}`);
+    assert.equal(after[2] - before[2], extra, `${diff}: bot B +${extra}`);
+  }
+});

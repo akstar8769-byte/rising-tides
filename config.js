@@ -130,13 +130,17 @@ const DEFAULTS = {
     capitalOpensAfter: 1,        // provinces that must fall before a capital can be attacked
     truceRounds: 2,              // opening truce: no attacks on other players in the first this-many rounds (empty land is fine)
     boardLayout: 'sea37',        // Total War board: 37 hexes with sea bays between the players
+    botDifficulty: 'normal',     // normal / hard / brutal: bots get +0 / +botBonusHard / +botBonusBrutal materials every round
+    botBonusHard: 3,
+    botBonusBrutal: 6,
     // Unit types (what each one is: engine/arsenal.js). cost = materials to recruit,
     // upkeep = upkeep points, hp = toughness, attack = damage per second in battle,
     // speed = map squares per second, range = shooting range (0 = must be in contact),
     // vsArmorPct = damage against tanks / mechanised, vsAirPct = damage against aircraft.
     militia: { cost: 2, upkeep: 1, hp: 10, attack: 1, speed: 3, range: 0, vsArmorPct: 30, vsAirPct: 0 },
-    antitank: { cost: 4, upkeep: 1, hp: 12, attack: 1, speed: 2.5, range: 0, vsArmorPct: 300, vsAirPct: 0 },
-    antiair: { cost: 4, upkeep: 1, hp: 12, attack: 0.8, speed: 2.5, range: 7, vsArmorPct: 30, vsAirPct: 250 },
+    // Specialists: anti-tank shreds armour, anti-air shreds aircraft; both are nearly useless against troops.
+    antitank: { cost: 4, upkeep: 1, hp: 12, attack: 1, speed: 2.5, range: 0, vsArmorPct: 600, vsAirPct: 0, vsSoftPct: 15 },
+    antiair: { cost: 4, upkeep: 1, hp: 12, attack: 0.8, speed: 2.5, range: 7, vsArmorPct: 10, vsAirPct: 500, vsSoftPct: 15 },
     infantry: { cost: 4, upkeep: 1, hp: 18, attack: 1.5, speed: 2.5, range: 0, vsArmorPct: 40, vsAirPct: 0 },
     motorised: { cost: 5, upkeep: 1, hp: 20, attack: 1.6, speed: 4, range: 0, vsArmorPct: 50, vsAirPct: 0 },
     mechanised: { cost: 7, upkeep: 2, hp: 26, attack: 1.8, speed: 4, range: 0, vsArmorPct: 80, vsAirPct: 0 },
@@ -387,12 +391,13 @@ const DECIMALS = [];
 const OPTIONS = {
   'general.boardLayout': ['standard19'],
   'totalwar.boardLayout': ['sea37', 'standard19'],
+  'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
 };
 
 // Total War units, research and formations: labels and limits are generated.
 const ARSENAL = require('./engine/arsenal');
 for (const [k, u] of Object.entries(ARSENAL.UNITS)) {
-  const names = { cost: 'cost', upkeep: 'upkeep points', hp: 'toughness (HP)', attack: 'damage per second', speed: 'speed', range: 'range (0 = melee)', vsArmorPct: 'damage vs armour (%)', vsAirPct: 'damage vs aircraft (%)' };
+  const names = { cost: 'cost', upkeep: 'upkeep points', hp: 'toughness (HP)', attack: 'damage per second', speed: 'speed', range: 'range (0 = melee)', vsArmorPct: 'damage vs armour (%)', vsAirPct: 'damage vs aircraft (%)', vsSoftPct: 'damage vs troops (%)' };
   for (const [f, n] of Object.entries(names)) LABELS[`totalwar.${k}.${f}`] = `${u.name}: ${n}`;
   LIMITS[`totalwar.${k}.cost`] = [1, 99];
   LIMITS[`totalwar.${k}.hp`] = [1, 999];
@@ -407,6 +412,11 @@ for (const [k, n] of Object.entries(FORMATION_NAMES)) {
   LABELS[`totalwar.formations.${k}.speedPct`] = `Formation ${n}: speed (%)`;
 }
 LABELS['totalwar.boardLayout'] = 'Board (sea37 has sea bays for navies)';
+LABELS['totalwar.botDifficulty'] = 'Bot difficulty (hard / brutal: bots get extra materials every round)';
+LABELS['totalwar.botBonusHard'] = 'Hard bots: extra materials per round';
+LABELS['totalwar.botBonusBrutal'] = 'Brutal bots: extra materials per round';
+LIMITS['totalwar.botBonusHard'] = [0, 30];
+LIMITS['totalwar.botBonusBrutal'] = [0, 30];
 LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
 LABELS['totalwar.artilleryMeleeAttackPct'] = 'Artillery in close combat: damage dealt (%)';
 LABELS['totalwar.artilleryMeleeDamageTakenPct'] = 'Artillery in close combat: damage taken (%)';

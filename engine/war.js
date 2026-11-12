@@ -368,9 +368,29 @@ function freePuppet(s, seat, text) {
   if (ST(s)) for (const t of controlled(s, seat)) clearTile(s, t, 'home');
 }
 
+/** Total War bot difficulty: bots get extra materials at the start of every round. */
+function botBonus(s) {
+  const cfg = TWS(s);
+  const n = cfg.botDifficulty === 'brutal' ? cfg.botBonusBrutal : cfg.botDifficulty === 'hard' ? cfg.botBonusHard : 0;
+  if (!n) return;
+  const bots = s.players.filter((p) => p.bot);
+  if (!bots.length) return;
+  for (const p of bots) {
+    // Spread it out: each material goes to the smallest pile.
+    for (let i = 0; i < n; i++) {
+      const m = ['wood', 'stone', 'sandbag'].reduce((a, x) => (p.materials[x] < p.materials[a] ? x : a), 'wood');
+      p.materials[m]++;
+    }
+  }
+  addLog(s, `🤖 ${cfg.botDifficulty === 'brutal' ? 'Brutal' : 'Hard'} bots: each bot gets +${n} materials.`);
+}
+
 function upkeep(s) {
   const w = W(s);
-  if (TW(s)) finishResearch(s);
+  if (TW(s)) {
+    finishResearch(s);
+    botBonus(s);
+  }
   // 1. Planned withdrawals and releases
   for (const p of s.players) {
     for (const id of p.plans.withdraw) {

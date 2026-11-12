@@ -95,8 +95,7 @@ function matchup(att, def, cfg, cut = false) {
   // Soft targets
   if (att === 'cavalry' && def === 'militia') return cfg.cavalryVsMilitiaPct / 100;
   if (att === 'cavalry' && ['infantry', 'motorised', 'antitank', 'antiair'].includes(def)) return (cut ? cfg.cavalryVsCutOffInfantryPct : cfg.cavalryVsInfantryPct) / 100;
-  if (att === 'antitank') return 0.6; // anti-tank guns are poor against infantry
-  return 1;
+  return (a.vsSoftPct ?? 100) / 100; // specialists (anti-tank, anti-air) are poor against troops
 }
 
 module.exports = { UNITS, TYPES, LAND, AIR, SEA, TANKS, FAST, FOOT, TECHS, TECH_IDS, zero, sum, canBuild, upgradePath, matchup };

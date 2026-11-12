@@ -341,3 +341,24 @@ test('artillery follows the army until the player parks it by hand', () => {
   for (let i = 0; i < 30; i++) tw.stepBattle(b, 0.1, cfg);
   assert.ok(Math.abs(art.tx - 8) < 2, 'parked guns stay where they were put');
 });
+
+test('anti-tank and anti-air are specialists: deadly against their target, weak against troops', () => {
+  assert.ok(ARS.matchup('antitank', 'heavyTank', CFG) >= 5);
+  assert.ok(ARS.matchup('antitank', 'infantry', CFG) <= 0.2);
+  assert.ok(ARS.matchup('antiair', 'bomber', CFG) >= 4);
+  assert.ok(ARS.matchup('antiair', 'infantry', CFG) <= 0.2);
+  assert.ok(ARS.matchup('antiair', 'mediumTank', CFG) <= 0.2);
+  // Head to head: 2 anti-tank beat a medium tank, but lose to 2 infantry.
+  const duel = (a, d) => {
+    const T = { id: 'X', biome: 'quarry' };
+    const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: a, dTroops: d, cfg: CFG, rand: () => 0.5 });
+    for (const x of b.dots) Object.assign(x, { x: 30 + (x.side === 'A' ? -0.5 : 0.5), y: 20 + (x.id % 5) * 0.3, tx: 30, ty: 20 });
+    const start = { A: 0, D: 0 };
+    for (const x of b.dots) start[x.side] += x.max;
+    const hp = (side) => b.dots.filter((x) => x.side === side).reduce((t, x) => t + x.hp, 0) / start[side];
+    for (let i = 0; i < 300 && b.status === 'live' && hp('A') > 0.05 && hp('D') > 0.05; i++) tw.stepBattle(b, 0.1, CFG);
+    return hp('A') - hp('D');
+  };
+  assert.ok(duel({ antitank: 2 }, { mediumTank: 1 }) > 0, 'anti-tank beats a tank');
+  assert.ok(duel({ antitank: 2 }, { infantry: 2 }) < 0, 'but loses to infantry');
+});

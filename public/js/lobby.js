@@ -94,6 +94,19 @@ export function renderLobby(store) {
           ? `<div class="row wrap">
               <button class="btn" data-act="lobby" data-json="${j({ op: 'shuffleSeats' })}">Shuffle seats</button>
               <button class="btn" data-act="lobby" data-json="${j({ op: 'addBot' })}" ${n >= meta.maxPlayers ? 'disabled' : ''}>🤖 Add bot</button>
+              ${
+                lobby.mode === 'totalwar'
+                  ? `<label class="toggle">Bot difficulty:
+                <select id="bot-difficulty" data-setting="totalwar.botDifficulty" aria-label="Bot difficulty">${(meta.options['totalwar.botDifficulty'] || ['normal'])
+                  .map((o) => {
+                    const t = lobby.settings.totalwar;
+                    const extra = o === 'brutal' ? t.botBonusBrutal : o === 'hard' ? t.botBonusHard : 0;
+                    return `<option value="${o}" ${t.botDifficulty === o ? 'selected' : ''}>${o[0].toUpperCase() + o.slice(1)}${extra ? ` (+${extra} materials a round)` : ''}</option>`;
+                  })
+                  .join('')}</select>
+              </label>`
+                  : ''
+              }
               <span class="grow"></span>
               <label class="toggle">Biomes:
                 <select id="biome-mode" data-biome-mode aria-label="Biome assignment">

@@ -111,6 +111,7 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
       seat,
       name: p.name,
       biome: p.biome,
+      bot: !!p.bot, // a computer player (Total War bot difficulty gives these extra income)
       materials: { wood: b.startWood, stone: b.startStone, sandbag: b.startSandbag },
       walls: b.startWalls,
       donated: 0,

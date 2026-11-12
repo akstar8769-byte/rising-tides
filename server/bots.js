@@ -94,32 +94,40 @@ function reserve(g, me, extraUnits = 0) {
  * and anti-tank / anti-air. Militia when money is short.
  */
 const UNIT_WISHES = {
-  warlike: [['heavyTank', 'mediumTank', 'lightTank', 'cavalry'], ['mechanised', 'motorised', 'infantry'], ['artillery'], ['bomber', 'interceptor']],
-  balanced: [['mechanised', 'motorised', 'infantry'], ['mediumTank', 'lightTank', 'cavalry'], ['artillery', 'antitank'], ['interceptor', 'bomber']],
-  cautious: [['mechanised', 'motorised', 'infantry'], ['antitank', 'antiair'], ['artillery'], ['interceptor']],
+  warlike: [['heavyTank', 'mediumTank', 'lightTank', 'cavalry'], ['bomber', 'interceptor'], ['mechanised', 'motorised', 'infantry'], ['artillery']],
+  balanced: [['mediumTank', 'lightTank', 'cavalry'], ['mechanised', 'motorised', 'infantry'], ['bomber', 'interceptor'], ['artillery', 'antitank']],
+  cautious: [['mechanised', 'motorised', 'infantry'], ['antitank', 'antiair'], ['interceptor', 'mediumTank', 'lightTank'], ['artillery']],
 };
-function pickUnitType(g, me, P) {
+/**
+ * The unit type to recruit now, or null to save up for it. Picks a group (mostly the
+ * first, sometimes another, so armies are mixed) and wants the best unlocked type in it.
+ * With a small army we take what we can afford; once we have a few units we save
+ * for the good stuff instead of filling up on militia.
+ */
+function pickUnitType(g, me, P, roll = Math.random()) {
   const unit = (t) => g.tw.units.find((u) => u.type === t);
   const budget = total(me.materials) - reserve(g, me, 1);
   const name = P === PERSONALITIES.warlike ? 'warlike' : P === PERSONALITIES.balanced ? 'balanced' : 'cautious';
   const groups = UNIT_WISHES[name];
-  // Mostly the first group, sometimes another, so armies are mixed.
-  const r = Math.random();
-  const order = r < 0.5 ? [0, 1, 2, 3] : r < 0.75 ? [1, 0, 2, 3] : r < 0.9 ? [2, 0, 1, 3] : [3, 0, 1, 2];
+  const r = roll;
+  const order = r < 0.45 ? [0, 1, 2, 3] : r < 0.75 ? [1, 0, 2, 3] : r < 0.9 ? [2, 0, 1, 3] : [3, 0, 1, 2];
+  const unlocked = (t) => unit(t) && unit(t).unlocked;
+  let want = null;
   for (const gi of order) {
-    for (const t of groups[gi]) {
-      const u = unit(t);
-      if (u && u.unlocked && budget >= u.cost) return t;
-    }
+    want = groups[gi].find(unlocked);
+    if (want) break;
   }
+  if (want && budget >= unit(want).cost) return want;
+  if (me.units >= 4 && want && unit(want).cost > unit('infantry').cost) return null; // save up for it
+  for (const gi of order) for (const t of groups[gi]) if (unlocked(t) && budget >= unit(t).cost) return t;
   return budget >= unit('infantry').cost ? 'infantry' : 'militia';
 }
 
 /** Total War research plans, in order, by personality. */
 const RESEARCH_PLAN = {
-  warlike: ['artillery', 'lightTanks', 'motorised', 'mediumTanks', 'mechanised', 'aircraft', 'heavyTanks', 'antiAir', 'antiTank', 'shipyards', 'cruisers', 'battleships'],
-  balanced: ['artillery', 'motorised', 'lightTanks', 'antiTank', 'mechanised', 'mediumTanks', 'aircraft', 'antiAir', 'heavyTanks', 'shipyards', 'cruisers', 'battleships'],
-  cautious: ['antiTank', 'motorised', 'artillery', 'lightTanks', 'mechanised', 'antiAir', 'mediumTanks', 'aircraft', 'heavyTanks', 'shipyards', 'cruisers'],
+  warlike: ['artillery', 'lightTanks', 'mediumTanks', 'aircraft', 'motorised', 'heavyTanks', 'mechanised', 'antiAir', 'shipyards'],
+  balanced: ['artillery', 'motorised', 'lightTanks', 'mediumTanks', 'aircraft', 'mechanised', 'antiTank', 'antiAir', 'heavyTanks'],
+  cautious: ['motorised', 'antiTank', 'artillery', 'lightTanks', 'aircraft', 'mechanised', 'antiAir', 'mediumTanks'],
 };
 function researchIdea(g, me, P) {
   if (!me.research || me.research.current) return null;
@@ -127,6 +135,8 @@ function researchIdea(g, me, P) {
   const done = new Set(me.research.done);
   const tech = RESEARCH_PLAN[name].map((id) => g.tw.techs.find((t) => t.id === id)).find((t) => t && !done.has(t.id) && t.needs.every((x) => done.has(x)));
   if (!tech) return null;
+  // Keep a real army: after the first tech, research only with a few units in the field.
+  if (done.size >= 1 && me.units < Math.min(P.army, 4)) return null;
   // Research comes first in Total War: keep only a little back for upkeep.
   if (total(me.materials) - tech.cost < reserve(g, me) + 1) return null;
   return { key: `research-${tech.id}`, action: { type: 'research', tech: tech.id, materials: payFromLargest(me, tech.cost) } };
@@ -139,7 +149,7 @@ function researchIdea(g, me, P) {
 function upgradeIdea(g, me, P) {
   const unit = (t) => g.tw.units.find((u) => u.type === t);
   // Build up numbers first: only upgrade once the army is a decent size.
-  if (me.units < P.army + 2) return null;
+  if (me.units < 3) return null;
   const spare = total(me.materials) - reserve(g, me) - 1;
   const owned = {};
   for (const t of g.board.tiles) for (const [k, n] of Object.entries((t.troops || {})[g.you] || {})) owned[k] = (owned[k] || 0) + n;
@@ -175,7 +185,7 @@ function upgradeIdea(g, me, P) {
 
 /** Total War: now and then launch a ship into a bay next to our coast. */
 function shipIdea(g, me, P) {
-  if (P === PERSONALITIES.cautious || !g.tw.seas || !g.tw.seas.length || !chance(0.25)) return null;
+  if (P === PERSONALITIES.cautious || !g.tw.seas || !g.tw.seas.length || me.units < 6 || !chance(0.12)) return null;
   const t = ['battleship', 'cruiser', 'destroyer'].map((k) => g.tw.units.find((u) => u.type === k)).find((u) => u.unlocked && total(me.materials) - u.cost >= reserve(g, me, 1) + 2);
   if (!t) return null;
   return { key: `ship-${g.round}`, action: { type: 'recruit', count: 1, unit: t.type, tile: g.tw.seas[0], materials: payFromLargest(me, t.cost) } };
@@ -305,9 +315,15 @@ function buildStep(g, me, P, mem, fresh) {
       const sh = shipIdea(g, me, P);
       if (sh && fresh(sh.key)) return sh;
     }
-    const unit = g.tw ? pickUnitType(g, me, P) : 'militia';
-    const unitCost = g.tw ? g.tw.units.find((u) => u.type === unit).cost : w.unitCost;
-    if (me.units < target && wallsOk && total(me.materials) - unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
+    // One dice roll per unit bought, so a decision to save up sticks for the round.
+    const rollKey = `${g.round}-${me.units}`;
+    if (mem.rollKey !== rollKey) {
+      mem.rollKey = rollKey;
+      mem.roll = Math.random();
+    }
+    const unit = g.tw ? pickUnitType(g, me, P, mem.roll) : 'militia';
+    const unitCost = !unit ? Infinity : g.tw ? g.tw.units.find((u) => u.type === unit).cost : w.unitCost;
+    if (unit && me.units < target && wallsOk && total(me.materials) - unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
       const action = { type: 'recruit', count: 1, materials: payFromLargest(me, unitCost) };
       if (g.tw) action.unit = unit;
       if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land') || me.homeTile;
@@ -460,7 +476,9 @@ function warIdeas(g, me, P, danger) {
     const target = pickTarget(g, me, P);
     if (target) ideas.push(target);
   }
-  if (danger > (P === PERSONALITIES.cautious ? 6 : 4) && chance(P.unsus) && !g.limits.noUnsustainable && !floodDanger(g, me)) ideas.push(dev('unsustainable'));
+  // Total War's Flood line is far away, so Unsustainable (much more income) is usually worth it.
+  const unsus = g.tw && danger > 8 ? Math.min(0.9, P.unsus + 0.45) : P.unsus;
+  if (danger > (P === PERSONALITIES.cautious ? 6 : 4) && chance(unsus) && !g.limits.noUnsustainable && !floodDanger(g, me)) ideas.push(dev('unsustainable'));
   ideas.push(dev('sustainable'));
   return ideas;
 }

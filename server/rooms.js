@@ -555,7 +555,7 @@ function attachRooms(io) {
       room.state = engine.createGame({
         mode: room.mode,
         settings: room.settings,
-        players: room.members.map((m, i) => ({ name: m.name, biome: biomes[i] })),
+        players: room.members.map((m, i) => ({ name: m.name, biome: biomes[i], bot: !!m.bot })),
         seed: crypto.randomInt(2 ** 31),
       });
       room.startedAt = Date.now();
