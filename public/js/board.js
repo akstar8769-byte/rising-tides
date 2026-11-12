@@ -79,7 +79,7 @@ export function renderBoard(game, opts = {}) {
     if (t.kind === 'sea') {
       // Sea bay: water, with the holder's colour as a ring and their ships as a badge.
       const hold = t.controller != null ? PLAYER_STYLE[t.controller] : null;
-      let act = '';
+      let act = ` data-act="tileMenu" data-tile="${t.id}" role="button" tabindex="0"`;
       let cls = 'tile sea';
       let ring = '';
       if (highlight.has(t.id)) {
@@ -134,7 +134,7 @@ export function renderBoard(game, opts = {}) {
     else if (t.controller == null && !owner && game.factories) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
     let cls = 'tile';
     if (unheld) cls += ' open';
-    let act = '';
+    let act = ` data-act="tileMenu" data-tile="${t.id}" role="button" tabindex="0"`;
     if (highlight.has(t.id)) {
       cls += opts.selected === t.id ? ' target selected' : ' target';
       act = ` data-act="pickTile" data-tile="${t.id}" role="button" tabindex="0"`;
@@ -153,5 +153,5 @@ export function renderBoard(game, opts = {}) {
     .filter((b) => !b.sea || tiles.some((t) => t.kind === 'sea'))
     .map((b) => `<span><i style="background:${b.color}"></i>${b.glyph} ${b.label}${b.sea ? ' (ships only)' : b.res ? ` (${b.res === 'sandbag' ? 'sandbags' : b.res})` : ' (any)'}</span>`)
     .join('')}${legendExtra}${factoryLegend}</div>
-  ${highlight.size ? '<p class="hint">Tap an outlined tile to choose it.</p>' : ''}`;
+  ${highlight.size ? '<p class="hint map-hint">Tap an outlined tile to choose it.</p>' : ''}`;
 }

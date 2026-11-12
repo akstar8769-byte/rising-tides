@@ -70,7 +70,7 @@ We use **Render** (free plan). You do this once; after that, Render updates the 
 4. **Host:** pick the mode and change any settings, then press **Start game** (needs 3–5 players).
    - **Seats:** seat 1 is the first starting player, and play goes clockwise in seat order. Use ▲▼ or **Shuffle seats**.
    - **Biomes:** random by default, or choose **Host picks** to set each player's biome.
-5. Each round the top bar shows the phase and who the game is waiting for. On phones, use the tabs at the bottom: **Play**, **Board**, **Trade**, **Log & chat**.
+5. The map fills the screen. The top bar shows the round, the phase, the Flood and your materials; rivals are banners on the map (tap one for details). **Tap any tile** for what you can do there (recruit, move troops, attack, build a factory). The dock at the bottom opens panels — 🎯 **Turn**, 🏗️ **Build**, 🤝 **Trade**, 🌊 **Flood**, 📜 **Log**, 💬 **Chat** — and the red **End turn** button marks you Ready (or opens your secret choice). Big events pop up as short notes; the full story is in the Log.
 
 **Testing on your own? Add bots.** In the lobby the host can press **🤖 Add bot** to fill empty seats (3 players minimum, so you plus 2 bots works). Each bot has a personality you can change in the lobby:
 - **cautious** — builds walls, rarely fights, donates to the seawall when the Flood gets close;
@@ -80,16 +80,16 @@ We use **Render** (free plan). You do this once; after that, Render updates the 
 Bots play every mode, answer your trade offers (they accept if they get at least as much as they give), follow or revolt against Empire commands, and only see what a human in their seat could see. Change **"Bot thinking time"** in the General settings to speed them up (0 = instant) or slow them down. The playtest CSV marks bot players in a `bot` column so you can filter them out.
 
 **🏭 Factories (Base game, from our in-person playtest — on by default).** The Flood starts at **5**.
-- In Talk & Build or Trade & Build, open **Factories** on the Play tab: pick 🌿 **Sustainable** (costs more, makes 1 a round) or 🏭 **Unsustainable** (cheap, makes 2 a round), pick a tile, press **Build**. You can build on your home tile or an empty tile next to your home or one of your factories — that's how you spread across the board.
+- In Talk & Build or Trade & Build, open **Factories** in the 🏗️ Build panel (or tap an empty tile next to your land): pick 🌿 **Sustainable** (costs more, makes 1 a round) or 🏭 **Unsustainable** (cheap, makes 2 a round), pick a tile, press **Build**. You can build on your home tile or an empty tile next to your home or one of your factories — that's how you spread across the board.
 - Every factory makes its tile's resource every round, whatever action you choose.
 - Each 🏭 unsustainable factory adds **+1 Flood every round** it stands, and nobody may own more than 3. For every **3 🌿 sustainable factories on the board (everyone's together)** the Flood **drops 1** every round — so if the group cooperates, the Flood goes down. You can demolish your own factory any time you're building.
 - **Claim a factory** replaces Raid: pay 1 wood, you and the owner each roll a die, higher wins (ties to the owner), and the factory becomes yours. Factories on someone's home tile can't be claimed.
 - All of the numbers are in the lobby's Base settings, and the host can switch factories off to play the original rulebook (Flood 2, raids).
 
-**⚔ Total War battles.** When your attack meets defenders (or someone attacks your defended land), the Play tab turns into a battlefield. Tap one of your units — ● militia, ■ infantry, ▲ cavalry — to select it (tap it again to unselect), or use *Select all* / a type button; turn on **Add to selection** (or hold Shift) to pick several. Then tap where to send them. Attackers win by holding the flag ⚑ alone for a few seconds; defenders win by holding out. Units cut off from their own edge of the map (red dashed outline) take heavy damage and surrender, so swing cavalry round behind the enemy. Press **Auto-battle** to let the computer fight for you. Other players' battles can be watched live.
+**⚔ Total War battles.** When your attack meets defenders (or someone attacks your defended land), the Turn panel widens into a battlefield. Tap one of your units — ● militia, ■ infantry, ▲ cavalry — to select it (tap it again to unselect), or use *Select all* / a type button; turn on **Add to selection** (or hold Shift) to pick several. Then tap where to send them. Attackers win by holding the flag ⚑ alone for a few seconds; defenders win by holding out. Units cut off from their own edge of the map (red dashed outline) take heavy damage and surrender, so swing cavalry round behind the enemy. Press **Auto-battle** to let the computer fight for you. Other players' battles can be watched live.
 
 **⚔ Total War: research, air, sea and formations.** Total War is played on a bigger board (37 hexes) with six **sea bays** 🌊 between the players.
-- **Research** (Play tab → 🔬 Research): pay once during Talk & Build; it's ready at the start of next round. One project at a time.
+- **Research** (🏗️ Build panel → 🔬 Research): pay once during Talk & Build; it's ready at the start of next round. One project at a time.
   - Artillery → Light tanks → Medium tanks → Heavy tanks.
   - Motorised infantry → Mechanised infantry → Aircraft (interceptors and bombers).
   - Anti-tank guns, and Anti-air guns.
@@ -114,7 +114,7 @@ Bots play every mode, answer your trade offers (they accept if they get at least
   You can switch at any time. **Auto-battle** picks formations for you and changes them as the fight turns (for example, closing into a square when surrounded).
 - All of the numbers are lobby settings: every unit's stats, the research costs and the formation bonuses.
 
-**Diplomacy (Trade tab).**
+**Diplomacy (🤝 Trade panel).**
 - **Pacts** are promises: offer a player a non-aggression pact or an alliance against someone for 1–3 rounds. The game never stops anyone breaking a pact — but it announces it to everyone and marks the betrayer.
 - **Treaties** (switch on "Treaties" in the lobby's General settings) are binding: write rules like "no more than 2 militia" or "no Unsustainable development", invite players, and once two have signed the game blocks any move that breaks them. To get out you must openly break the treaty: everyone sees it and you lose 3 materials (adjustable).
 - Bots join in: they offer and answer pacts, sign or refuse treaties, send trade offers and chat. Talk to them in the chat using their name or "everyone" with words like *peace*, *pact*, *trade*, *flood* or *attack*.
@@ -129,14 +129,14 @@ Bots play every mode, answer your trade offers (they accept if they get at least
 If the host is away for more than 60 seconds, another player becomes host automatically.
 
 **War and War + Empire, quickly:**
-- Each player has a capital and two provinces. The **Board** tab shows who owns and who holds every tile (⚑P2 = held by player 2), plus units ⚔, Damaged 🩹, sanctioned ⛔, puppet ⛓ and overlord 👑.
-- **Units are stationed on tiles** (like Risk): the board shows ⚔N on each tile. Recruit in the Play tab during Talk & Build and pick where the new units go; use **Move units** to shift them between your tiles (as often as you like). Only units on a tile defend it — an empty tile falls to any attack. The host can turn this off in the lobby ("Units are stationed on tiles") to play with one army that defends everywhere.
-- To attack, choose **Attack**, pick a target (from the list, or tap an outlined tile on the Board tab), then pick which of your tiles to attack **from** and how many units to send. If you win a province, your surviving units move in.
+- Each player has a capital and two provinces. The map shows who owns and who holds every tile (⚑P2 = held by player 2), plus units ⚔, Damaged 🩹, sanctioned ⛔, puppet ⛓ and overlord 👑.
+- **Units are stationed on tiles** (like Risk): the board shows ⚔N on each tile. Recruit from the 🏗️ Build panel (or tap your tile → Recruit here) during Talk & Build and pick where the new units go; use **Move units** to shift them between your tiles (as often as you like). Only units on a tile defend it — an empty tile falls to any attack. The host can turn this off in the lobby ("Units are stationed on tiles") to play with one army that defends everywhere.
+- To attack, choose **Attack**, pick a target (from the list, or tap the tile on the map → Attack), then pick which of your tiles to attack **from** and how many units to send. If you win a province, your surviving units move in.
 - **Income:** every tile you hold gives 1 of its resource every round, whatever you play — even when you attack. Sustainable adds +2 of your home resource; Unsustainable adds +6 of anything (Flood +1). So conquering tiles raises your income for the rest of the game.
 - Occupying tiles no longer raises the Flood; each attack still does (+1). A capital can be attacked once one of its provinces has fallen.
-- **War always pollutes:** big armies add Flood every round (+1 per 5 units you own), and every 2 units destroyed in battle add +1 more. The Play tab shows what your army will add next upkeep.
+- **War always pollutes:** big armies add Flood every round (+1 per 5 units you own), and every 2 units destroyed in battle add +1 more. The 🏗️ Build panel shows what your army will add next upkeep.
 - The Flood track shows the **Climate Accord** line (🤝 at 10). While it holds, attackers are sanctioned and victims get aid. Once it breaks (💔) it's gone for good.
-- Empire: overlords command their puppets in the Play tab (**Your puppets**). Puppets see their command and a **Revolt!** card.
+- Empire: overlords command their puppets in the 🏗️ Build panel (**Your puppets**). Puppets see their command and a **Revolt!** card.
 - Withdrawing from a tile and freeing a puppet are set up during Trade & Build and happen at the next upkeep.
 
 **After the game**, the end screen shows who survived, the scores and the winner. Press **Download CSV** to save the playtest record (opens in Excel or Google Sheets, one row per player) or **Download JSON** (also includes every setting used).

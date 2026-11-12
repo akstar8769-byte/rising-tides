@@ -3,7 +3,7 @@
 import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
 import { renderBoard } from './board.js';
 import { renderLog, renderChat } from './log.js';
-import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest } from './war-ui.js';
+import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest, targetNote } from './war-ui.js';
 export { tileLabel };
 import { diplomacyPanel, diploTags, limitsNote, myPactWith } from './diplomacy-ui.js';
 import { battlePanel } from './battle-ui.js';
@@ -11,42 +11,204 @@ import { battlePanel } from './battle-ui.js';
 const BUILD = ['talk', 'trade'];
 const j = (o) => esc(JSON.stringify(o));
 
+// The game screen is a map table: the board fills the window, your stock sits in a
+// thin bar on top, rivals are banners over the map, and everything else slides in
+// from the side (a bottom sheet on phones) when you open it from the dock.
+const DRAWERS = [
+  { id: 'turn', icon: '🎯', label: 'Turn' },
+  { id: 'build', icon: '🏗️', label: 'Build' },
+  { id: 'trade', icon: '🤝', label: 'Trade' },
+  { id: 'flood', icon: '🌊', label: 'Flood' },
+  { id: 'log', icon: '📜', label: 'Log' },
+  { id: 'chat', icon: '💬', label: 'Chat' },
+];
+const DRAWER_TITLE = { turn: 'Your turn', build: 'Build & army', trade: 'Trade & diplomacy', flood: 'The Flood', log: 'Event log', chat: 'Chat' };
+
 export function renderGame(store) {
   const d = store.data;
   const g = d.game;
-  const me = g.players[g.you];
-  const tab = store.ui.tab;
+  const ui = store.ui;
+  const drawer = DRAWERS.some((x) => x.id === ui.drawer) ? ui.drawer : null;
   const incoming = g.trades.filter((t) => t.to === g.you).length + (g.pacts || []).filter((p) => p.status === 'proposed' && p.b === g.you).length + (g.treaties || []).filter((t) => t.invited.includes(g.you) && ![...t.signed, ...t.declined, ...t.broken].includes(g.you)).length;
+  const badges = { trade: incoming, chat: store.unreadChat, turn: g.waitingFor.includes(g.you) && !BUILD.includes(g.phase) ? '!' : 0 };
+  const wide = drawer === 'turn' && g.phase === 'battle';
 
-  return `
-  ${topBar(store)}
-  ${d.paused ? '<div class="banner paused">⏸ The host has paused the game.</div>' : ''}
-  ${floodBanner(g)}
-  <main class="game-grid tab-${tab}">
-    <section class="col col-board" data-tab="board">
-      <div class="card board-card">${renderBoard(g, boardOptions(store))}</div>
-      <div class="card"><h2>Players</h2>${playersList(store)}</div>
-    </section>
-    <section class="col col-play" data-tab="play">
-      <div class="card">${floodTrack(g, me)}</div>
-      ${phasePanel(store)}
-      ${myPanel(store)}
-    </section>
-    <section class="col col-trade" data-tab="trade">
-      ${tradePanel(store)}
-      ${diplomacyPanel(store)}
-    </section>
-    <section class="col col-log" data-tab="log">
-      <div class="card"><h2>Chat</h2>${renderChat(store)}</div>
-      <div class="card"><h2>Event log</h2>${renderLog(g)}</div>
-    </section>
+  return `<div class="table ${drawer ? 'has-drawer' : ''} ${wide ? 'drawer-wide' : ''}">
+  ${hud(store)}
+  <div class="alerts">
+    ${d.paused ? '<div class="banner paused">⏸ The host has paused the game.</div>' : ''}
+    ${floodBanner(g)}
+  </div>
+  <main class="map ${ui.legend ? 'show-legend' : ''}">
+    ${renderBoard(g, boardOptions(store))}
+    ${rivals(store)}
+    <button class="map-key" data-act="set" data-path="legend" data-json="${!ui.legend}" aria-pressed="${!!ui.legend}">🗺 Key</button>
   </main>
-  <nav class="tabbar" aria-label="Sections">
-    ${tabButton('play', 'Play', '🎲', tab)}
-    ${tabButton('board', 'Board', '🗺️', tab)}
-    ${tabButton('trade', 'Trade', '🤝', tab, incoming)}
-    ${tabButton('log', 'Log & chat', '💬', tab, store.unreadChat)}
-  </nav>`;
+  ${
+    drawer
+      ? `<aside class="drawer" aria-label="${DRAWER_TITLE[drawer]}">
+    <div class="drawer-head"><h2>${DRAWER_TITLE[drawer]}</h2><button class="icon-btn" data-act="drawer" data-id="${drawer}" aria-label="Close">✕</button></div>
+    <div class="drawer-body" data-keep-scroll="drawer-${drawer}">${drawerBody(store, drawer)}</div>
+  </aside>`
+      : ''
+  }
+  ${tileMenu(store)}
+  <nav class="dock" aria-label="Panels">
+    <div class="dock-btns">${DRAWERS.map(
+      (x) => `<button class="dock-btn ${drawer === x.id ? 'active' : ''}" data-act="drawer" data-id="${x.id}" aria-pressed="${drawer === x.id}">
+        <span aria-hidden="true">${x.icon}</span><small>${x.label}</small>${badges[x.id] ? `<span class="badge">${badges[x.id]}</span>` : ''}</button>`,
+    ).join('')}</div>
+    ${endTurn(store)}
+  </nav>
+</div>`;
+}
+
+function drawerBody(store, id) {
+  const g = store.data.game;
+  const me = g.players[g.you];
+  if (id === 'turn') return phasePanel(store) || '<p class="muted">Nothing to do right now.</p>';
+  if (id === 'build') return myPanel(store);
+  if (id === 'trade') return tradePanel(store) + diplomacyPanel(store);
+  if (id === 'flood') return `<div class="card">${floodTrack(g, me)}</div>`;
+  if (id === 'log') return `<div class="card">${renderLog(g)}</div>`;
+  if (id === 'chat') return `<div class="card">${renderChat(store)}</div>`;
+  return '';
+}
+
+// ------------------------------------------------------------------ top bar (HUD)
+function hud(store) {
+  const d = store.data;
+  const g = d.game;
+  const me = g.players[g.you];
+  const rounds = g.mode === 'base' ? g.settings.base.rounds : g.settings.war.rounds;
+  return `<header class="hud">
+    <div class="hud-phase">
+      <span class="hud-round">Round ${g.round}<small>/${rounds}${g.settings.base.stormEnabled && g.mode === 'base' ? '*' : ''}</small></span>
+      <b class="hud-phase-name">${PHASE_LABEL[g.phase] || g.phase}</b>
+    </div>
+    <div class="hud-pills">
+      <button class="flood-pill ${dangerClass(g)}" data-act="drawer" data-id="flood" title="Flood / catastrophe threshold">🌊 ${g.flood}/${g.threshold}</button>
+      ${g.tw && g.tw.truce ? `<span class="truce-pill" title="Nobody can attack another player yet">🕊 Truce to rd ${g.tw.truce}</span>` : accordPill(g)}
+    </div>
+    <div class="hud-res" aria-label="Your stock">
+      ${MATS.map((m) => `<span class="res" title="${MAT_LABEL[m]}">${matIcon(m, 22)}<b>${me.materials[m]}</b></span>`).join('')}
+      <span class="res" title="Walls (protection ${me.protection})">🧱<b>${me.walls}</b><small class="${me.protection >= g.flood ? 'ok' : 'warn'}">${me.protection >= g.flood ? 'safe' : 'at risk'}</small></span>
+      ${g.war ? `<span class="res" title="Your units">⚔<b>${me.units}</b></span>` : ''}
+    </div>
+    <div class="hud-room">
+      <span class="small">Room ${esc(d.code)}</span>
+      ${d.you.isHost ? `<button class="btn small" data-act="toggleHost" aria-expanded="${store.ui.hostOpen}">Host ▾</button>` : ''}
+    </div>
+    ${d.you.isHost && store.ui.hostOpen ? hostMenu(store) : ''}
+  </header>`;
+}
+
+/** The big wax-seal button: Ready / choose / go to the battle. */
+function endTurn(store) {
+  const g = store.data.game;
+  const me = g.players[g.you];
+  const others = g.waitingFor.filter((s) => s !== g.you).map((s) => esc(g.players[s].name));
+  const wait = others.length ? (others.length >= g.players.length - 1 && g.players.length > 2 ? 'Waiting for everyone' : `Waiting for ${others.join(', ')}`) : '';
+  let btn;
+  if (BUILD.includes(g.phase))
+    btn = me.ready
+      ? `<button class="end-turn done" data-act="unready" title="Tap to undo">✔ Ready<small>tap to undo</small></button>`
+      : `<button class="end-turn" data-act="ready" ${store.data.paused ? 'disabled' : ''}>End turn ▶</button>`;
+  else if (g.phase === 'choose')
+    btn = me.choice
+      ? `<button class="end-turn done" data-act="drawer" data-id="turn" data-keep="1">🔒 Locked in</button>`
+      : `<button class="end-turn" data-act="drawer" data-id="turn" data-keep="1">Choose move ▶</button>`;
+  else if (g.phase === 'battle') btn = `<button class="end-turn" data-act="drawer" data-id="turn" data-keep="1">⚔ Battles</button>`;
+  else btn = `<button class="end-turn" data-act="drawer" data-id="turn" data-keep="1">${PHASE_LABEL[g.phase] || 'Continue'}</button>`;
+  return `<div class="end-wrap">${wait ? `<span class="end-wait">${wait}</span>` : ''}${btn}</div>`;
+}
+
+// ------------------------------------------------------------------ rival banners
+function rivals(store) {
+  const d = store.data;
+  const g = d.game;
+  const open = store.ui.rival;
+  const banners = g.players
+    .map((p) => {
+      const member = d.members[p.seat];
+      let status = '';
+      if (BUILD.includes(g.phase)) status = p.ready ? '<i class="ok" title="Ready">✓</i>' : '<i title="Still building">…</i>';
+      else if (g.phase === 'choose') status = p.hasChosen ? '<i class="ok" title="Chosen">✓</i>' : '<i title="Thinking">🤔</i>';
+      const safe = p.protection >= g.flood;
+      return `<button class="rival ${p.seat === g.you ? 'me' : ''} ${open === p.seat ? 'open' : ''}" style="--pc:${PLAYER_STYLE[p.seat].color}" data-act="set" data-path="rival" data-json="${open === p.seat ? 'null' : p.seat}" aria-expanded="${open === p.seat}">
+        ${swatch(p.seat, 20)}<span class="rname">${esc(p.name)}${p.seat === g.you ? ' <small>(you)</small>' : ''}</span>${status}
+        <span class="rline">${g.war ? `⚔${p.units} ` : ''}🧱${p.walls}${safe ? '' : ' <b class="warn" title="Home at risk">⚠</b>'}${member && member.bot ? ' 🤖' : ''}${member && !member.connected ? ' <span class="warn">offline</span>' : ''}${p.sanctioned ? ' ⛔' : ''}${p.damaged ? ' 🩹' : ''}</span>
+      </button>`;
+    })
+    .join('');
+  const pop = open != null && g.players[open] ? `<div class="rival-pop"><ul class="players">${playerItem(store, g.players[open])}</ul></div>` : '';
+  return `<div class="rivals">${banners}${pop}</div>`;
+}
+
+// ------------------------------------------------------------------ tile menu
+function tileMenu(store) {
+  const m = store.ui.tileMenu;
+  if (!m) return '';
+  const g = store.data.game;
+  const t = g.board.tiles.find((x) => x.id === m.id);
+  if (!t) return '';
+  const acts = tileActions(store, t);
+  const units = Object.entries(t.units || {})
+    .filter(([, n]) => n > 0)
+    .map(([s, n]) => {
+      const tr = t.troops && t.troops[s];
+      const detail = tr && g.tw ? Object.entries(tr).filter(([, k]) => k > 0).map(([k, c]) => `${(g.tw.units.find((u) => u.type === k) || { shape: '●' }).shape}${c}`).join(' ') : '';
+      return `<li>${chip(+s, g.players[s].name)} ⚔ ${n}${detail ? ` <small>${detail}</small>` : ''}</li>`;
+    })
+    .join('');
+  const b = BIOME[t.biome];
+  const w = 280;
+  const left = Math.max(8, Math.min(m.x - w / 2, (typeof innerWidth === 'number' ? innerWidth : 1000) - w - 8));
+  const top = Math.max(8, Math.min(m.y + 6, (typeof innerHeight === 'number' ? innerHeight : 800) - 300));
+  return `<div class="tile-menu" style="left:${left}px;top:${top}px;width:${w}px" role="dialog" aria-label="${esc(tileLabel(g, t.id))}">
+    <div class="tm-head"><b>${esc(tileLabel(g, t.id))}</b><button class="icon-btn" data-act="closeTileMenu" aria-label="Close">✕</button></div>
+    <p class="small muted">${b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}` : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
+    ${units ? `<ul class="plain tm-units">${units}</ul>` : g.stationed && t.kind !== 'village' ? '<p class="small muted">No units here.</p>' : ''}
+    ${acts.length ? `<div class="tm-actions">${acts.join('')}</div>` : `<p class="hint">${tileIdleHint(g)}</p>`}
+  </div>`;
+}
+
+function tileIdleHint(g) {
+  if (BUILD.includes(g.phase)) return 'Nothing to do on this tile right now.';
+  if (g.phase === 'choose') return 'You can’t act on this tile this turn.';
+  return 'Actions open again in the next Talk & Build phase.';
+}
+
+/** Buttons for what you can do on this tile right now. */
+function tileActions(store, t) {
+  const d = store.data;
+  const g = d.game;
+  const me = g.players[g.you];
+  const id = t.id;
+  const out = [];
+  const btn = (op, label, note = '', primary = false) =>
+    `<button class="btn ${primary ? 'primary' : ''}" data-act="tileDo" data-op="${op}" data-tile="${id}">${label}${note ? `<small>${note}</small>` : ''}</button>`;
+  const canBuild = BUILD.includes(g.phase) && !d.paused;
+  const mine = (n) => (n.units && n.units[g.you]) || 0;
+  if (canBuild) {
+    if (g.war && t.kind === 'land' && t.controller === g.you) out.push(btn('recruit', '🪖 Recruit here', '', true));
+    if (g.tw && t.kind === 'sea' && (g.tw.seas || []).includes(id) && g.tw.units.some((u) => u.domain === 'sea' && u.unlocked)) out.push(btn('recruit', '⚓ Launch ships here', '', true));
+    if (g.stationed && mine(t) > 0) out.push(btn('moveFrom', '🚶 Move troops from here'));
+    const dests = t.kind === 'sea' ? g.seaTiles || [] : g.standTiles || [];
+    if (g.stationed && dests.includes(id) && g.board.tiles.some((x) => x.id !== id && mine(x) > 0 && (x.kind === 'sea') === (t.kind === 'sea'))) out.push(btn('moveTo', '📍 Move troops here'));
+    if (g.tw && t.controller === g.you && mine(t) > 0 && g.tw.units.some((u) => u.unlocked && u.from)) out.push(btn('upgrade', '⬆ Upgrade troops here'));
+    if (g.war && t.kind === 'land' && t.controller === g.you && t.owner != null && t.owner !== g.you) {
+      const planned = me.plans.withdraw.includes(id);
+      out.push(btn('withdraw', planned ? '✔ Withdrawing at upkeep' : '↩ Withdraw at next upkeep'));
+    }
+    if (g.factories && g.factories.sites.includes(id)) out.push(btn('factory', '🏭 Build a factory here', '', true));
+  }
+  if (g.phase === 'choose' && !d.paused) {
+    if (g.war && me.puppetOf == null && (g.attackTargets || []).includes(id)) out.push(btn('attack', '⚔ Attack this tile', esc(targetNote(g, id)), true));
+    if (g.factories && g.factories.claimTargets.includes(id)) out.push(btn('claim', '🏴 Claim this factory', '', true));
+    if (!g.war && !g.factories && t.role === 'capital' && t.owner != null && t.owner !== g.you) out.push(btn('raid', `🗡 Raid ${esc(g.players[t.owner].name)}`, '', true));
+  }
+  return out;
 }
 
 /** Which tiles to outline on the board (attack targets while choosing / commanding). */
@@ -62,35 +224,6 @@ function boardOptions(store) {
   if (ui.cmdAttackFor != null && g.commandTargets[ui.cmdAttackFor]) return { highlight: g.commandTargets[ui.cmdAttackFor], selected: null };
   if (g.phase === 'choose' && ui.choice.action === 'attack' && g.players[g.you].puppetOf == null) return { highlight: g.attackTargets, selected: ui.choice.target };
   return {};
-}
-
-function tabButton(id, label, icon, current, badge = 0) {
-  return `<button class="tabbtn ${current === id ? 'active' : ''}" data-act="tab" data-tab="${id}" aria-pressed="${current === id}">
-    <span aria-hidden="true">${icon}</span>${label}${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
-}
-
-// ------------------------------------------------------------------ top bar
-function topBar(store) {
-  const d = store.data;
-  const g = d.game;
-  const rounds = g.mode === 'base' ? g.settings.base.rounds : g.settings.war.rounds;
-  const waiting = g.waitingFor.map((s) => g.players[s].name);
-  const waitText = waiting.length ? (waiting.length === g.players.length ? 'waiting for everyone' : `waiting for: ${waiting.map(esc).join(', ')}`) : '';
-  const youWaited = g.waitingFor.includes(g.you);
-  return `<header class="topbar">
-    <div class="phase-line">
-      <span class="round">Round ${g.round} of ${rounds}${g.settings.base.stormEnabled && g.mode === 'base' ? '*' : ''}</span>
-      <span class="phase">${PHASE_LABEL[g.phase] || g.phase}</span>
-      <span class="flood-pill ${dangerClass(g)}" title="Flood / catastrophe threshold">🌊 ${g.flood}/${g.threshold}</span>
-      ${accordPill(g)}
-    </div>
-    <div class="wait-line ${youWaited ? 'you' : ''}">${youWaited ? '<b>Your move.</b> ' : ''}${waitText}</div>
-    <div class="top-actions">
-      <span class="muted small">Room ${esc(d.code)}</span>
-      ${d.you.isHost ? `<button class="btn small" data-act="toggleHost" aria-expanded="${store.ui.hostOpen}">Host ▾</button>` : ''}
-    </div>
-    ${d.you.isHost && store.ui.hostOpen ? hostMenu(store) : ''}
-  </header>`;
 }
 
 function hostMenu(store) {
@@ -159,11 +292,7 @@ function phasePanel(store) {
     return `<div class="card phase-card">
       <h2>${title}</h2>
       <p class="hint">Trade, give, build walls${g.factories ? ' and factories' : ''}, use the market, donate to the seawall${g.tw ? ', research, recruit and upgrade troops' : g.war ? ', recruit militia' : ''}${g.mode === 'empire' ? ', command your puppets' : ''}. ${next}</p>
-      ${
-        me.ready
-          ? `<button class="btn big ready-done" data-act="unready">✔ Ready — tap to undo</button>`
-          : `<button class="btn primary big" data-act="ready">I'm ready</button>`
-      }
+      <p class="small">${me.ready ? '✔ You are Ready — tap the green button below to undo.' : 'When you are done, press <b>End turn</b> at the bottom right.'}</p>
       ${lastReveal(g)}
     </div>`;
   }
@@ -246,7 +375,7 @@ function choosePanel(store) {
             .join('')}</div>`
         : '<p class="muted">No factories you can claim (factories on home tiles are safe).</p>'
     }
-      <p class="hint">You pay ${b.claimCostWood} wood. You and the owner each roll a die — higher wins, ties go to the owner. Win: the factory becomes yours. You can also tap an outlined tile on the Board tab.</p>`;
+      <p class="hint">You pay ${b.claimCostWood} wood. You and the owner each roll a die — higher wins, ties go to the owner. Win: the factory becomes yours. You can also tap a factory on the map.</p>`;
     canLock = c.target != null;
   } else if (c.action === 'raid') {
     extra = `<h3>Raid whom?</h3><div class="target-list">${g.players
@@ -329,7 +458,6 @@ function myPanel(store) {
 
   return `<div class="card my-panel">
     <h2>${chip(me.seat, me.name)} <span class="muted small">${biome.glyph} ${biome.label} home${biome.res ? ` — collects ${biome.res === 'sandbag' ? 'sandbags' : biome.res}` : ' — collects any'}</span></h2>
-    <div class="my-mats">${MATS.map((m) => `<div class="mat-tile">${matIcon(m, 34)}<b>${me.materials[m]}</b><span>${MAT_LABEL[m]}</span></div>`).join('')}</div>
     <div class="walls-line">🧱 <b>${me.walls}</b> wall${me.walls === 1 ? '' : 's'} = <b>${me.protection}</b> protection · Seawall donated: ${me.donated}</div>
     ${g.war ? `<div class="row wrap small">${warTags(g, me)}</div>` : ''}
     ${warMyPanel(store)}
@@ -423,11 +551,11 @@ function matPicker(path, value) {
 }
 
 // ------------------------------------------------------------------ players list
-function playersList(store) {
+function playerItem(store, p) {
   const d = store.data;
   const g = d.game;
-  return `<ul class="players">${g.players
-    .map((p) => {
+  {
+    {
       const member = d.members[p.seat];
       const b = BIOME[p.biome];
       let status = '';
@@ -455,8 +583,8 @@ function playersList(store) {
         ${g.war ? `<div class="row small wrap">${warTags(g, p)}</div>` : ''}
         ${diploTags(g, p) ? `<div class="row small wrap">${diploTags(g, p)}</div>` : ''}
       </li>`;
-    })
-    .join('')}</ul>`;
+    }
+  }
 }
 
 // ------------------------------------------------------------------ trading

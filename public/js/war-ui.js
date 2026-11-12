@@ -410,7 +410,7 @@ function upgradePanel(store, canBuild) {
   }
   if (!options.length) return '';
   const key = (o) => `${o.tile}|${o.from}|${o.to}`;
-  let sel = options.find((o) => key(o) === ug.key) || options[0];
+  let sel = options.find((o) => key(o) === ug.key) || options.find((o) => o.tile === ug.tilePref) || options[0];
   ug.key = key(sel);
   const each = Math.max(1, unitOf(g, sel.to).cost - unitOf(g, sel.from).cost);
   const count = Math.min(Math.max(1, ug.count || 1), sel.have);
@@ -427,7 +427,7 @@ function upgradePanel(store, canBuild) {
 }
 
 // ------------------------------------------------------------------ choose panel
-function targetNote(g, id) {
+export function targetNote(g, id) {
   const t = g.board.tiles.find((x) => x.id === id);
   const notes = [];
   const exempt = t.controller == null || t.owner === g.you;
@@ -514,7 +514,7 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
           <span>${esc(tileLabel(g, id))}</span><small>${esc(targetNote(g, id))}</small></button>`,
       )
       .join('')}</div>
-      <p class="hint">Targets are outlined on the Board tab too. You roll 1 die per unit${g.stationed ? ' sent' : ''} (max ${w.maxAttackDice}${!g.stationed && me.puppets && me.puppets.length ? ', puppets\' units included' : ''}); the defender up to ${w.maxDefenceDice}. Ties go to the defender. Win: occupy it and take up to ${w.maxLoot} tokens.${w.destructionFloodPerUnits > 0 ? ` Every ${w.destructionFloodPerUnits} units destroyed in battle (either side) add Flood +1.` : ''}</p>`;
+      <p class="hint">Targets are outlined on the map too — tap one to pick it. You roll 1 die per unit${g.stationed ? ' sent' : ''} (max ${w.maxAttackDice}${!g.stationed && me.puppets && me.puppets.length ? ', puppets\' units included' : ''}); the defender up to ${w.maxDefenceDice}. Ties go to the defender. Win: occupy it and take up to ${w.maxLoot} tokens.${w.destructionFloodPerUnits > 0 ? ` Every ${w.destructionFloodPerUnits} units destroyed in battle (either side) add Flood +1.` : ''}</p>`;
     canLock = !!c.target;
     if (g.stationed && c.target) {
       const sp = sourcePicker(store, g.attackSources[c.target]);

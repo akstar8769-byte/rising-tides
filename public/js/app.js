@@ -27,7 +27,10 @@ export const store = {
 
 function freshUi() {
   return {
-    tab: 'play',
+    drawer: 'build', // which side panel is open (null = just the map)
+    tileMenu: null, // { id, x, y } — the menu for a tapped tile
+    rival: null, // seat whose banner is expanded
+    legend: false,
     name: '',
     code: new URLSearchParams(location.search).get('room')?.toUpperCase() || '',
     choice: { action: null, mix: { wood: 0, stone: 0, sandbag: 0 }, target: null },
@@ -97,12 +100,51 @@ socket.on('state', (d) => {
     store.ui.cmdAttackFor = null;
   }
   if (d.game?.phase === 'loot' && prev?.game?.phase !== 'loot') store.ui.loot = { wood: 0, stone: 0, sandbag: 0 };
+  if (d.game && !prev?.game && ['choose', 'loot', 'battle'].includes(d.game.phase)) store.ui.drawer = 'turn';
+  if (d.game && prev?.game) {
+    const g = d.game;
+    const p = prev.game;
+    // Decisions that need you open the Turn panel by themselves.
+    if (g.phase !== p.phase && ['choose', 'loot', 'battle'].includes(g.phase)) store.ui.drawer = 'turn';
+    else if (g.phase !== p.phase && ['talk', 'trade'].includes(g.phase) && store.ui.drawer === 'turn' && p.phase !== 'talk' && p.phase !== 'trade') store.ui.drawer = 'build';
+    if (g.phase !== p.phase) store.ui.tileMenu = null;
+    if (g.round !== p.round) showBanner(`Round ${g.round}`, roundSub(g));
+    else if (g.phase !== p.phase && PHASE_BANNER[g.phase]) showBanner(PHASE_BANNER[g.phase][0], PHASE_BANNER[g.phase][1]);
+  }
   diceOnState(d);
   announceEvents(d);
   render();
 });
 
-/** Pop up important events (a puppet going free, a broken pact or treaty) so nobody misses them. */
+// ---------------------------------------------------------------- round banner
+const PHASE_BANNER = {
+  choose: ['Choose your move', 'Secretly — nobody sees it until everyone has chosen'],
+  battle: ['⚔ Battle!', 'Command your troops on the field'],
+  trade: ['Trade & build', 'Last chance to build before the round ends'],
+};
+function roundSub(g) {
+  const rounds = g.mode === 'base' ? g.settings.base.rounds : g.settings.war.rounds;
+  const left = rounds - g.round;
+  const bits = [left > 0 ? `${left} round${left === 1 ? '' : 's'} left` : 'Final round!', `Flood ${g.flood} / ${g.threshold}`];
+  if (g.tw && g.tw.truce) bits.push(`🕊 Truce until the end of round ${g.tw.truce}`);
+  return bits.join(' · ');
+}
+let bannerTimer = null;
+function showBanner(title, sub = '') {
+  const el = document.getElementById('round-banner');
+  if (!el) return;
+  el.innerHTML = `<div class="rb-inner"><b>${title}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
+  el.hidden = false;
+  el.classList.remove('show');
+  void el.offsetWidth; // restart the animation
+  el.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => (el.hidden = true), 2600);
+}
+
+/** Pop up important events (battles, the Flood, broken pacts…) as short notes; the full story stays in the Log. */
+const TOAST_KINDS = { battle: 'battle', bad: 'error', flood: 'flood', good: 'good', notice: 'event' };
+const BIG_EVENTS = ['puppetFreed', 'pactBroken', 'treatyBroken'];
 let lastAnnounced = null;
 function announceEvents(d) {
   const log = d.game ? d.game.log : [];
@@ -111,7 +153,10 @@ function announceEvents(d) {
     lastAnnounced = maxId; // first load or a new game: don't replay old events
     return;
   }
-  for (const e of log) if (e.id > lastAnnounced && ['puppetFreed', 'pactBroken', 'treatyBroken'].includes(e.event)) toast(e.text, 'event');
+  const fresh = log.filter((e) => e.id > lastAnnounced && (TOAST_KINDS[e.kind] || BIG_EVENTS.includes(e.event)));
+  const show = fresh.slice(-3);
+  for (const e of show) toast(e.text, BIG_EVENTS.includes(e.event) ? 'event' : TOAST_KINDS[e.kind], 5000);
+  if (fresh.length > show.length) toast(`+${fresh.length - show.length} more in the 📜 Log`, 'info', 5000);
   lastAnnounced = maxId;
 }
 
@@ -129,7 +174,7 @@ socket.on('chatHistory', (msgs) => {
 socket.on('chat', (msg) => {
   store.chat.push(msg);
   if (store.chat.length > 200) store.chat.shift();
-  if (store.ui.tab !== 'log') store.unreadChat++;
+  if (store.ui.drawer !== 'chat') store.unreadChat++;
   render();
 });
 socket.on('kicked', () => {
@@ -158,13 +203,14 @@ socket.on('disconnect', () => {
 });
 
 // ---------------------------------------------------------------- toasts
-export function toast(text, kind = 'info') {
+export function toast(text, kind = 'info', ms = null) {
   const box = document.getElementById('toasts');
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
   el.textContent = text;
   box.appendChild(el);
-  setTimeout(() => el.remove(), kind === 'error' ? 5000 : 3000);
+  while (box.children.length > 4) box.firstElementChild.remove();
+  setTimeout(() => el.remove(), ms || (kind === 'error' ? 5000 : 3000));
 }
 
 // ---------------------------------------------------------------- drawing
@@ -251,11 +297,81 @@ const actions = {
     setPath(ds.path, v);
     render();
   },
-  tab: (ds) => {
-    store.ui.tab = ds.tab;
-    if (ds.tab === 'log') store.unreadChat = 0;
+  drawer: (ds) => {
+    const ui = store.ui;
+    ui.drawer = ui.drawer === ds.id && !ds.keep ? null : ds.id;
+    ui.tileMenu = null;
+    if (ui.drawer === 'chat') store.unreadChat = 0;
     render();
-    window.scrollTo(0, 0);
+  },
+  tileMenu: (ds, el) => {
+    const r = el.getBoundingClientRect();
+    store.ui.tileMenu = store.ui.tileMenu && store.ui.tileMenu.id === ds.tile ? null : { id: ds.tile, x: r.left + r.width / 2, y: r.bottom };
+    store.ui.rival = null;
+    render();
+  },
+  closeTileMenu: () => {
+    store.ui.tileMenu = null;
+    render();
+  },
+  tileDo: (ds) => {
+    const ui = store.ui;
+    const g = store.data.game;
+    const id = ds.tile;
+    const t = g.board.tiles.find((x) => x.id === id);
+    ui.tileMenu = null;
+    const open = (drawer, warTab) => {
+      ui.drawer = drawer;
+      if (warTab) ui.warTab = warTab;
+      render();
+    };
+    if (ds.op === 'recruit') {
+      ui.recruit.tile = id;
+      const unit = g.tw && g.tw.units.find((u) => u.type === ui.recruit.unit);
+      if (g.tw && t.kind === 'sea' && (!unit || unit.domain !== 'sea')) ui.recruit.unit = (g.tw.units.find((u) => u.domain === 'sea' && u.unlocked) || {}).type || ui.recruit.unit;
+      if (g.tw && t.kind === 'land' && unit && unit.domain === 'sea') ui.recruit.unit = 'infantry';
+      return open('build', 'recruit');
+    }
+    if (ds.op === 'moveFrom') {
+      ui.move.from = id;
+      return open('build', 'move');
+    }
+    if (ds.op === 'moveTo') {
+      const mine = (x) => (x.units && x.units[g.you]) || 0;
+      const sameKind = (x) => (x.kind === 'sea') === (t.kind === 'sea');
+      const from = g.board.tiles.find((x) => x.id === ui.move.from);
+      if (!from || from.id === id || !mine(from) || !sameKind(from)) {
+        const best = g.board.tiles.filter((x) => x.id !== id && mine(x) > 0 && sameKind(x)).sort((a, b) => mine(b) - mine(a))[0];
+        if (best) ui.move.from = best.id;
+      }
+      ui.move.to = id;
+      return open('build', 'move');
+    }
+    if (ds.op === 'upgrade') {
+      ui.upgrade.key = null;
+      ui.upgrade.tilePref = id;
+      return open('build', 'upgrade');
+    }
+    if (ds.op === 'withdraw') {
+      render();
+      return act({ type: 'planWithdraw', tile: id });
+    }
+    if (ds.op === 'factory') {
+      ui.factory.tile = id;
+      return open('build');
+    }
+    if (['attack', 'claim', 'raid'].includes(ds.op)) {
+      const c = ui.choice;
+      if (c.action !== ds.op) {
+        c.action = ds.op;
+        c.from = null;
+        c.count = null;
+        c.mix = emptyBag();
+      }
+      c.target = ds.op === 'raid' ? t.owner : id;
+      c.editing = true;
+      return open('turn');
+    }
   },
   set: (ds) => {
     setPath(ds.path, ds.json !== undefined ? JSON.parse(ds.json) : ds.value);
@@ -384,7 +500,7 @@ const actions = {
   },
   factoryPickOnBoard: () => {
     store.ui.factory.picking = true;
-    store.ui.tab = 'board';
+    if (matchMedia('(max-width: 760px)').matches) store.ui.drawer = null; // the sheet would hide the map
     render();
   },
   research: (ds) => {
@@ -408,8 +524,8 @@ const actions = {
     if (g.factories && store.ui.factory.picking && ['talk', 'trade'].includes(g.phase)) {
       store.ui.factory.tile = ds.tile;
       store.ui.factory.picking = false;
-      store.ui.tab = 'play';
-      toast(`Site ${ds.tile} chosen — press Build on the Play tab.`);
+      store.ui.drawer = 'build';
+      toast(`Site ${ds.tile} chosen — press Build.`);
       render();
       return;
     }
@@ -418,7 +534,7 @@ const actions = {
       return;
     }
     store.ui.choice.target = ds.tile;
-    toast('Target chosen — lock in on the Play tab.');
+    store.ui.drawer = 'turn';
     render();
   },
   setCommand: (ds) => {
@@ -549,10 +665,34 @@ document.addEventListener('pointerdown', (e) => {
 document.addEventListener('click', (e) => {
   if (e.target.closest('#battle-svg')) return; // handled on pointerdown
   const el = e.target.closest('[data-act]');
+  // A click anywhere else closes the tile menu / rival card.
+  const ui = store.ui;
+  const keepMenu = e.target.closest('.tile-menu') || (el && el.dataset.act === 'tileMenu');
+  const keepRival = e.target.closest('.rival-pop') || (el && el.dataset.path === 'rival');
+  if ((ui.tileMenu && !keepMenu) || (ui.rival != null && !keepRival)) {
+    if (!keepMenu) ui.tileMenu = null;
+    if (!keepRival) ui.rival = null;
+    if (!el) return render();
+  }
   if (!el || el.disabled) return;
   e.preventDefault();
   const fn = actions[el.dataset.act];
   if (fn) fn(el.dataset, el);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (store.ui.tileMenu || store.ui.rival != null) {
+    store.ui.tileMenu = null;
+    store.ui.rival = null;
+    render();
+  }
+});
+addEventListener('resize', () => {
+  if (store.ui.tileMenu) {
+    store.ui.tileMenu = null;
+    render();
+  }
 });
 
 // Text boxes and selects: data-model="path" stores what you type in store.ui
