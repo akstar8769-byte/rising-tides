@@ -110,7 +110,8 @@ export function warMyPanel(store) {
       ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}</span>` : ''}
       <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span>
       ${w.armyFloodPerUnits > 0 ? `<span class="small ${me.armyFloodDue ? 'warn' : 'muted'}">🏭 Army emissions next upkeep: Flood +${me.armyFloodDue} (1 per ${w.armyFloodPerUnits} units)</span>` : ''}</div>
-    <details class="tool" ${canBuild ? 'open' : ''}>
+    ${warTabs(store, g, [
+      { id: 'recruit', label: '🪖 Recruit', html: `<details class="tool">
       <summary>Recruit ${g.tw ? 'troops' : 'militia'} <span class="muted small">(${g.tw ? 'costs below; upkeep by type' : `${w.unitCost} materials each, any mix; upkeep 1 per ${w.upkeepUnitsPerMaterial} units`}${w.armyFloodPerUnits > 0 ? `; every ${w.armyFloodPerUnits} units add Flood +1 each round` : ''})</span></summary>
       ${g.tw ? unitPicker(g, r.unit || 'infantry') : ''}
       <div class="row wrap">${stepper('recruit.count', count, { min: 1, max: maxUnits, label: 'Units' })}<span class="small muted">unit${count === 1 ? '' : 's'} — pay ${need}:</span></div>
@@ -118,12 +119,32 @@ export function warMyPanel(store) {
       <div class="row wrap"><button class="btn small" data-act="set" data-path="recruit.autoKey" data-json="null">⚡ Auto-fill</button><button class="btn small" data-act="set" data-path="recruit.mix" data-json="{&quot;wood&quot;:0,&quot;stone&quot;:0,&quot;sandbag&quot;:0}">Clear</button></div>
       ${g.stationed ? (placeIds.length ? `<label class="inline">${atSea ? 'Launch into' : 'Place on'} ${tileSelect('recruit.tile', placeIds, r.tile, g)}</label>` : '<p class="warn small">No sea bay next to your coast is free for new ships.</p>') : ''}
       <button class="btn primary" data-act="recruit" ${canBuild && have === need && (!g.stationed || placeIds.length) ? '' : 'disabled'}>Recruit ${count} ${g.tw ? esc(unitInfo.name.toLowerCase()) : ''} (${have}/${need})</button>
-    </details>
-    ${g.tw ? researchPanel(store, canBuild) + upgradePanel(store, canBuild) : ''}
-    ${g.stationed ? movePanel(store, canBuild) : ''}
+    </details>` },
+      g.stationed && { id: 'move', label: '🚶 Move', html: movePanel(store, canBuild) },
+      g.tw && { id: 'research', label: `🔬 Research${me.research && me.research.current ? ' ⏳' : ''}`, html: researchPanel(store, canBuild) },
+      g.tw && { id: 'upgrade', label: '⬆ Upgrade', html: upgradePanel(store, canBuild) },
+    ])}
     ${occHtml}
     ${overlordBox(store)}
   </div>`;
+}
+
+/**
+ * Recruit / Move / Research / Upgrade as tabs instead of one long list. Each panel is
+ * written as a collapsible block; here its title becomes a small subtitle and only the
+ * chosen tab is shown.
+ */
+function warTabs(store, g, list) {
+  const tabs = list.filter((t) => t && t.html);
+  if (!tabs.length) return '';
+  const cur = tabs.find((t) => t.id === store.ui.warTab) || tabs[0];
+  const body = cur.html
+    .replace(/<details[^>]*>/, '<div class="tab-body">')
+    .replace(/<\/details>\s*$/, '</div>')
+    .replace(/<summary>([\s\S]*?)<\/summary>/, '<p class="tab-sub small">$1</p>');
+  return `<div class="subtabs" role="tablist">${tabs
+    .map((t) => `<button class="subtab ${t === cur ? 'active' : ''}" role="tab" aria-selected="${t === cur}" data-act="set" data-path="warTab" data-value="${t.id}">${t.label}</button>`)
+    .join('')}</div>${body}`;
 }
 
 function puppetBox(store) {

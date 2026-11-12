@@ -438,3 +438,10 @@ ul.plain li { padding: 3px 0; }
 .tech-list li.locked { opacity: 0.6; }
 .formations { margin: 6px 0; }
 .formations .row { gap: 6px; margin-top: 4px; }
+
+/* Recruit / Move / Research / Upgrade tabs */
+.subtabs { display: flex; gap: 4px; margin: 10px 0 0; border-bottom: 2px solid var(--line); overflow-x: auto; }
+.subtab { flex: 1 0 auto; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-bottom: none; border-radius: 10px 10px 0 0; background: transparent; color: var(--muted); font: inherit; font-size: 0.9rem; cursor: pointer; margin-bottom: -2px; }
+.subtab.active { background: var(--card); color: var(--sea); font-weight: 600; border-color: var(--line); border-bottom: 2px solid var(--card); }
+.tab-body { padding: 10px 2px 2px; }
+.tab-sub { margin: 0 0 8px; color: var(--muted); }
