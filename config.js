@@ -129,7 +129,9 @@ const DEFAULTS = {
     startMilitia: 2,             // militia each player starts with, on their capital
     capitalOpensAfter: 1,        // provinces that must fall before a capital can be attacked
     truceRounds: 2,              // opening truce: no attacks on other players in the first this-many rounds (empty land is fine)
-    boardLayout: 'sea37',        // Total War board: 37 hexes with sea bays between the players
+    boardLayout: 'oceans',       // Total War board: 'oceans' = two continents split by an ocean (sea lanes); 'sea37' = the smaller board with sea bays
+    fishingIncome: 1,            // oceans board: each fishing ground your ships hold earns this much a round
+    blockades: true,             // oceans board: enemy ships next to your coastal tile (and none of yours) stop its income
     botDifficulty: 'normal',     // normal / hard / brutal: bots get +0 / +botBonusHard / +botBonusBrutal materials every round
     botBonusHard: 3,
     botBonusBrutal: 6,
@@ -146,6 +148,7 @@ const DEFAULTS = {
     mechanised: { cost: 7, upkeep: 2, hp: 26, attack: 1.8, speed: 4, range: 0, vsArmorPct: 80, vsAirPct: 0 },
     cavalry: { cost: 5, upkeep: 2, hp: 12, attack: 1.5, speed: 5, range: 0, vsArmorPct: 20, vsAirPct: 0 },
     artillery: { cost: 6, upkeep: 1, hp: 10, attack: 2.2, speed: 1.8, range: 14, vsArmorPct: 60, vsAirPct: 0 },
+    spArtillery: { cost: 9, upkeep: 2, hp: 16, attack: 2.4, speed: 4, range: 14, vsArmorPct: 60, vsAirPct: 0 }, // self-propelled: keeps up with tanks
     lightTank: { cost: 6, upkeep: 2, hp: 20, attack: 2.4, speed: 5, range: 0, vsArmorPct: 100, vsAirPct: 0 },
     mediumTank: { cost: 8, upkeep: 2, hp: 30, attack: 3, speed: 4.5, range: 0, vsArmorPct: 120, vsAirPct: 0 },
     heavyTank: { cost: 11, upkeep: 3, hp: 45, attack: 4, speed: 3, range: 0, vsArmorPct: 150, vsAirPct: 0 },
@@ -156,7 +159,14 @@ const DEFAULTS = {
     cruiser: { cost: 9, upkeep: 2, hp: 32, attack: 3, speed: 5, range: 6, vsArmorPct: 0, vsAirPct: 0 },
     battleship: { cost: 13, upkeep: 3, hp: 55, attack: 5, speed: 3.5, range: 10, vsArmorPct: 0, vsAirPct: 0 },
     // Research: materials (any mix) to research each technology; it is ready next round.
-    research: { artillery: 5, lightTanks: 6, mediumTanks: 8, heavyTanks: 10, motorised: 5, mechanised: 7, aircraft: 8, antiTank: 4, antiAir: 4, shipyards: 5, cruisers: 7, battleships: 10 },
+    research: { artillery: 5, selfPropelled: 7, lightTanks: 6, mediumTanks: 8, heavyTanks: 10, motorised: 5, mechanised: 7, aircraft: 8, antiTank: 4, antiAir: 4, shipyards: 5, cruisers: 7, battleships: 10 },
+    // Unit levels (research "Light tank level 2" etc.): every level above 1 adds these
+    // percentages to EVERY unit of that type. Types with levels: infantry lines,
+    // artillery, tanks, aircraft and ships (engine/arsenal.js LEVELED).
+    levelHpPct: 15,              // toughness per level
+    levelAttackPct: 15,          // damage per level
+    levelSpeedPct: 5,            // speed per level
+    levelCost: { 2: 4, 3: 6, 4: 9 }, // research cost of each level (any mix)
     // Formations: bonuses while a formation is in use (100 = no change).
     formations: {
       line: { attackPct: 100, defencePct: 115, speedPct: 100 },
@@ -391,7 +401,7 @@ const DECIMALS = [];
 /** Allowed values for text settings. */
 const OPTIONS = {
   'general.boardLayout': ['standard19'],
-  'totalwar.boardLayout': ['sea37', 'standard19'],
+  'totalwar.boardLayout': ['oceans', 'sea37', 'standard19'],
   'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
 };
 
@@ -405,14 +415,27 @@ for (const [k, u] of Object.entries(ARSENAL.UNITS)) {
   LIMITS[`totalwar.${k}.speed`] = [0.5, 30];
   DECIMALS.push(`totalwar.${k}.attack`, `totalwar.${k}.speed`);
 }
-for (const [k, t] of Object.entries(ARSENAL.TECHS)) LABELS[`totalwar.research.${k}`] = `Research cost: ${t.name}`;
+for (const [k, t] of Object.entries(ARSENAL.TECHS)) if (!t.level) LABELS[`totalwar.research.${k}`] = `Research cost: ${t.name}`;
+LABELS['totalwar.levelHpPct'] = 'Unit levels: extra toughness per level (%)';
+LABELS['totalwar.levelAttackPct'] = 'Unit levels: extra damage per level (%)';
+LABELS['totalwar.levelSpeedPct'] = 'Unit levels: extra speed per level (%)';
+for (const n of [2, 3, 4]) {
+  LABELS[`totalwar.levelCost.${n}`] = `Unit levels: research cost of level ${n}`;
+  LIMITS[`totalwar.levelCost.${n}`] = [1, 60];
+}
+LIMITS['totalwar.levelHpPct'] = [0, 100];
+LIMITS['totalwar.levelAttackPct'] = [0, 100];
+LIMITS['totalwar.levelSpeedPct'] = [0, 50];
 const FORMATION_NAMES = { line: 'Line', square: 'Defensive square', wedge: 'Wedge', pincer: 'Pincer', spearhead: 'Armour spearhead', combined: 'Combined arms', firebase: 'Artillery screen' };
 for (const [k, n] of Object.entries(FORMATION_NAMES)) {
   LABELS[`totalwar.formations.${k}.attackPct`] = `Formation ${n}: attack (%)`;
   LABELS[`totalwar.formations.${k}.defencePct`] = `Formation ${n}: protection (%)`;
   LABELS[`totalwar.formations.${k}.speedPct`] = `Formation ${n}: speed (%)`;
 }
-LABELS['totalwar.boardLayout'] = 'Board (sea37 has sea bays for navies)';
+LABELS['totalwar.boardLayout'] = 'Board (oceans: two continents split by an ocean; sea37: smaller, with sea bays)';
+LABELS['totalwar.fishingIncome'] = 'Oceans board: income from each fishing ground you hold';
+LABELS['totalwar.blockades'] = 'Oceans board: enemy ships off your coast stop that tile income (blockade)';
+LIMITS['totalwar.fishingIncome'] = [0, 10];
 LABELS['totalwar.botDifficulty'] = 'Bot difficulty (hard / brutal: bots get extra materials every round)';
 LABELS['totalwar.botBonusHard'] = 'Hard bots: extra materials per round';
 LABELS['totalwar.botBonusBrutal'] = 'Brutal bots: extra materials per round';

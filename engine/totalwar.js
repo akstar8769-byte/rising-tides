@@ -82,9 +82,9 @@ const FORMATIONS = {
   combined: {
     name: 'Combined arms',
     desc: 'Infantry, armour and support guns working together. Better at everything.',
-    needs: (c, kind) => kind === 'land' && has(c, ['militia', 'infantry', 'motorised', 'mechanised']) && has(c, ['cavalry', ...ARS.TANKS]) && has(c, ['artillery', 'antitank', 'antiair']),
+    needs: (c, kind) => kind === 'land' && has(c, ['militia', 'infantry', 'motorised', 'mechanised']) && has(c, ['cavalry', ...ARS.TANKS]) && has(c, ['artillery', 'spArtillery', 'antitank', 'antiair']),
   },
-  firebase: { name: 'Artillery screen', desc: 'Guns at the back, a wall in front. Artillery reaches further.', needs: (c, kind) => kind === 'land' && (c.artillery || 0) > 0 },
+  firebase: { name: 'Artillery screen', desc: 'Guns at the back, a wall in front. Artillery reaches further.', needs: (c, kind) => kind === 'land' && (c.artillery || 0) + (c.spArtillery || 0) > 0 },
 };
 const FORMATION_IDS = Object.keys(FORMATIONS);
 
@@ -130,7 +130,7 @@ function arrange(b, side, id) {
   const px = -dy; // perpendicular (across the front)
   const py = dx;
   const at = (fwd, across) => ({ x: clamp(anchor.x + dx * fwd + px * across, 2, MAP_W - 2), y: clamp(anchor.y + dy * fwd + py * across, 2, MAP_H - 2) });
-  const role = (u) => (['artillery', 'antiair'].includes(u.type) || ARS.UNITS[u.type].domain === 'sea' && ['battleship'].includes(u.type) ? 'back' : ARS.FAST.includes(u.type) && !['motorised', 'mechanised'].includes(u.type) ? 'fast' : 'front');
+  const role = (u) => ([...ARS.GUNS, 'antiair'].includes(u.type) || ARS.UNITS[u.type].domain === 'sea' && ['battleship'].includes(u.type) ? 'back' : ARS.FAST.includes(u.type) && !['motorised', 'mechanised'].includes(u.type) ? 'fast' : 'front');
   const front = units.filter((u) => role(u) === 'front');
   const fast = units.filter((u) => role(u) === 'fast');
   const back = units.filter((u) => role(u) === 'back');
@@ -227,7 +227,7 @@ function terrainAt(b, x, y) {
 
 function speedFactor(ch, type) {
   if (ARS.UNITS[type].domain !== 'land') return 1;
-  const wheeled = ARS.TANKS.includes(type) || type === 'motorised' || type === 'mechanised' || type === 'artillery';
+  const wheeled = ARS.TANKS.includes(type) || type === 'motorised' || type === 'mechanised' || ARS.GUNS.includes(type);
   if (ch === 'f') return type === 'cavalry' ? 0.45 : wheeled ? 0.55 : 0.7;
   if (ch === 'h') return wheeled ? 0.65 : 0.75;
   if (ch === 'w') return 0.3;
@@ -251,7 +251,7 @@ function defenceFactor(ch, cfg) {
  * `rand` is the game's seeded random number function, so battles replay exactly.
  * bombard: { A, D } shore-bombardment damage per second from ships offshore.
  */
-function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null }) {
+function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null }) {
   const dpu = Math.max(1, Math.min(SLOTS.length, cfg.dotsPerUnit || 1));
   const b = {
     id,
@@ -283,6 +283,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     bombard: bombard || { A: 0, D: 0 },
     bombardAt: { A: null, D: null },
     shots: [], // recent shells, for the battle screen
+    levels: levels || { A: {}, D: {} }, // research levels: { side: { type: level } }
     supplyTimer: 0,
     losses: { A: zero(), D: zero() }, // dots destroyed
     surrendered: { A: zero(), D: zero() }, // dots that surrendered
@@ -294,7 +295,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
   let nextUnit = 1;
   const addUnit = (side, seat, type, cx, cy) => {
     const unit = nextUnit++;
-    const hp = cfg[type].hp / dpu;
+    const hp = (cfg[type].hp * ARS.levelBoost(b.levels[side][type], cfg.levelHpPct)) / dpu;
     for (let k = 0; k < dpu; k++) {
       const x = clamp(cx + SLOTS[k][0], 1, MAP_W - 1);
       const y = clamp(cy + SLOTS[k][1], 1, MAP_H - 1);
@@ -303,7 +304,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
   };
   // Where a unit starts, by how it fights: guns at the back, fast units forward,
   // aircraft high up on the flanks. Attackers enter from the left.
-  const depth = (t) => (['artillery', 'antiair', 'battleship'].includes(t) ? 0 : ARS.UNITS[t].domain === 'air' ? 1 : ARS.FAST.includes(t) ? 3 : 2);
+  const depth = (t) => ([...ARS.GUNS, 'antiair', 'battleship'].includes(t) ? 0 : ARS.UNITS[t].domain === 'air' ? 1 : ARS.FAST.includes(t) ? 3 : 2);
   const place = (side, seat, troops) => {
     const list = TYPES.flatMap((t) => Array(troops[t] || 0).fill(t)).sort((p, q) => depth(p) - depth(q));
     const perCol = {};
@@ -334,7 +335,7 @@ function order(b, side, ids, x, y) {
   const picked = b.dots.filter((d) => d.side === side && ids.includes(d.id));
   const units = new Set(picked.map((d) => d.unit));
   b.gunsHeld = b.gunsHeld || { A: {}, D: {} };
-  for (const d of picked) if (d.type === 'artillery') b.gunsHeld[side][d.unit] = true;
+  for (const d of picked) if (ARS.GUNS.includes(d.type)) b.gunsHeld[side][d.unit] = true;
   if (units.size > 1) {
     // Several units move as one block: the whole group shifts so its centre lands on the
     // spot, and every unit keeps its place in the formation.
@@ -360,9 +361,9 @@ function gunsFollow(b, side, cfg) {
   if (!foes.length) return;
   const held = (b.gunsHeld && b.gunsHeld[side]) || {};
   for (const u of unitsOf(b, side)) {
-    if (u.type !== 'artillery' || held[u.unit]) continue;
+    if (!ARS.GUNS.includes(u.type) || held[u.unit]) continue;
     const t = foes.reduce((a, f) => (dist(u, f) < dist(u, a) ? f : a));
-    let range = cfg.artillery.range || 9;
+    let range = cfg[u.type].range || 9;
     if (b.formation[side] === 'firebase') range += 3;
     const keep = range * 0.8; // a little inside the range so small moves don't take them out of it
     const d = dist(u, t) || 1;
@@ -514,15 +515,15 @@ function runAI(b, side, cfg) {
       // Bombers go for the biggest target: armour first, then whatever is near the flag.
       const armour = foeGround.filter((f) => ARS.UNITS[f.type].cls === 'armor');
       if (foeGround.length) go(u, nearest(u, armour.length ? armour : foeGround));
-    } else if (['artillery', 'antiair'].includes(u.type)) {
+    } else if ([...ARS.GUNS, 'antiair'].includes(u.type)) {
       // Guns stay behind the line, in range of the enemy.
       const t = foeGround.length ? nearest(u, foeGround) : o;
-      const rng = Math.max(3, ((cfg && cfg[u.type] && cfg[u.type].range) || (u.type === 'artillery' ? 9 : 7)) * 0.8);
+      const rng = Math.max(3, ((cfg && cfg[u.type] && cfg[u.type].range) || (ARS.GUNS.includes(u.type) ? 9 : 7)) * 0.8);
       const d = dist(u, t) || 1;
       go(u, d > rng ? { x: u.x + ((t.x - u.x) * (d - rng)) / d, y: u.y + ((t.y - u.y) * (d - rng)) / d } : u);
     }
   }
-  const rest = mine.filter((u) => !['bomber', 'artillery', 'antiair'].includes(u.type));
+  const rest = mine.filter((u) => !['bomber', ...ARS.GUNS, 'antiair'].includes(u.type));
   if (b.kind === 'sea') {
     rest.forEach((u, i) => go(u, side === 'A' ? { x: o.x - 1 + (i % 3) * 1.5, y: o.y + ((i % 5) - 2) * 2.2 } : nearest(u, foeGround.length ? foeGround : foes)));
     return;
@@ -629,7 +630,7 @@ function stepBattle(b, dt, cfg) {
     const togo = Math.hypot(d.tx - d.x, d.ty - d.y);
     if (togo < 0.15) continue;
     const slowed = !isAir(d) && contact.get(d).length;
-    const sp = cfg[d.type].speed * bonus[d.side].spd * speedFactor(terrainAt(b, d.x, d.y), d.type) * (slowed ? 0.3 : 1) * dt;
+    const sp = cfg[d.type].speed * lvl(b, d, cfg.levelSpeedPct) * bonus[d.side].spd * speedFactor(terrainAt(b, d.x, d.y), d.type) * (slowed ? 0.3 : 1) * dt;
     const k = Math.min(1, sp / togo);
     d.x += (d.tx - d.x) * k;
     d.y += (d.ty - d.y) * k;
@@ -657,7 +658,7 @@ function stepBattle(b, dt, cfg) {
   // anti-air, big ships) also fire at range when nothing is in contact.
   const damage = new Map();
   const hit = (d, target, base) => {
-    let dmg = (cfg[d.type].attack / dpu) * ARS.matchup(d.type, target.type, cfg, target.cut) * base * bonus[d.side].att * dt;
+    let dmg = ((cfg[d.type].attack * lvl(b, d, cfg.levelAttackPct)) / dpu) * ARS.matchup(d.type, target.type, cfg, target.cut) * base * bonus[d.side].att * dt;
     if (d.cut) dmg *= 0.75; // cut-off troops are low on supplies
     if (dmg > 0) damage.set(target, (damage.get(target) || 0) + dmg);
   };
@@ -670,7 +671,7 @@ function stepBattle(b, dt, cfg) {
       const score = (f) => ARS.matchup(d.type, f.type, cfg) * 100 - dist(d, f);
       const target = useful.reduce((a, f) => (score(f) > score(a) ? f : a));
       // Artillery is almost helpless at close quarters.
-      hit(d, target, d.type === 'artillery' ? (cfg.artilleryMeleeAttackPct ?? 15) / 100 : 1);
+      hit(d, target, ARS.GUNS.includes(d.type) ? (cfg.artilleryMeleeAttackPct ?? 15) / 100 : 1);
       // Bombers over ground troops: the bombs also catch other enemy ground units right
       // next to the target (splash), and the battle screen shows the bomb run.
       if (d.type === 'bomber' && !isAir(target)) {
@@ -682,7 +683,7 @@ function stepBattle(b, dt, cfg) {
     }
     let range = cfg[d.type].range || 0;
     if (!range) continue;
-    if (d.type === 'artillery' && b.formation[d.side] === 'firebase') range += 3;
+    if (ARS.GUNS.includes(d.type) && b.formation[d.side] === 'firebase') range += 3;
     let target = null;
     let best = range;
     for (const e of b.dots) {
@@ -718,7 +719,7 @@ function stepBattle(b, dt, cfg) {
     mult /= bonus[t.side].def;
     if (t.cut) mult *= cfg.cutOffDamagePct / 100;
     if (flanked(t, contact.get(t))) mult *= cfg.flankDamagePct / 100;
-    if (t.type === 'artillery' && contact.get(t).length) mult *= (cfg.artilleryMeleeDamageTakenPct ?? 150) / 100; // overrun guns
+    if (ARS.GUNS.includes(t.type) && contact.get(t).length) mult *= (cfg.artilleryMeleeDamageTakenPct ?? 150) / 100; // overrun guns
     t.hp -= dmg * mult;
   }
   b.dots = b.dots.filter((d) => {
@@ -803,6 +804,10 @@ function unitsSurrendered(b, side) {
 }
 
 const r1 = (n) => Math.round(n * 10) / 10;
+/** A dot's level multiplier for one stat (pct per level from config). */
+function lvl(b, d, pct) {
+  return ARS.levelBoost(b.levels && b.levels[d.side] && b.levels[d.side][d.type], pct);
+}
 
 /** A small copy of a battle for sending to browsers several times a second. */
 function snapshot(b) {
@@ -817,6 +822,7 @@ function snapshot(b) {
     formation: b.formation,
     forms: { A: availableFormations(b, 'A'), D: availableFormations(b, 'D') },
     terr: territoryString(b),
+    lv: b.levels,
     // Shells fired since the last snapshot (each is sent once, then forgotten)
     shots: (b.shots || []).splice(0).map((s) => [r1(s.x1), r1(s.y1), r1(s.x2), r1(s.y2), s.k]),
     dots: b.dots.map((d) => [

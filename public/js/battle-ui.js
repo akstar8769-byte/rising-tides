@@ -45,6 +45,7 @@ export function liveBattle(store, id) {
     formation: snap.formation || full.formation,
     forms: snap.forms,
     terr: snap.terr,
+    lv: snap.lv || full.levels,
     dots: snap.dots.map(([id2, side, type, x, y, hp, cut, tx, ty, unit]) => ({ id: id2, side, type, x, y, hpPct: hp, cut: !!cut, tx, ty, unit, seat: side === 'A' ? full.attacker : full.defender })),
   };
 }
@@ -291,6 +292,7 @@ function dotShape(type, x, y) {
       return poly([[x, y - s], [x + s, y], [x, y + s], [x - s, y]]);
     }
     case 'artillery':
+    case 'spArtillery':
       return poly([[x - 0.25, y - 0.8], [x + 0.25, y - 0.8], [x + 0.25, y - 0.25], [x + 0.8, y - 0.25], [x + 0.8, y + 0.25], [x + 0.25, y + 0.25], [x + 0.25, y + 0.8], [x - 0.25, y + 0.8], [x - 0.25, y + 0.25], [x - 0.8, y + 0.25], [x - 0.8, y - 0.25], [x - 0.25, y - 0.25]]);
     case 'interceptor':
       return poly([[x + 0.9, y], [x - 0.7, y - 0.6], [x - 0.35, y], [x - 0.7, y + 0.6]]);
@@ -310,6 +312,7 @@ function dotShape(type, x, y) {
 function dotMark(type, x, y) {
   if (type === 'antitank') return `<rect x="${f2(x - 0.4)}" y="${f2(y - 0.1)}" width=".8" height=".2" fill="#111"/>`;
   if (type === 'antiair') return `<circle cx="${f2(x)}" cy="${f2(y)}" r=".22" fill="#fff"/>`;
+  if (type === 'spArtillery') return `<rect x="${f2(x - 0.85)}" y="${f2(y + 0.55)}" width="1.7" height=".3" rx=".12" fill="#111"/>`;
   if (type === 'motorised' || type === 'mechanised') return `<line x1="${f2(x - 0.5)}" y1="${f2(y + 0.35)}" x2="${f2(x + 0.5)}" y2="${f2(y + 0.35)}" stroke="#111" stroke-width=".15"/>`;
   return '';
 }
@@ -354,7 +357,8 @@ export function battlePanel(store) {
     return set.size;
   };
   const typesIn = [...new Set(b.dots.map((d) => d.type))];
-  const army = (side) => typesIn.map((t) => (units(side, t) ? `<span title="${esc(nameOf(g, t))}">${shapeOf(g, t)}${units(side, t)}</span>` : '')).filter(Boolean).join(' ') || 'none left';
+  const lvOf = (side, t) => (b.lv && b.lv[side] && b.lv[side][t]) || (b.levels && b.levels[side] && b.levels[side][t]) || 1;
+  const army = (side) => typesIn.map((t) => (units(side, t) ? `<span title="${esc(nameOf(g, t))}${lvOf(side, t) > 1 ? ' level ' + lvOf(side, t) : ''}">${shapeOf(g, t)}${units(side, t)}${lvOf(side, t) > 1 ? `<sup class="lv">L${lvOf(side, t)}</sup>` : ''}</span>` : '')).filter(Boolean).join(' ') || 'none left';
   const myTypes = mySide ? [...new Set(b.dots.filter((d) => d.side === mySide).map((d) => d.type))] : [];
   const kind = b.kind || 'land';
   const extras = [];

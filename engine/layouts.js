@@ -100,4 +100,62 @@ const sea37 = {
   },
 };
 
-module.exports = { standard19, sea37 };
+/**
+ * oceans (Total War): two continents with an ocean between them, ~88 hexes.
+ * Drawn below as a picture, one character per hex, rows offset like a real hex
+ * map (odd rows are shifted half a hex to the right):
+ *   L = land   . = open sea   f = fishing ground (sea that earns its holder income)
+ *   V = the Village (on an island in the middle of the ocean)
+ * Sea moves along neighbouring sea hexes (sea lanes), so the ocean has to be
+ * crossed hex by hex, and an invasion needs an unbroken chain of your ships.
+ * Wedges (player territories) are listed by [column, row] positions.
+ */
+const OCEANS_MAP = [
+  ' LLL...LLL ', // row 0   (a space = no hex there)
+  'LLLL.f.LLLL', // row 1
+  'LLL.f...LLL', // row 2
+  'LLLL.V.LLLL', // row 3
+  'LL....f.LLL', // row 4   a bay cuts into the west coast
+  'LLLL.f..LLL', // row 5   …and one into the east coast
+  'LLL.....LLL', // row 6
+  ' LLL.f.LLL ', // row 7
+];
+const OCEANS_WEDGES = {
+  WN: { capital: [1, 1], provinces: [[2, 0], [2, 2]] }, // west continent, north
+  WS: { capital: [1, 6], provinces: [[1, 7], [1, 5]] }, // west continent, south
+  WM: { capital: [0, 3], provinces: [[0, 4], [1, 3]] }, // west continent, middle (5 players)
+  EN: { capital: [8, 1], provinces: [[8, 2], [9, 1]] }, // east continent, north
+  ES: { capital: [9, 6], provinces: [[8, 6], [9, 5]] }, // east continent, south
+  EM: { capital: [10, 3], provinces: [[9, 3], [10, 4]] }, // east continent, middle
+};
+const hexId = (c, r) => `${"ABCDEFGHIJK"[c]}${r + 1}`; // map grid reference, e.g. B2
+function oceansTiles() {
+  const tiles = [];
+  OCEANS_MAP.forEach((line, r) => {
+    [...line].forEach((ch, c) => {
+      if (ch === ' ') return;
+      const q = c - (r - (r & 1)) / 2; // "odd-r" offset -> axial
+      const t = { id: ch === 'V' ? 'V' : hexId(c, r), q, r };
+      if (ch === '.' || ch === 'f') t.sea = true;
+      if (ch === 'f') t.fish = true;
+      tiles.push(t);
+    });
+  });
+  return tiles;
+}
+const OCEANS_ORDER = ['WN', 'EN', 'ES', 'WS', 'WM', 'EM'];
+const oceans = {
+  description: 'Two continents split by an ocean, 84 hexes; ships move along sea lanes (Total War)',
+  village: 'V',
+  seaLanes: true,
+  tiles: oceansTiles(),
+  wedges: OCEANS_ORDER.map((k) => ({ name: k, capital: hexId(...OCEANS_WEDGES[k].capital), provinces: OCEANS_WEDGES[k].provinces.map((p) => hexId(...p)) })),
+  // wedge index in OCEANS_ORDER: 0 WN, 1 EN, 2 ES, 3 WS, 4 WM, 5 EM
+  seatsToWedges: {
+    3: [0, 5, 3], // two in the west, one in the east middle
+    4: [0, 1, 2, 3], // two per continent
+    5: [0, 1, 2, 3, 4],
+  },
+};
+
+module.exports = { standard19, sea37, oceans };

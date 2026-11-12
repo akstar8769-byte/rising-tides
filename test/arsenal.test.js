@@ -391,3 +391,128 @@ test('bombs splash onto ground units packed next to the target', () => {
   assert.equal(run(0), 1, 'without splash only the target is hurt');
   assert.ok(run(50) >= 2, 'with splash its neighbours are hurt too');
 });
+
+// ---------------------------------------------------------------- unit levels
+test('unit levels: research level 2-4 in order, after the unit itself; costs from config', () => {
+  let s = game();
+  assert.equal(ARS.levelOf(s.players[0], 'lightTank'), 1);
+  assert.throws(() => act(s, 0, 'research', { tech: 'lightTankL2', materials: bag(CFG.levelCost[2]) }), /Research Light tanks first/);
+  assert.throws(() => act(s, 0, 'research', { tech: 'infantryL3', materials: bag(CFG.levelCost[3]) }), /Infantry level 2 first/);
+  s = act(s, 0, 'research', { tech: 'infantryL2', materials: bag(CFG.levelCost[2]) });
+  s = nextRound(s);
+  assert.equal(ARS.levelOf(s.players[0], 'infantry'), 2);
+  assert.ok(s.log.some((e) => /reaches Infantry level 2/.test(e.text)));
+  const v = engine.viewFor(s, 0);
+  assert.equal(v.tw.units.find((u) => u.type === 'infantry').level, 2);
+  assert.equal(v.tw.techs.find((t) => t.id === 'infantryL3').cost, CFG.levelCost[3]);
+  assert.ok(!v.tw.units.find((u) => u.type === 'militia').leveled);
+});
+
+test('unit levels make every unit of that type tougher, harder-hitting and faster in battle', () => {
+  const T = { id: 'M1', kind: 'land' };
+  const make = (lv) => tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { lightTank: 1 }, dTroops: { infantry: 1 }, cfg: { ...CFG, dotsPerUnit: 1 }, rand: () => 0.5, levels: { A: lv, D: {} } });
+  const plain = make({});
+  const vet = make({ lightTank: 4 });
+  const hp = (b) => b.dots.find((d) => d.side === 'A').max;
+  assert.equal(Math.round(hp(vet) * 100) / 100, Math.round(hp(plain) * (1 + 3 * CFG.levelHpPct / 100) * 100) / 100);
+  // Same fight, one with level-4 tanks: the defender loses more HP.
+  for (const b of [plain, vet]) {
+    const a = b.dots.find((d) => d.side === 'A');
+    const d = b.dots.find((x) => x.side === 'D');
+    a.x = d.x - 1; a.y = d.y; a.tx = a.x; a.ty = a.y; d.tx = d.x; d.ty = d.y;
+    b.auto = { A: false, D: false };
+    tw.stepBattle(b, 0.5, CFG);
+  }
+  const lost = (b) => { const d = b.dots.find((x) => x.side === 'D'); return d.max - d.hp; };
+  assert.ok(lost(vet) > lost(plain) * 1.3, `level 4 should hit harder (${lost(vet)} vs ${lost(plain)})`);
+});
+
+test('self-propelled artillery: needs artillery + motorised; artillery upgrades to it; fires at range and keeps up', () => {
+  assert.deepEqual(ARS.TECHS.selfPropelled.needs, ['artillery', 'motorised']);
+  assert.ok(ARS.upgradePath('artillery', 'spArtillery'));
+  assert.ok(CFG.spArtillery.speed > CFG.artillery.speed * 2);
+  assert.equal(CFG.spArtillery.range, CFG.artillery.range);
+  let s = learn(game(), 0, 'artillery', 'motorised', 'selfPropelled');
+  s = put(s, 'C0', 0, { artillery: 2 });
+  s = act(s, 0, 'upgradeUnits', { tile: 'C0', from: 'artillery', to: 'spArtillery', count: 1, materials: bag(CFG.spArtillery.cost - CFG.artillery.cost) });
+  assert.equal(tile(s, 'C0').troops[0].spArtillery, 1);
+  const T = { id: 'M1', kind: 'land' };
+  const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { spArtillery: 1 }, dTroops: { infantry: 1 }, cfg: { ...CFG, dotsPerUnit: 1 }, rand: () => 0.5 });
+  const g = b.dots.find((d) => d.side === 'A');
+  const e = b.dots.find((d) => d.side === 'D');
+  g.x = e.x - 10; g.y = e.y; g.tx = g.x; g.ty = g.y;
+  b.auto = { A: false, D: false };
+  b.gunsHeld.A[g.unit] = true;
+  tw.stepBattle(b, 0.5, CFG);
+  assert.ok(e.hp < e.max, 'shelled from range');
+});
+
+// ---------------------------------------------------------------- the oceans board
+// Seat 0 = B2 (capital), C1, C3 on the west coast; seat 1 = I2, I3, J2 on the east.
+// Row 3 of the map is sea from D3 to H3 (E3 is a fishing ground).
+function ocean() {
+  let s = newGame({ n: 4, mode: 'totalwar', oceans: true, biomes: ['forest', 'quarry', 'riverbank', 'forest'] });
+  s = structuredClone(s);
+  for (const p of s.players) p.materials = { ...rich };
+  return s;
+}
+const views = (s, seat) => engine.viewFor(s, seat);
+
+test('oceans board: two continents, 84 hexes, the default for Total War, with fishing grounds', () => {
+  const d = cloneDefaults();
+  assert.equal(d.totalwar.boardLayout, 'oceans');
+  const s = ocean();
+  assert.equal(s.board.tiles.length, 84);
+  assert.ok(s.board.seaLanes);
+  assert.equal(s.board.tiles.filter((t) => t.fish).length, 5);
+  assert.equal(tile(s, 'B2').owner, 0);
+  assert.equal(tile(s, 'I2').owner, 1);
+});
+
+test('sea lanes: fleets attack only the sea next to them and sail through free sea', () => {
+  let s = learn(ocean(), 0, 'shipyards');
+  s = put(s, 'D3', 0, { destroyer: 2 });
+  const v = views(s, 0);
+  assert.ok(v.attackTargets.includes('E3'));
+  assert.ok(!v.attackTargets.includes('H3'), 'too far away');
+  s = act(s, 0, 'moveUnits', { from: 'D3', to: 'G3', troops: { destroyer: 1 } });
+  assert.equal(tile(s, 'G3').controller, 0);
+  // An enemy wall of ships across the channel blocks the route.
+  for (const id of ['F3', 'F2', 'G2', 'G4', 'H3']) s = put(s, id, 1, { destroyer: 1 }); // boxed in
+  assert.throws(() => act(s, 0, 'moveUnits', { from: 'G3', to: 'D3', troops: { destroyer: 1 } }), /No sea route/);
+});
+
+test('convoys: troops cross the sea only along an unbroken chain of your ships', () => {
+  let s = put(ocean(), 'C3', 0, { infantry: 3 });
+  for (const id of ['D3', 'E3', 'F3', 'G3', 'H3']) s = put(s, id, 0, { destroyer: 1 });
+  let v = views(s, 0);
+  assert.ok(v.attackTargets.includes('I3'), 'the far coast is in reach');
+  assert.ok((v.attackSources.I3 || []).some((x) => x.tile === 'C3' && x.amphibious));
+  // Sink one ship in the middle: the chain is broken.
+  s = edit(s, (c) => {
+    const t = tile(c, 'F3');
+    t.units = {};
+    t.troops = {};
+    t.controller = null;
+  });
+  v = views(s, 0);
+  assert.ok(!(v.attackSources.I3 || []).some((x) => x.tile === 'C3'));
+});
+
+test('fishing grounds pay their holder; enemy ships off a coast blockade it', () => {
+  let s = ocean();
+  const income = (st) => {
+    const p = views(st, 0).players[0].production.passive;
+    return p.wood + p.stone + p.sandbag;
+  };
+  const before = income(s);
+  s = put(s, 'E3', 0, { destroyer: 1 });
+  assert.equal(income(s), before + CFG.fishingIncome);
+  assert.equal(views(s, 0).players[0].production.fishing, 1);
+  // Seat 1 parks a ship next to C3.
+  s = put(s, 'D3', 1, { destroyer: 1 });
+  const v = views(s, 0);
+  assert.ok(v.blockaded.includes('C3'));
+  assert.ok(v.players[0].production.blockaded.includes('C3'));
+  assert.ok(income(s) < before + CFG.fishingIncome);
+});

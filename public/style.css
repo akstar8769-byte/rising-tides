@@ -739,3 +739,23 @@ input:focus, select:focus, button:focus-visible { outline-color: var(--brass); }
   .end-turn { padding: 0 12px; font-size: 0.82rem; min-height: 46px; }
   #toasts { top: auto; bottom: 90px; }
 }
+
+/* Unit levels */
+.pips { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 6px; }
+.pip { width: 9px; height: 9px; border-radius: 2px; border: 1px solid var(--brass-dark); background: transparent; transform: rotate(45deg); }
+.pip.on { background: var(--brass); }
+.lv-tag { font-size: 0.7rem; font-weight: 800; color: #fff; background: var(--brass-dark); border-radius: 6px; padding: 0 5px; vertical-align: 2px; }
+sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-left: 1px; }
+
+/* Map zoom & pan */
+.map svg.board { touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.map svg.board:active { cursor: grabbing; }
+.map-zoom {
+  position: absolute; right: 12px; bottom: 12px; z-index: 6; display: grid; gap: 4px;
+}
+.map-zoom button {
+  width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--brass); cursor: pointer;
+  background: rgba(43, 30, 21, 0.85); color: #f4e6c4; font-size: 1.2rem; font-weight: 700; line-height: 1;
+}
+.map-zoom button:hover { background: rgba(74, 52, 35, 0.95); }
+@media (max-width: 760px) { .map-zoom { right: 8px; bottom: 8px; } .map-zoom button { width: 36px; height: 36px; } }

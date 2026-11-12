@@ -5,11 +5,12 @@
 // their pattern; in War modes, an OCCUPIER's flag (⚑P2) when someone else holds it;
 // on capitals: name, walls, units and markers (🩹 Damaged, ⛔ sanctioned, ⛓ puppet, 👑 overlord).
 import { esc, BIOME, PLAYER_STYLE } from './ui.js';
+import { viewBoxFor } from './mapview.js';
 
 const SIZE = 50; // hex radius in SVG units
 const SQ3 = Math.sqrt(3);
 
-function center(t) {
+export function center(t) {
   // pointy-top axial -> pixel
   return { x: SIZE * SQ3 * (t.q + t.r / 2), y: SIZE * 1.5 * t.r };
 }
@@ -87,9 +88,9 @@ export function renderBoard(game, opts = {}) {
         act = ` data-act="pickTile" data-tile="${t.id}" role="button" tabindex="0"`;
         ring = `<polygon points="${hexPoints(x, y, SIZE - 4)}" class="target-ring"/>`;
       }
-      return `<g class="${cls}"${act}><title>Sea bay ${t.id}${hold ? ' — ' + esc(game.players[t.controller].name) + "'s fleet" : ''}</title>
+      return `<g class="${cls}"${act}><title>${t.fish ? 'Fishing ground' : 'Sea'} ${t.id}${hold ? ' — ' + esc(game.players[t.controller].name) + "'s fleet" : ''}${t.fish ? ' (earns its holder income)' : ''}</title>
         <polygon points="${hexPoints(x, y, SIZE - 2)}" fill="#1f4e79" stroke="${hold ? hold.color : '#ffffff'}" stroke-width="${hold ? 6 : 2}"/>
-        <text x="${x}" y="${y - 4}" class="glyph">🌊</text>
+        <text x="${x}" y="${y - 4}" class="glyph">${t.fish ? '🐟' : '🌊'}</text>
         <text x="${x}" y="${y + 38}" class="tid" style="fill:#fff">${t.id}</text>
         ${game.stationed ? unitBadge(t, x, y) : ''}${ring}</g>`;
     }
@@ -129,6 +130,7 @@ export function renderBoard(game, opts = {}) {
         ${marks ? `<text x="${x + 30}" y="${y - 26}" class="marks">${marks}</text>` : ''}`;
     }
     if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
+    if ((game.blockaded || []).includes(t.id)) inner += `<text x="${x - 28}" y="${y - 20}" class="marks"><title>Blockaded: enemy ships offshore, no income</title>⚓</text>`;
     if (game.stationed) inner += unitBadge(t, x, y);
     if (t.factory) inner += factoryBadge(t, x, y);
     else if (t.controller == null && !owner && game.factories) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
@@ -140,15 +142,17 @@ export function renderBoard(game, opts = {}) {
       act = ` data-act="pickTile" data-tile="${t.id}" role="button" tabindex="0"`;
       inner += `<polygon points="${hexPoints(x, y, SIZE - 4)}" class="target-ring"/>`;
     }
-    const title = `${owner ? `${owner.name}'s ${t.role}` : 'Open tile'} ${t.id} — ${b.label}${occupier != null ? `, held by ${game.players[occupier].name}` : ''}`;
+    const title = `${owner ? `${owner.name}'s ${t.role}` : 'Open tile'} ${t.id} — ${b.label}${occupier != null ? `, held by ${game.players[occupier].name}` : ''}${(game.blockaded || []).includes(t.id) ? ' — BLOCKADED (no income)' : ''}`;
     return `<g class="${cls}"${act}><title>${esc(title)}</title>${inner}</g>`;
   });
 
   const factoryLegend = game.factories ? '<span>🌿 sustainable factory · 🏭 unsustainable factory (ring = owner)</span>' : '';
   const legendExtra = war
-    ? `<span>⚑P2 = occupied by P2</span><span>⚔ units${game.stationed ? ' on that tile' : ''}</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
+    ? `${game.board.seaLanes ? '<span>🐟 fishing ground (income for its holder)</span><span>⚓ blockaded (enemy ships offshore)</span>' : ''}<span>⚑P2 = occupied by P2</span><span>⚔ units${game.stationed ? ' on that tile' : ''}</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
     : '';
-  return `<svg class="board" viewBox="${minX.toFixed(0)} ${minY.toFixed(0)} ${w.toFixed(0)} ${h.toFixed(0)}" role="img" aria-label="Game board">${parts.join('')}</svg>
+  const box = [Math.round(minX), Math.round(minY), Math.round(w), Math.round(h)];
+  const vb = opts.view ? viewBoxFor(box, opts.view) : box;
+  return `<svg class="board" viewBox="${vb.map((n) => n.toFixed(1)).join(' ')}" data-box="${box.join(' ')}" role="img" aria-label="Game board">${parts.join('')}</svg>
   <div class="legend">${Object.values(BIOME)
     .filter((b) => !b.sea || tiles.some((t) => t.kind === 'sea'))
     .map((b) => `<span><i style="background:${b.color}"></i>${b.glyph} ${b.label}${b.sea ? ' (ships only)' : b.res ? ` (${b.res === 'sandbag' ? 'sandbags' : b.res})` : ' (any)'}</span>`)

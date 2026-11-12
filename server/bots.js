@@ -94,9 +94,9 @@ function reserve(g, me, extraUnits = 0) {
  * and anti-tank / anti-air. Militia when money is short.
  */
 const UNIT_WISHES = {
-  warlike: [['heavyTank', 'mediumTank', 'lightTank', 'cavalry'], ['bomber', 'interceptor'], ['mechanised', 'motorised', 'infantry'], ['artillery']],
-  balanced: [['mediumTank', 'lightTank', 'cavalry'], ['mechanised', 'motorised', 'infantry'], ['bomber', 'interceptor'], ['artillery', 'antitank']],
-  cautious: [['mechanised', 'motorised', 'infantry'], ['antitank', 'antiair'], ['interceptor', 'mediumTank', 'lightTank'], ['artillery']],
+  warlike: [['heavyTank', 'mediumTank', 'lightTank', 'cavalry'], ['bomber', 'interceptor'], ['mechanised', 'motorised', 'infantry'], ['spArtillery', 'artillery']],
+  balanced: [['mediumTank', 'lightTank', 'cavalry'], ['mechanised', 'motorised', 'infantry'], ['bomber', 'interceptor'], ['spArtillery', 'artillery', 'antitank']],
+  cautious: [['mechanised', 'motorised', 'infantry'], ['antitank', 'antiair'], ['interceptor', 'mediumTank', 'lightTank'], ['spArtillery', 'artillery']],
 };
 /**
  * The unit type to recruit now, or null to save up for it. Picks a group (mostly the
@@ -125,15 +125,29 @@ function pickUnitType(g, me, P, roll = Math.random()) {
 
 /** Total War research plans, in order, by personality. */
 const RESEARCH_PLAN = {
-  warlike: ['artillery', 'lightTanks', 'mediumTanks', 'aircraft', 'motorised', 'heavyTanks', 'mechanised', 'antiAir', 'shipyards'],
-  balanced: ['artillery', 'motorised', 'lightTanks', 'mediumTanks', 'aircraft', 'mechanised', 'antiTank', 'antiAir', 'heavyTanks'],
-  cautious: ['motorised', 'antiTank', 'artillery', 'lightTanks', 'aircraft', 'mechanised', 'antiAir', 'mediumTanks'],
+  warlike: ['artillery', 'lightTanks', 'mediumTanks', 'aircraft', 'motorised', 'heavyTanks', 'selfPropelled', 'mechanised', 'antiAir', 'shipyards'],
+  balanced: ['artillery', 'motorised', 'lightTanks', 'mediumTanks', 'aircraft', 'selfPropelled', 'mechanised', 'antiTank', 'antiAir', 'heavyTanks'],
+  cautious: ['motorised', 'antiTank', 'artillery', 'lightTanks', 'aircraft', 'mechanised', 'antiAir', 'mediumTanks', 'selfPropelled'],
 };
 function researchIdea(g, me, P) {
   if (!me.research || me.research.current) return null;
   const name = P === PERSONALITIES.warlike ? 'warlike' : P === PERSONALITIES.balanced ? 'balanced' : 'cautious';
   const done = new Set(me.research.done);
-  const tech = RESEARCH_PLAN[name].map((id) => g.tw.techs.find((t) => t.id === id)).find((t) => t && !done.has(t.id) && t.needs.every((x) => done.has(x)));
+  const avail = (t) => t && !done.has(t.id) && t.needs.every((x) => done.has(x));
+  let plan = RESEARCH_PLAN[name];
+  // Ocean boards: with enemies across the sea, a navy comes early.
+  if (overseas(g)) plan = [plan[0], 'shipyards', ...plan.slice(1, 3), 'cruisers', ...plan.slice(3)];
+  let tech = plan.map((id) => g.tw.techs.find((t) => t.id === id)).find(avail);
+  // Unit levels: improve the type we field the most (once we have a few of them),
+  // sometimes ahead of the next new technology, always once the plan is finished.
+  const owned = {};
+  for (const t of g.board.tiles) for (const [k, n] of Object.entries((t.troops || {})[g.you] || {})) owned[k] = (owned[k] || 0) + n;
+  const lvTech = Object.entries(owned)
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => g.tw.techs.find((t) => t.level && t.level.type === k && avail(t)))
+    .find(Boolean);
+  if (lvTech && (!tech || (done.size >= 3 && chance(0.4)))) tech = lvTech;
   if (!tech) return null;
   // Keep a real army: after the first tech, research only with a few units in the field.
   if (done.size >= 1 && me.units < Math.min(P.army, 4)) return null;
@@ -185,10 +199,71 @@ function upgradeIdea(g, me, P) {
 
 /** Total War: now and then launch a ship into a bay next to our coast. */
 function shipIdea(g, me, P) {
+  if (g.board.seaLanes) return oceanShipIdea(g, me, P);
   if (P === PERSONALITIES.cautious || !g.tw.seas || !g.tw.seas.length || me.units < 6 || !chance(0.12)) return null;
   const t = ['battleship', 'cruiser', 'destroyer'].map((k) => g.tw.units.find((u) => u.type === k)).find((u) => u.unlocked && total(me.materials) - u.cost >= reserve(g, me, 1) + 2);
   if (!t) return null;
   return { key: `ship-${g.round}`, action: { type: 'recruit', count: 1, unit: t.type, tile: g.tw.seas[0], materials: payFromLargest(me, t.cost) } };
+}
+
+// ---------------------------------------------------------------- ocean boards (sea lanes)
+const hexDist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+const ships = (g) => g.board.tiles.filter((t) => t.kind === 'sea' && t.controller === g.you);
+const fleetSize = (g) => ships(g).reduce((a, t) => a + unitsOn(t, g.you), 0);
+
+/** Land tiles joined to this one by land. */
+function landmass(g, start) {
+  const seen = new Set([start.id]);
+  const queue = [start];
+  while (queue.length) {
+    const t = queue.shift();
+    for (const n of g.board.tiles) if (n.kind === 'land' && !seen.has(n.id) && adjacent(t, n)) { seen.add(n.id); queue.push(n); }
+  }
+  return seen;
+}
+/** Ocean board where some rival's capital is on another continent. */
+function overseas(g) {
+  if (!g.board.seaLanes) return false;
+  const home = g.board.tiles.find((t) => t.id === g.players[g.you].homeTile);
+  if (!home) return false;
+  const mine = landmass(g, home);
+  return g.players.some((p) => p.seat !== g.you && !mine.has(p.homeTile));
+}
+
+/** Ocean boards: keep a fleet that grows with the game (fishing, then invasions). */
+function oceanShipIdea(g, me, P) {
+  if (!g.tw.seas || !g.tw.seas.length || me.units < 3) return null;
+  const want = (P === PERSONALITIES.cautious ? 2 : overseas(g) ? 3 : 2) + Math.floor(g.round / (P === PERSONALITIES.warlike ? 3 : 4));
+  if (fleetSize(g) >= want || !chance(P === PERSONALITIES.cautious ? 0.3 : 0.55)) return null;
+  const t = ['battleship', 'cruiser', 'destroyer'].map((k) => g.tw.units.find((u) => u.type === k)).find((u) => u && u.unlocked && total(me.materials) - u.cost >= reserve(g, me, 1));
+  if (!t) return null;
+  // Launch next to the fleet if we have one, so the chain stays joined.
+  const fleet = ships(g);
+  const tile = g.tw.seas.find((id) => fleet.some((f) => f.id === id)) || g.tw.seas[0];
+  return { key: `ship-${g.round}-${fleetSize(g)}`, action: { type: 'recruit', count: 1, unit: t.type, tile, materials: payFromLargest(me, t.cost) } };
+}
+
+/**
+ * Ocean boards: spread the fleet one hex at a time. Take fishing grounds first, then
+ * stretch a chain of ships toward the nearest enemy coast so troops can cross.
+ */
+function fleetMoveIdea(g, me, P) {
+  if (!g.board.seaLanes) return null;
+  const fleet = ships(g);
+  const stack = fleet.filter((t) => unitsOn(t, g.you) >= 2).sort((a, b) => unitsOn(b, g.you) - unitsOn(a, g.you))[0];
+  if (!stack) return null;
+  const free = g.board.tiles.filter((t) => t.kind === 'sea' && t.controller == null && fleet.some((f) => adjacent(f, t)));
+  if (!free.length) return null;
+  const home = g.board.tiles.find((t) => t.id === me.homeTile);
+  const mine = home ? landmass(g, home) : new Set();
+  const enemyCoast = g.board.tiles.filter((t) => t.kind === 'land' && t.controller != null && t.controller !== g.you && !mine.has(t.id) && g.board.tiles.some((x) => x.kind === 'sea' && adjacent(x, t)));
+  const score = (t) => (t.fish ? 10 : 0) - (enemyCoast.length ? Math.min(...enemyCoast.map((c) => hexDist(c, t))) : 0);
+  const to = free.sort((a, b) => score(b) - score(a))[0];
+  const troops = { ...((stack.troops || {})[g.you] || {}) };
+  // Move the cheapest ship, keep the big ones where they are.
+  const type = ['destroyer', 'cruiser', 'battleship'].find((k) => troops[k] > 0);
+  if (!type) return null;
+  return { key: `fleet-${g.round}-${stack.id}-${to.id}`, action: { type: 'moveUnits', from: stack.id, to: to.id, count: 1, troops: { [type]: 1 } } };
 }
 
 /**
@@ -333,6 +408,8 @@ function buildStep(g, me, P, mem, fresh) {
     if (g.stationed) {
       const mv = moveIdea(g, me, P);
       if (mv && fresh(mv.key)) return mv;
+      const fm = g.tw ? fleetMoveIdea(g, me, P) : null;
+      if (fm && fresh(fm.key)) return fm;
     }
     // 5. Overlords give their puppets orders.
     for (const q of me.puppets || []) {

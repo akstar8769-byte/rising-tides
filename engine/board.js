@@ -58,6 +58,7 @@ function buildBoard(state, layoutName, withTerritories) {
     controller: null, // seat currently holding it (differs from owner when occupied)
     units: {}, // War with stationed units: { seat: number of units on this tile }
     factory: null, // Base with factories: { owner, kind: 'sustainable' | 'unsustainable', built }
+    ...(t.fish ? { fish: true } : {}), // fishing ground: earns its holder income
   }));
   const byId = Object.fromEntries(tiles.map((t) => [t.id, t]));
 
@@ -85,7 +86,7 @@ function buildBoard(state, layoutName, withTerritories) {
   for (const t of tiles) {
     if (t.kind === 'land' && t.biome === null) t.biome = SINGLE_BIOMES[randomInt(state, SINGLE_BIOMES.length)];
   }
-  return { layout: layoutName, tiles };
+  return { layout: layoutName, tiles, ...(L.seaLanes ? { seaLanes: true } : {}) };
 }
 
 function areAdjacent(a, b) {

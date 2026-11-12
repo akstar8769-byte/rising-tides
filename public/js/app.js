@@ -9,6 +9,7 @@ import { renderGame } from './game.js';
 import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
 import { payLargest } from './war-ui.js';
+import { installMapControls, justDragged, zoomAt } from './mapview.js';
 import { addShells, refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation } from './battle-ui.js';
 
 /* global io */
@@ -308,6 +309,13 @@ const actions = {
     const r = el.getBoundingClientRect();
     store.ui.tileMenu = store.ui.tileMenu && store.ui.tileMenu.id === ds.tile ? null : { id: ds.tile, x: r.left + r.width / 2, y: r.bottom };
     store.ui.rival = null;
+    render();
+  },
+  zoom: (ds) => {
+    const svg = document.querySelector('.map svg.board');
+    if (!svg) return;
+    if (+ds.f === 0) store.ui.mapView = { zoom: 1 };
+    else zoomAt(store, svg, +ds.f);
     render();
   },
   closeTileMenu: () => {
@@ -664,6 +672,7 @@ document.addEventListener('pointerdown', (e) => {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('#battle-svg')) return; // handled on pointerdown
+  if (justDragged() && e.target.closest('.map')) return; // the end of a map drag, not a tap
   const el = e.target.closest('[data-act]');
   // A click anywhere else closes the tile menu / rival card.
   const ui = store.ui;
@@ -737,4 +746,5 @@ document.addEventListener('submit', (e) => {
 });
 
 render();
+installMapControls(store);
 startBattleAnimation(store); // smooth battlefield animation (only draws when a battle is on screen)

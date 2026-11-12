@@ -107,7 +107,8 @@ export function warMyPanel(store) {
     ${me.puppetOf != null ? puppetBox(store) : ''}
     <div class="row wrap"><span>⚔ <b>${me.units}</b> ${g.tw ? '' : 'militia '}unit${me.units === 1 ? '' : 's'}${g.stationed ? ` — ${unitSpread(g, g.you)}` : ''}</span>
       ${g.tw ? `<span class="small">${troopSummary(g, g.you)}</span>` : ''}
-      ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}</span>` : ''}
+      ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}${me.production.fishing ? ` (incl. ${me.production.fishing} fishing ground${me.production.fishing === 1 ? '' : 's'} 🐟)` : ''}</span>` : ''}
+      ${me.production && me.production.blockaded && me.production.blockaded.length ? `<span class="small warn">⚓ Blockaded, earning nothing: ${me.production.blockaded.join(', ')} — drive the enemy ships off or bring your own.</span>` : ''}
       <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span>
       ${w.armyFloodPerUnits > 0 ? `<span class="small ${me.armyFloodDue ? 'warn' : 'muted'}">🏭 Army emissions next upkeep: Flood +${me.armyFloodDue} (1 per ${w.armyFloodPerUnits} units)</span>` : ''}</div>
     ${warTabs(store, g, [
@@ -337,7 +338,7 @@ function unitPicker(g, current) {
       .filter((u) => u.domain === dom)
       .map(
         (u) => `<button class="unit-card ${u.type === current ? 'selected' : ''} ${u.unlocked ? '' : 'locked'}" data-act="set" data-path="recruit.unit" data-value="${u.type}" aria-pressed="${u.type === current}" ${u.unlocked ? '' : 'disabled'}>
-        <b>${u.shape} ${esc(u.name)}</b>
+        <b>${u.shape} ${esc(u.name)}${u.level > 1 ? ` <span class="lv-tag">L${u.level}</span>` : ""}</b>
         <span>${u.unlocked ? `${u.cost} materials · upkeep ${u.upkeep}` : `🔒 Research ${esc(techName(u.tech))}`}</span>
         <small>HP ${u.hp} · dmg ${u.attack}/s · speed ${u.speed}${u.range ? ` · range ${u.range}` : ''}</small>
       </button>`,
@@ -367,7 +368,7 @@ function researchPanel(store, canBuild) {
   const me = g.players[g.you];
   const r = me.research || { done: [], current: null };
   const total = bagTotal(me.materials);
-  const rows = g.tw.techs.map((t) => {
+  const rows = g.tw.techs.filter((t) => !t.level).map((t) => {
     const done = r.done.includes(t.id);
     const now = r.current === t.id;
     const ready = t.needs.every((x) => r.done.includes(x));
@@ -381,10 +382,38 @@ function researchPanel(store, canBuild) {
     return `<li class="tech ${done ? 'done' : now ? 'now' : ready ? 'ready' : 'locked'}"><div><b>${esc(t.name)}</b> <small class="muted">→ ${unlocks}</small></div>${right}</li>`;
   });
   return `<details class="tool research" ${canBuild && !r.current ? 'open' : ''}>
-    <summary>🔬 Research <span class="muted small">(${r.current ? 'researching ' + esc(g.tw.techs.find((t) => t.id === r.current).name) : `${r.done.length}/${g.tw.techs.length} done`}; you have ${total} materials)</span></summary>
+    <summary>🔬 Research <span class="muted small">(${r.current ? 'researching ' + esc(g.tw.techs.find((t) => t.id === r.current).name) : `${r.done.filter((id) => !/L[234]$/.test(id)).length}/${g.tw.techs.filter((t) => !t.level).length} technologies`}; you have ${total} materials)</span></summary>
+    <h4 class="unit-domain">Technologies</h4>
     <ul class="tech-list">${rows.join('')}</ul>
-    <p class="hint">One project at a time; it is finished at the start of next round. Paid from your biggest piles. Tanks: Artillery → Light → Medium → Heavy. Infantry: Motorised → Mechanised → Aircraft (interceptors and bombers). Militia can become anti-tank or anti-air. Shipyards → Cruisers → Battleships.</p>
+    ${levelRows(g, r, canBuild)}
+    <p class="hint">One project at a time; it is finished at the start of next round. Paid from your biggest piles. Tanks: Artillery → Light → Medium → Heavy; Artillery + Motorised → Self-propelled guns. Infantry: Motorised → Mechanised → Aircraft (interceptors and bombers). Militia can become anti-tank or anti-air. Shipyards → Cruisers → Battleships.</p>
   </details>`;
+}
+
+/** Unit levels: one row per unit type you can build, with pips for levels 1–4. */
+function levelRows(g, r, canBuild) {
+  const me = g.players[g.you];
+  const ws = g.settings.totalwar || {};
+  const rows = g.tw.units
+    .filter((u) => u.leveled && u.unlocked)
+    .map((u) => {
+      const lv = u.level || 1;
+      const next = g.tw.techs.find((t) => t.level && t.level.type === u.type && t.level.n === lv + 1);
+      const pips = [1, 2, 3, 4].map((n) => `<i class="pip ${n <= lv ? 'on' : ''}"></i>`).join('');
+      let right;
+      if (!next) right = '<span class="tag ok">★ max</span>';
+      else if (r.current === next.id) right = '<span class="tag">🔬 next round</span>';
+      else {
+        const pay = payLargest(me.materials, next.cost);
+        right = `<button class="btn small" data-act="research" data-tech="${next.id}" ${canBuild && !r.current && pay ? '' : 'disabled'} title="Paid from your biggest piles">Level ${lv + 1} (${next.cost})</button>`;
+      }
+      return `<li class="tech ${r.current && next && r.current === next.id ? 'now' : ''}"><div><b>${u.shape} ${esc(u.name)}</b> <span class="pips" title="Level ${lv} of 4">${pips}</span></div>${right}</li>`;
+    });
+  if (!rows.length) return '';
+  const bits = [ws.levelHpPct && `+${ws.levelHpPct}% toughness`, ws.levelAttackPct && `+${ws.levelAttackPct}% damage`, ws.levelSpeedPct && `+${ws.levelSpeedPct}% speed`].filter(Boolean).join(', ');
+  return `<h4 class="unit-domain">Unit levels</h4>
+    <p class="hint">Each level gives ${bits || 'a boost'} to every unit of that type you have — no need to rebuild.</p>
+    <ul class="tech-list">${rows.join('')}</ul>`;
 }
 
 /** Upgrade units on one of your tiles along their line, paying the difference. */

@@ -58,6 +58,55 @@ function seasHeld(s, seat) {
 function refreshSeas(s) {
   for (const t of s.board.tiles) if (t.kind === 'sea' && !Object.values(t.units || {}).some((n) => n > 0)) t.controller = null;
 }
+
+// ---------------------------------------------------------------- sea lanes (ocean boards)
+// On boards with sea lanes (the "oceans" map) ships move hex by hex through the
+// ocean instead of jumping between bays, troops can only cross the sea along an
+// unbroken chain of your ships, fishing grounds pay whoever holds them, and enemy
+// ships next to your coast blockade it.
+const LANES = (s) => !!(s.board && s.board.seaLanes);
+
+/** Groups of touching sea hexes held by this player (each a Set of tiles). */
+function fleetGroups(s, seat) {
+  const held = seasHeld(s, seat);
+  const seen = new Set();
+  const groups = [];
+  for (const t of held) {
+    if (seen.has(t)) continue;
+    const g = new Set([t]);
+    seen.add(t);
+    const queue = [t];
+    while (queue.length) {
+      const x = queue.shift();
+      for (const y of held) if (!seen.has(y) && areAdjacent(x, y)) { seen.add(y); g.add(y); queue.push(y); }
+    }
+    groups.push(g);
+  }
+  return groups;
+}
+const touches = (group, t) => [...group].some((sea) => areAdjacent(sea, t));
+
+/**
+ * Sea hexes your troops can land from. Sea-lane boards: only fleets whose chain
+ * of ships reaches one of your own coasts. Other boards: every bay you hold.
+ */
+function landingSeas(s, seat) {
+  if (!LANES(s)) return seasHeld(s, seat);
+  const mine = controlled(s, seat);
+  return fleetGroups(s, seat).filter((g) => mine.some((m) => touches(g, m))).flatMap((g) => [...g]);
+}
+
+/** Enemy ships off this coastal tile, and none of the holder's own: it earns nothing. */
+function blockaded(s, t) {
+  if (!TW(s) || !LANES(s) || TWS(s).blockades === false || t.kind !== 'land' || t.controller == null || inTruce(s)) return false;
+  let enemy = false;
+  for (const x of s.board.tiles) {
+    if (x.kind !== 'sea' || x.controller == null || !areAdjacent(x, t)) continue;
+    if (x.controller === t.controller) return false;
+    enemy = true;
+  }
+  return enemy;
+}
 function controlled(s, seat) {
   return s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat);
 }
@@ -134,17 +183,23 @@ function production(s, seat) {
   const p = s.players[seat];
   const tiles = controlled(s, seat);
   const passive = emptyBag();
-  for (const t of tiles) {
+  const fishing = TW(s) && LANES(s) ? seasHeld(s, seat).filter((t) => t.fish) : [];
+  const blocked = tiles.filter((t) => blockaded(s, t));
+  for (const t of [...tiles.filter((x) => !blocked.includes(x)), ...fishing]) {
     let res = BIOMES[t.biome].resource;
     if (!res) {
       // Mixed tile: the material you hold least of (counting this round's income so far)
       res = MATERIALS.reduce((best, m) => (p.materials[m] + passive[m] < p.materials[best] + passive[best] ? m : best), MATERIALS[0]);
     }
+    if (t.kind === 'sea') {
+      passive[res] += TWS(s).fishingIncome ?? 1; // fishing ground: the catch is worth what you're short of
+      continue;
+    }
     passive[res] += w.passivePerTile;
     if (TW(s) && t.owner !== seat) passive[res] += TWS(s).occupiedBonus; // plunder
   }
   const homeRes = BIOMES[p.biome].resource;
-  const base = { passive, tiles: tiles.length, unsustainable: w.unsustainableBonus };
+  const base = { passive, tiles: tiles.length, unsustainable: w.unsustainableBonus, fishing: fishing.length, blockaded: blocked.map((t) => t.id) };
   const puppets = puppetsOf(s, seat);
   if (isEmpire(s) && E(s).productionAccess && puppets.length) {
     // Production access (PDF W8.2, Q21): take your Sustainable bonus as your own
@@ -171,7 +226,7 @@ function attackTargets(s, seat) {
   }
   const mine = controlled(s, seat);
   // Total War: amphibious attacks land on coasts next to a sea bay your ships hold.
-  const amph = TW(s) && TWS(s).amphibious && mine.some((m) => isCoastal(s, m)) ? seasHeld(s, seat) : [];
+  const amph = TW(s) && TWS(s).amphibious && mine.some((m) => isCoastal(s, m)) ? landingSeas(s, seat) : [];
   const land = s.board.tiles
     .filter(
       (t) =>
@@ -185,7 +240,9 @@ function attackTargets(s, seat) {
     .map((t) => t.id);
   // Total War: ships can sail to any sea bay that isn't already theirs (the bays are joined by the ocean).
   const hasShips = seasHeld(s, seat).some((t) => unitsAt(t, seat) > 0);
-  const sea = TW(s) && hasShips ? s.board.tiles.filter((t) => t.kind === 'sea' && t.controller !== seat && !forbidden.has(t.controller) && !(t.controller != null && inTruce(s))).map((t) => t.id) : [];
+  // Sea-lane boards: only the sea hexes right next to your fleets.
+  const held = seasHeld(s, seat).filter((t) => unitsAt(t, seat) > 0);
+  const sea = TW(s) && hasShips ? s.board.tiles.filter((t) => t.kind === 'sea' && t.controller !== seat && !forbidden.has(t.controller) && !(t.controller != null && inTruce(s)) && (!LANES(s) || held.some((h) => areAdjacent(h, t)))).map((t) => t.id) : [];
   return [...land, ...sea];
 }
 
@@ -1012,8 +1069,8 @@ function decorateView(v, s, seat) {
     const meP = s.players[seat];
     v.tw = {
       truce: inTruce(s) ? cfg.truceRounds : 0, // last round of the opening truce (0 = none)
-      units: battles.TYPES.map((k) => ({ type: k, ...cfg[k], ...ARS.UNITS[k], unlocked: meP ? ARS.canBuild(meP, k) : false })),
-      techs: ARS.TECH_IDS.map((id) => ({ id, ...ARS.TECHS[id], cost: cfg.research[id] })),
+      units: battles.TYPES.map((k) => ({ type: k, ...cfg[k], ...ARS.UNITS[k], unlocked: meP ? ARS.canBuild(meP, k) : false, level: meP ? ARS.levelOf(meP, k) : 1, leveled: ARS.LEVELED.includes(k) })),
+      techs: ARS.TECH_IDS.map((id) => ({ id, ...ARS.TECHS[id], cost: ARS.techCost(cfg, id) })),
       formations: battles.FORMATION_IDS.map((id) => ({ id, name: battles.FORMATIONS[id].name, desc: battles.FORMATIONS[id].desc, ...cfg.formations[id] })),
       mapW: battles.MAP_W,
       mapH: battles.MAP_H,
@@ -1036,6 +1093,7 @@ function decorateView(v, s, seat) {
     v.revoltSources = mine && mine.puppetOf != null ? controlled(s, seat).filter((t) => unitsAt(t, seat) > 0).map((t) => ({ tile: t.id, units: unitsAt(t, seat) })) : [];
     v.standTiles = mine ? s.board.tiles.filter((t) => canStand(s, seat, t)).map((t) => t.id) : [];
     if (TW(s) && mine) v.seaTiles = s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller === seat || t.controller == null)).map((t) => t.id);
+    if (TW(s) && LANES(s)) v.blockaded = s.board.tiles.filter((t) => blockaded(s, t)).map((t) => t.id);
   }
 }
 
@@ -1188,14 +1246,18 @@ function attackSources(s, seat, targetId) {
   const T = s.board.tiles.find((x) => x.id === targetId);
   if (!T) return [];
   if (T.kind === 'sea') {
-    // Fleets sail from any bay they hold.
+    // Fleets sail from any bay they hold (sea-lane boards: from the hexes next to it).
     return seasHeld(s, seat)
-      .filter((t) => t !== T && unitsAt(t, seat) > 0)
+      .filter((t) => t !== T && unitsAt(t, seat) > 0 && (!LANES(s) || areAdjacent(t, T)))
       .map((t) => ({ tile: t.id, units: unitsAt(t, seat) }));
   }
   const near = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && areAdjacent(t, T));
   let amph = [];
-  if (TW(s) && TWS(s).amphibious && seasHeld(s, seat).some((sea) => areAdjacent(sea, T))) {
+  if (TW(s) && TWS(s).amphibious && LANES(s)) {
+    // Troops board on a coast your fleet touches and land where the same chain of ships reaches.
+    const groups = fleetGroups(s, seat).filter((g) => touches(g, T));
+    amph = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && !near.includes(t) && groups.some((g) => touches(g, t)));
+  } else if (TW(s) && TWS(s).amphibious && seasHeld(s, seat).some((sea) => areAdjacent(sea, T))) {
     amph = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && isCoastal(s, t) && !near.includes(t));
   }
   return [...near.map((t) => ({ tile: t.id, units: unitsAt(t, seat) })), ...amph.map((t) => ({ tile: t.id, units: unitsAt(t, seat), amphibious: true }))];
@@ -1239,6 +1301,22 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
     if (A.kind !== 'sea' || B.kind !== 'sea') fail('Ships stay at sea; land units stay on land.');
     if (A.controller !== actor) fail("Those aren't your ships.");
     if (B.controller != null && B.controller !== actor) fail('Enemy ships hold that bay — attack it instead.');
+    if (LANES(s)) {
+      // Sail hex by hex through sea that is yours or empty.
+      const seen = new Set([A.id]);
+      const queue = [A];
+      let found = false;
+      while (queue.length && !found) {
+        const t = queue.shift();
+        for (const n of s.board.tiles) {
+          if (n.kind !== 'sea' || seen.has(n.id) || !areAdjacent(t, n) || (n.controller != null && n.controller !== actor)) continue;
+          if (n === B) found = true;
+          seen.add(n.id);
+          queue.push(n);
+        }
+      }
+      if (!found) fail('No sea route: enemy ships are in the way.');
+    }
     const exactS = troops ? cleanTroops(troops) : null;
     if (exactS) count = battles.sum(exactS);
     checkSend(A, actor, count);
@@ -1609,7 +1687,7 @@ function bombardFor(s, T, seat) {
   for (const sea of s.board.tiles) {
     if (sea.kind !== 'sea' || sea.controller !== seat || !areAdjacent(sea, T)) continue;
     const c = troopsAt(sea, seat);
-    for (const k of ['cruiser', 'battleship']) dps += (c[k] || 0) * cfg[k].attack * (cfg.bombardPct / 100);
+    for (const k of ['cruiser', 'battleship']) dps += (c[k] || 0) * cfg[k].attack * ARS.levelBoost(ARS.levelOf(s.players[seat], k), cfg.levelAttackPct) * (cfg.bombardPct / 100);
   }
   return Math.round(dps * 10) / 10;
 }
@@ -1621,7 +1699,8 @@ function bombardFor(s, T, seat) {
  */
 function beginBattleTW(s, { attacker, defender, T, src, sent, defenders }) {
   const cfg = TWS(s);
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s) };
+  const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -1915,7 +1994,7 @@ function research(s, actor, { tech, materials } = {}) {
   if (r.current) fail(`You are already researching ${ARS.TECHS[r.current].name}. It's ready next round.`);
   const missing = T.needs.filter((x) => !r.done.includes(x));
   if (missing.length) fail(`Research ${missing.map((x) => ARS.TECHS[x].name).join(' and ')} first.`);
-  const cost = TWS(s).research[tech];
+  const cost = ARS.techCost(TWS(s), tech);
   const bag = cleanBag(materials);
   if (bagTotal(bag) !== cost) fail(`${T.name} costs ${cost} materials (any mix).`);
   if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
@@ -1933,7 +2012,8 @@ function finishResearch(s) {
     r.done.push(r.current);
     const T = ARS.TECHS[r.current];
     r.current = null;
-    addLog(s, `🔬 ${p.name} has ${T.name}! New: ${T.unlocks.map((k) => ARS.UNITS[k].name).join(', ')}.`, { kind: 'good' });
+    if (T.level) addLog(s, `🔬 ${p.name} reaches ${T.name}: every ${ARS.UNITS[T.level.type].name.toLowerCase()} they have is now stronger.`, { kind: 'good' });
+    else addLog(s, `🔬 ${p.name} has ${T.name}! New: ${T.unlocks.map((k) => ARS.UNITS[k].name).join(', ')}.`, { kind: 'good' });
   }
 }
 

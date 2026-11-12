@@ -18,6 +18,8 @@ function newGame(opts = {}) {
   }
   // Older Total War tests attack in round 1; truce tests pass { truce: true }.
   if (!opts.truce) settings.totalwar.truceRounds = 0;
+  // Older Total War tests use the 37-hex sea board's tile names; ocean tests pass { oceans: true }.
+  if (!opts.oceans) settings.totalwar.boardLayout = 'sea37';
   if (opts.settings) opts.settings(settings);
   const biomes = opts.biomes || BIOMES4.slice(0, n);
   return engine.createGame({

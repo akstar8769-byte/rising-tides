@@ -1,7 +1,7 @@
 // Main game screen: phase bar, Flood track, my panel, players, trading, log.
 // On phones one tab is shown at a time; on wide screens everything is visible.
 import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
-import { renderBoard } from './board.js';
+import { renderBoard, center } from './board.js';
 import { renderLog, renderChat } from './log.js';
 import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest, targetNote } from './war-ui.js';
 export { tileLabel };
@@ -40,8 +40,13 @@ export function renderGame(store) {
     ${floodBanner(g)}
   </div>
   <main class="map ${ui.legend ? 'show-legend' : ''}">
-    ${renderBoard(g, boardOptions(store))}
+    ${renderBoard(g, { ...boardOptions(store), view: mapView(store) })}
     ${rivals(store)}
+    <div class="map-zoom" role="group" aria-label="Zoom">
+      <button data-act="zoom" data-f="1.4" aria-label="Zoom in">＋</button>
+      <button data-act="zoom" data-f="0.7" aria-label="Zoom out">－</button>
+      <button data-act="zoom" data-f="0" aria-label="Show the whole map" title="Whole map">⟲</button>
+    </div>
     <button class="map-key" data-act="set" data-path="legend" data-json="${!ui.legend}" aria-pressed="${!!ui.legend}">🗺 Key</button>
   </main>
   ${
@@ -61,6 +66,17 @@ export function renderGame(store) {
     ${endTurn(store)}
   </nav>
 </div>`;
+}
+
+/** Where the map is looking. Big boards start zoomed in on your capital. */
+function mapView(store) {
+  if (store.ui.mapView) return store.ui.mapView;
+  const g = store.data.game;
+  if (g.board.tiles.length <= 40) return null;
+  const home = g.board.tiles.find((t) => t.owner === g.you && t.role === 'capital');
+  if (!home) return null;
+  const c = center(home);
+  return { zoom: 1.7, cx: c.x, cy: c.y };
 }
 
 function drawerBody(store, id) {
@@ -167,7 +183,7 @@ function tileMenu(store) {
   const top = Math.max(8, Math.min(m.y + 6, (typeof innerHeight === 'number' ? innerHeight : 800) - 300));
   return `<div class="tile-menu" style="left:${left}px;top:${top}px;width:${w}px" role="dialog" aria-label="${esc(tileLabel(g, t.id))}">
     <div class="tm-head"><b>${esc(tileLabel(g, t.id))}</b><button class="icon-btn" data-act="closeTileMenu" aria-label="Close">✕</button></div>
-    <p class="small muted">${b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}` : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
+    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
     ${units ? `<ul class="plain tm-units">${units}</ul>` : g.stationed && t.kind !== 'village' ? '<p class="small muted">No units here.</p>' : ''}
     ${acts.length ? `<div class="tm-actions">${acts.join('')}</div>` : `<p class="hint">${tileIdleHint(g)}</p>`}
   </div>`;
