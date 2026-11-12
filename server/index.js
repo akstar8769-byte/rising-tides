@@ -12,7 +12,8 @@ const { attachRooms } = require('./rooms');
 
 function startServer(port = process.env.PORT || 3000) {
   const app = express();
-  app.use(express.static(path.join(__dirname, '..', 'public')));
+  // Browsers must check for a newer copy every time, so an update shows up on refresh.
+  app.use(express.static(path.join(__dirname, '..', 'public'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
   app.get('/health', (req, res) => res.send('ok')); // used by the free host to check we're alive
 
   const server = http.createServer(app);

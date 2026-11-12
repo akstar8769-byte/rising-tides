@@ -516,3 +516,39 @@ test('fishing grounds pay their holder; enemy ships off a coast blockade it', ()
   assert.ok(v.players[0].production.blockaded.includes('C3'));
   assert.ok(income(s) < before + CFG.fishingIncome);
 });
+
+test('bombardment: cruisers and battleships shell a coast next to them, once a round', () => {
+  let s = put(ocean(), 'D3', 0, { battleship: 2, destroyer: 1 });
+  s = put(s, 'C3', 0, { infantry: 0 });
+  // Seat 1 has troops on a coast next to D3? D3 touches C3 (ours). Use seat 1 troops on C4 instead.
+  s = put(s, 'C4', 1, { infantry: 6 });
+  let v = views(s, 0);
+  assert.ok((v.bombardTargets.D3 || []).includes('C4'));
+  s = edit(s, (c) => (c.settings.totalwar.navalHitPct = 100));
+  s = act(s, 0, 'bombard', { from: 'D3', target: 'C4' });
+  assert.equal(tile(s, 'C4').units[1], 2, '4 shots (2 battleships × 2), all hit');
+  assert.ok(s.log.some((e) => /shells/.test(e.text)));
+  assert.throws(() => act(s, 0, 'bombard', { from: 'D3', target: 'C4' }), /already fired/);
+  // Destroyers alone can't bombard.
+  let d = put(ocean(), 'D3', 0, { destroyer: 2 });
+  d = put(d, 'C4', 1, { infantry: 3 });
+  assert.throws(() => act(d, 0, 'bombard', { from: 'D3', target: 'C4' }), /Only cruisers and battleships/);
+});
+
+test('convoy interception: enemy warships beside the chain sink crossing troops; destroyers escort', () => {
+  const setup = (escort) => {
+    let s = put(ocean(), 'C3', 0, { infantry: 4 });
+    s = put(s, 'I3', 1, { infantry: 1 });
+    for (const id of ['D3', 'E3', 'F3', 'G3', 'H3']) s = put(s, id, 0, escort && id === 'E3' ? { destroyer: 2 } : { cruiser: 1 });
+    s = put(s, 'G4', 1, { battleship: 1 }); // next to the chain
+    return edit(s, (c) => (c.settings.totalwar.navalHitPct = 100));
+  };
+  let s = setup(false);
+  s = act(allReady(s), 0, 'choose', { action: 'attack', target: 'I3', from: 'C3', count: 4, troops: { infantry: 4 } });
+  for (const p of s.players) if (p.seat !== 0 && !p.choice) s = act(s, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
+  assert.ok(s.log.some((e) => /fire on Ana's convoy/.test(e.text) && /2 infantry sunk/.test(e.text)), 'battleship: 2 shots, both hit');
+  let e = setup(true);
+  e = act(allReady(e), 0, 'choose', { action: 'attack', target: 'I3', from: 'C3', count: 4, troops: { infantry: 4 } });
+  for (const p of e.players) if (p.seat !== 0 && !p.choice) e = act(e, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
+  assert.ok(!e.log.some((x) => /convoy/.test(x.text)), 'two destroyers screen both shots');
+});

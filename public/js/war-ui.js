@@ -368,52 +368,55 @@ function researchPanel(store, canBuild) {
   const me = g.players[g.you];
   const r = me.research || { done: [], current: null };
   const total = bagTotal(me.materials);
-  const rows = g.tw.techs.filter((t) => !t.level).map((t) => {
-    const done = r.done.includes(t.id);
+  const ws = g.settings.totalwar || {};
+  // Infantry needs no research, but it still has levels: give it a row of its own at the top.
+  const list = [{ id: null, name: 'Infantry', needs: [], unlocks: ['infantry'], start: true }, ...g.tw.techs.filter((t) => !t.level)];
+  const rows = list.map((t) => {
+    const done = t.start || r.done.includes(t.id);
     const now = r.current === t.id;
     const ready = t.needs.every((x) => r.done.includes(x));
-    const pay = payLargest(me.materials, t.cost);
+    const pay = t.start ? null : payLargest(me.materials, t.cost);
     let right;
-    if (done) right = '<span class="tag ok">✔ done</span>';
+    if (t.start) right = '<span class="tag ok">from the start</span>';
+    else if (done) right = '<span class="tag ok">✔ done</span>';
     else if (now) right = '<span class="tag">🔬 ready next round</span>';
     else if (!ready) right = `<span class="muted small">needs ${t.needs.map((x) => esc(g.tw.techs.find((y) => y.id === x).name)).join(', ')}</span>`;
     else right = `<button class="btn small" data-act="research" data-tech="${t.id}" ${canBuild && !r.current && pay ? '' : 'disabled'} title="Paid from your biggest piles">Research (${t.cost})</button>`;
-    const unlocks = t.unlocks.map((k) => `${unitOf(g, k).shape} ${esc(unitOf(g, k).name)}`).join(', ');
-    return `<li class="tech ${done ? 'done' : now ? 'now' : ready ? 'ready' : 'locked'}"><div><b>${esc(t.name)}</b> <small class="muted">→ ${unlocks}</small></div>${right}</li>`;
+    const unlocks = t.start ? 'trained from the start' : t.unlocks.map((k) => `${unitOf(g, k).shape} ${esc(unitOf(g, k).name)}`).join(', ');
+    const levels = t.unlocks.filter((k) => (g.tw.units.find((u) => u.type === k) || {}).leveled).map((k) => levelDrop(g, r, k, done, canBuild)).join('');
+    return `<li class="tech ${done && !t.start ? 'done' : now ? 'now' : ready || t.start ? 'ready' : 'locked'}"><div class="tech-main"><div><b>${esc(t.name)}</b> <small class="muted">→ ${unlocks}</small></div>${right}</div>${levels}</li>`;
   });
+  const bits = [ws.levelHpPct && `+${ws.levelHpPct}% toughness`, ws.levelAttackPct && `+${ws.levelAttackPct}% damage`, ws.levelSpeedPct && `+${ws.levelSpeedPct}% speed`].filter(Boolean).join(', ');
   return `<details class="tool research" ${canBuild && !r.current ? 'open' : ''}>
     <summary>🔬 Research <span class="muted small">(${r.current ? 'researching ' + esc(g.tw.techs.find((t) => t.id === r.current).name) : `${r.done.filter((id) => !/L[234]$/.test(id)).length}/${g.tw.techs.filter((t) => !t.level).length} technologies`}; you have ${total} materials)</span></summary>
-    <h4 class="unit-domain">Technologies</h4>
     <ul class="tech-list">${rows.join('')}</ul>
-    ${levelRows(g, r, canBuild)}
-    <p class="hint">One project at a time; it is finished at the start of next round. Paid from your biggest piles. Tanks: Artillery → Light → Medium → Heavy; Artillery + Motorised → Self-propelled guns. Infantry: Motorised → Mechanised → Aircraft (interceptors and bombers). Militia can become anti-tank or anti-air. Shipyards → Cruisers → Battleships.</p>
+    <p class="hint">Open <b>▸ levels</b> under a unit to research levels 2–4: each level gives ${bits || 'a boost'} to every unit of that type you have — no need to rebuild. One project at a time; it is finished at the start of next round. Paid from your biggest piles.</p>
   </details>`;
 }
 
-/** Unit levels: one row per unit type you can build, with pips for levels 1–4. */
-function levelRows(g, r, canBuild) {
+/** The ▸ levels dropdown for one unit type: levels 1–4, what each gives, and the button for the next. */
+function levelDrop(g, r, type, unlocked, canBuild) {
   const me = g.players[g.you];
-  const ws = g.settings.totalwar || {};
-  const rows = g.tw.units
-    .filter((u) => u.leveled && u.unlocked)
-    .map((u) => {
-      const lv = u.level || 1;
-      const next = g.tw.techs.find((t) => t.level && t.level.type === u.type && t.level.n === lv + 1);
-      const pips = [1, 2, 3, 4].map((n) => `<i class="pip ${n <= lv ? 'on' : ''}"></i>`).join('');
-      let right;
-      if (!next) right = '<span class="tag ok">★ max</span>';
-      else if (r.current === next.id) right = '<span class="tag">🔬 next round</span>';
-      else {
-        const pay = payLargest(me.materials, next.cost);
-        right = `<button class="btn small" data-act="research" data-tech="${next.id}" ${canBuild && !r.current && pay ? '' : 'disabled'} title="Paid from your biggest piles">Level ${lv + 1} (${next.cost})</button>`;
-      }
-      return `<li class="tech ${r.current && next && r.current === next.id ? 'now' : ''}"><div><b>${u.shape} ${esc(u.name)}</b> <span class="pips" title="Level ${lv} of 4">${pips}</span></div>${right}</li>`;
-    });
-  if (!rows.length) return '';
-  const bits = [ws.levelHpPct && `+${ws.levelHpPct}% toughness`, ws.levelAttackPct && `+${ws.levelAttackPct}% damage`, ws.levelSpeedPct && `+${ws.levelSpeedPct}% speed`].filter(Boolean).join(', ');
-  return `<h4 class="unit-domain">Unit levels</h4>
-    <p class="hint">Each level gives ${bits || 'a boost'} to every unit of that type you have — no need to rebuild.</p>
-    <ul class="tech-list">${rows.join('')}</ul>`;
+  const u = unitOf(g, type);
+  const lv = u.level || 1;
+  const pips = [1, 2, 3, 4].map((n) => `<i class="pip ${n <= lv ? 'on' : ''}"></i>`).join('');
+  const rows = [2, 3, 4].map((n) => {
+    const t = g.tw.techs.find((x) => x.level && x.level.type === type && x.level.n === n);
+    if (!t) return '';
+    let right;
+    if (n <= lv) right = '<span class="tag ok">✔</span>';
+    else if (r.current === t.id) right = '<span class="tag">🔬 next round</span>';
+    else if (!unlocked) right = '<span class="muted small">🔒 research the unit first</span>';
+    else if (n > lv + 1) right = `<span class="muted small">after level ${n - 1}</span>`;
+    else {
+      const pay = payLargest(me.materials, t.cost);
+      right = `<button class="btn small" data-act="research" data-tech="${t.id}" ${canBuild && !r.current && pay ? '' : 'disabled'} title="Paid from your biggest piles">Research (${t.cost})</button>`;
+    }
+    return `<li class="${n <= lv ? 'done' : r.current === t.id ? 'now' : ''}"><span>Level ${n}</span>${right}</li>`;
+  });
+  const busy = r.current && g.tw.techs.find((x) => x.id === r.current && x.level && x.level.type === type);
+  return `<details class="lv-drop" ${busy ? 'open' : ''}><summary>${esc(u.name)} levels <span class="pips" title="Level ${lv} of 4">${pips}</span> <small class="muted">${lv >= 4 ? '★ max' : 'level ' + lv}</small></summary>
+    <ul class="lv-list">${rows.join('')}</ul></details>`;
 }
 
 /** Upgrade units on one of your tiles along their line, paying the difference. */

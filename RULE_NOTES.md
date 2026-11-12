@@ -365,3 +365,11 @@ Decided while building (all numbers are lobby settings in the Total War group):
 - **Blockades ⚓:** a coastal tile with enemy ships next to it, and none of its owner's, earns nothing that round (`blockades`; not during the opening truce).
 - **Map zoom:** scroll / pinch to zoom, drag to move around, ＋ / － / ⟲ buttons; big boards open zoomed in on your capital.
 - **Bots** research levels for the units they field most, upgrade artillery to self-propelled guns, and on the oceans board research shipyards early when an enemy is overseas, keep a growing fleet, grab fishing grounds and stretch a chain of ships toward enemy coasts to invade. In a 3-game test they built ~13 ships a game, held most fishing grounds and made a few landings.
+
+## ⚔ Total War: navies that matter (added 12 November 2026)
+- **Crossing the ocean:** put a ship on every sea hex between your coast and the enemy's (launch ships from 🏗️ Build → Recruit onto a sea hex next to your coast, then move them out hex by hex). In the Choose phase the enemy coast at the end of the chain shows up as an attack target; pick one of your coastal tiles as "Attack from" (marked 🚢 lands by sea).
+- **Bombardment 💥:** in Talk & Build, cruisers (1 shot) and battleships (2 shots) can shell an enemy tile right next to their sea hex — tap the ship's hex or the enemy coast → *Bombard*. Each shot has a 50% chance (`navalHitPct`, raised by the ships' level) to destroy one unit there. Once per round per sea hex; not during the opening truce; counts as hostile (breaks pacts, forbidden by treaties that forbid attacking that player).
+- **Convoy interception 🚢:** when troops cross the sea, every enemy cruiser and battleship next to the chain of ships carrying them fires (same shots and chance). Each hit sinks one crossing unit before it lands. Each of the attacker's **destroyers** in the chain screens off one shot, so destroyers are the convoy escorts.
+- **Bots** shell enemy coasts with their gun ships (except cautious bots).
+- **Updates:** pages now reload by themselves when the server is updated (so you never play with old code after a deploy), and browsers always check for new files.
+- **Research screen:** each technology has a ▸ levels dropdown for the units it unlocks (Infantry has its own row at the top).

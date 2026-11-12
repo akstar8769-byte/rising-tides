@@ -219,6 +219,13 @@ function tileActions(store, t) {
     }
     if (g.factories && g.factories.sites.includes(id)) out.push(btn('factory', '🏭 Build a factory here', '', true));
   }
+  // Navy: cruisers and battleships shell the coast next to them (once per round per hex).
+  if (canBuild && g.bombardTargets) {
+    const shell = (from, target) =>
+      `<button class="btn" data-act="bombard" data-from="${from}" data-target="${target}">💥 Bombard ${esc(tileLabel(g, target))}<small>${from === id ? '' : 'from your ships on ' + from + ' · '}each hit destroys a unit there</small></button>`;
+    if (t.kind === 'sea') for (const target of g.bombardTargets[id] || []) out.push(shell(id, target));
+    else for (const [from, list] of Object.entries(g.bombardTargets)) if (list.includes(id)) out.push(shell(from, id));
+  }
   if (g.phase === 'choose' && !d.paused) {
     if (g.war && me.puppetOf == null && (g.attackTargets || []).includes(id)) out.push(btn('attack', '⚔ Attack this tile', esc(targetNote(g, id)), true));
     if (g.factories && g.factories.claimTargets.includes(id)) out.push(btn('claim', '🏴 Claim this factory', '', true));

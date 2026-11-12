@@ -266,6 +266,23 @@ function fleetMoveIdea(g, me, P) {
   return { key: `fleet-${g.round}-${stack.id}-${to.id}`, action: { type: 'moveUnits', from: stack.id, to: to.id, count: 1, troops: { [type]: 1 } } };
 }
 
+/** Shell an enemy coast from our cruisers / battleships: the most units there, from players we'd hit. */
+function bombardIdea(g, me, P) {
+  const opts = Object.entries(g.bombardTargets || {});
+  if (!opts.length || P === PERSONALITIES.cautious) return null;
+  let best = null;
+  for (const [from, list] of opts) {
+    for (const id of list) {
+      const t = g.board.tiles.find((x) => x.id === id);
+      if (!willHit(g, t.controller, P) || g.limits.protectedSeats[t.controller]) continue;
+      const n = unitsOn(t, t.controller);
+      if (!best || n > best.n) best = { from, id, n };
+    }
+  }
+  if (!best || !best.n) return null;
+  return { key: `bombard-${g.round}-${best.from}`, action: { type: 'bombard', from: best.from, target: best.id } };
+}
+
 /**
  * Factories (Base). Cautious bots only build sustainable ones; balanced bots build a dirty
  * one now and then while the Flood is low; warlike bots like cheap dirty factories.
@@ -410,6 +427,8 @@ function buildStep(g, me, P, mem, fresh) {
       if (mv && fresh(mv.key)) return mv;
       const fm = g.tw ? fleetMoveIdea(g, me, P) : null;
       if (fm && fresh(fm.key)) return fm;
+      const bb = g.tw ? bombardIdea(g, me, P) : null;
+      if (bb && fresh(bb.key)) return bb;
     }
     // 5. Overlords give their puppets orders.
     for (const q of me.puppets || []) {

@@ -759,3 +759,16 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 }
 .map-zoom button:hover { background: rgba(74, 52, 35, 0.95); }
 @media (max-width: 760px) { .map-zoom { right: 8px; bottom: 8px; } .map-zoom button { width: 36px; height: 36px; } }
+
+/* Research: levels as a dropdown under each technology */
+.tech-list li.tech { display: block; }
+.tech-main { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lv-drop { margin: 6px 0 0 10px; border-left: 2px solid var(--line); padding-left: 8px; }
+.lv-drop > summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 30px; }
+.lv-drop > summary::-webkit-details-marker { display: none; }
+.lv-drop > summary::before { content: '▸'; color: var(--brass-dark); }
+.lv-drop[open] > summary::before { content: '▾'; }
+.lv-list { list-style: none; margin: 4px 0 2px; padding: 0; display: grid; gap: 4px; }
+.lv-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; border: 1px solid #0001; font-size: 0.88rem; }
+.lv-list li.done { background: #e8f6ec; }
+.lv-list li.now { background: #fff6dc; }

@@ -1094,6 +1094,7 @@ function decorateView(v, s, seat) {
     v.standTiles = mine ? s.board.tiles.filter((t) => canStand(s, seat, t)).map((t) => t.id) : [];
     if (TW(s) && mine) v.seaTiles = s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller === seat || t.controller == null)).map((t) => t.id);
     if (TW(s) && LANES(s)) v.blockaded = s.board.tiles.filter((t) => blockaded(s, t)).map((t) => t.id);
+    if (TW(s) && mine) v.bombardTargets = bombardTargets(s, seat);
   }
 }
 
@@ -1619,6 +1620,7 @@ function nextWave(s) {
       takeTroops(src, e.seat, sent);
     } else sent = takeCheapest(src, e.seat, Math.min(e.count || 0, battles.sum(have)), dom);
     if (src.kind === 'sea') refreshSeas(s);
+    if (T.kind === 'land' && src.kind === 'land' && !areAdjacent(src, T)) interceptConvoy(s, e.seat, src, T, sent);
     if (!battles.sum(sent)) {
       addLog(s, `${A.name}'s attack on ${name} fizzles: no units left on ${tileName(s, src)}.`);
       continue;
@@ -2042,7 +2044,128 @@ function upgradeUnits(s, actor, { tile, from, to, count = 1, materials } = {}) {
   addLog(s, `⬆ ${p.name} upgraded ${count} ${ARS.UNITS[from].name.toLowerCase()} to ${ARS.UNITS[to].name.toLowerCase()} on ${tileName(s, T)}.`);
 }
 
-const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits };
+// ---------------------------------------------------------------- navy: bombardment and convoys
+/** Shots fired by a player's cruisers and battleships on one sea hex. */
+function gunShots(s, t, seat) {
+  const c = troopsAt(t, seat);
+  return (c.cruiser || 0) + 2 * (c.battleship || 0);
+}
+/** Chance that one naval shot hits, raised by the ships' research level. */
+function shotChance(s, t, seat) {
+  const cfg = TWS(s);
+  const c = troopsAt(t, seat);
+  const lv = c.battleship ? ARS.levelOf(s.players[seat], 'battleship') : ARS.levelOf(s.players[seat], 'cruiser');
+  return Math.min(0.95, ((cfg.navalHitPct ?? 50) / 100) * ARS.levelBoost(lv, cfg.levelAttackPct));
+}
+/** Remove one random unit (weighted by numbers) from a troop count; returns its type. */
+function loseOne(c, rand) {
+  const types = battles.TYPES.filter((k) => c[k] > 0);
+  const n = types.reduce((a, k) => a + c[k], 0);
+  if (!n) return null;
+  let r = Math.floor(rand() * n);
+  for (const k of types) {
+    if (r < c[k]) {
+      c[k] -= 1;
+      return k;
+    }
+    r -= c[k];
+  }
+  return null;
+}
+
+/**
+ * Convoy interception (sea-lane boards): troops crossing the sea are shot at by
+ * enemy cruisers and battleships next to the chain of ships carrying them. Each
+ * of the attacker's destroyers in the chain screens off one shot.
+ */
+function interceptConvoy(s, seat, src, T, sent) {
+  if (!LANES(s) || inTruce(s) || TWS(s).convoyIntercept === false) return;
+  const chain = fleetGroups(s, seat).find((g) => touches(g, src) && touches(g, T));
+  if (!chain) return;
+  const rand = seededRand(s);
+  let escorts = [...chain].reduce((a, t) => a + (troopsAt(t, seat).destroyer || 0), 0);
+  const lost = [];
+  const shooters = new Set();
+  for (const sea of s.board.tiles) {
+    if (sea.kind !== 'sea' || sea.controller == null || sea.controller === seat || chain.has(sea)) continue;
+    if (![...chain].some((c) => areAdjacent(c, sea))) continue;
+    const owner = sea.controller;
+    const p = shotChance(s, sea, owner);
+    for (let i = 0; i < gunShots(s, sea, owner); i++) {
+      if (escorts > 0) {
+        escorts--;
+        continue;
+      }
+      shooters.add(owner);
+      if (rand() < p) {
+        const k = loseOne(sent, rand);
+        if (k) lost.push(k);
+      }
+    }
+  }
+  if (!shooters.size) return;
+  const A = s.players[seat];
+  const by = [...shooters].map((x) => s.players[x].name).join(' and ');
+  if (lost.length) {
+    addLog(s, `🚢 ${by}'s warships fire on ${A.name}'s convoy to ${tileName(s, T)}: ${describeTroops(countOf(lost))} sunk on the way.`, { kind: 'battle' });
+    syncUnits(s);
+  } else addLog(s, `🚢 ${by}'s warships fire on ${A.name}'s convoy to ${tileName(s, T)} but miss.`, { kind: 'battle' });
+}
+function countOf(list) {
+  const c = zeroTroops();
+  for (const k of list) c[k] += 1;
+  return c;
+}
+
+/**
+ * { from, target } — cruisers and battleships shell an enemy coastal tile next to
+ * their sea hex, once per round per hex (Talk & Build). Each hit destroys a unit.
+ */
+function bombard(s, actor, { from, target } = {}) {
+  requireBuild(s);
+  if (!TW(s)) fail('Bombardment is part of Total War.');
+  const p = me(s, actor);
+  const S = getAnyTile(s, from);
+  const T = getTile(s, target);
+  if (S.kind !== 'sea' || S.controller !== actor) fail('Pick a sea hex your ships hold.');
+  const shots = gunShots(s, S, actor);
+  if (!shots) fail('Only cruisers and battleships can bombard the coast.');
+  if (!areAdjacent(S, T)) fail('Your ships can only shell a coast right next to them.');
+  if (T.controller == null || T.controller === actor) fail('Pick an enemy-held coast.');
+  if (inTruce(s)) fail(`No bombardment during the opening truce (until the end of round ${TWS(s).truceRounds}).`);
+  if (puppetsOf(s, actor).includes(T.controller) || p.puppetOf === T.controller) fail("You can't shell your own puppet or overlord.");
+  diplomacy.checkMove(s, actor, 'attack', T.controller);
+  if (S.bombardedRound === s.round) fail('Those ships have already fired this round.');
+  S.bombardedRound = s.round;
+  const D = T.controller;
+  diplomacy.onHostile(s, actor, D);
+  const rand = seededRand(s);
+  const chance = shotChance(s, S, actor);
+  const c = troopsAt(T, D);
+  const lost = [];
+  for (let i = 0; i < shots; i++) if (rand() < chance) {
+    const k = loseOne(c, rand);
+    if (k) lost.push(k);
+  }
+  setTroops(T, D, c);
+  syncUnits(s);
+  const name = tileName(s, T);
+  if (lost.length) addLog(s, `💥 ${p.name}'s fleet shells ${name}: ${describeTroops(countOf(lost))} of ${s.players[D].name}'s destroyed.`, { kind: 'battle' });
+  else addLog(s, `💥 ${p.name}'s fleet shells ${name}${battles.sum(c) ? ' but misses' : ' — nobody there'}.`, { kind: 'battle' });
+}
+/** Coastal enemy tiles each of my gun ships could shell now: { seaId: [landIds] }. */
+function bombardTargets(s, seat) {
+  const out = {};
+  if (!TW(s) || inTruce(s)) return out;
+  for (const S of seasHeld(s, seat)) {
+    if (!gunShots(s, S, seat) || S.bombardedRound === s.round) continue;
+    const list = s.board.tiles.filter((t) => t.kind === 'land' && t.controller != null && t.controller !== seat && areAdjacent(S, t) && !puppetsOf(s, seat).includes(t.controller) && !diplomacy.blockedBy(s, seat, 'attack', t.controller)).map((t) => t.id);
+    if (list.length) out[S.id] = list;
+  }
+  return out;
+}
+
+const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard };
 
 
 

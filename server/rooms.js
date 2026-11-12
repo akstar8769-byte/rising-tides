@@ -21,6 +21,9 @@
  */
 'use strict';
 
+/** Identifies this version of the server (Render sets RENDER_GIT_COMMIT; otherwise the start time). */
+const BUILD_ID = process.env.RENDER_GIT_COMMIT || `start-${Date.now()}`;
+
 const crypto = require('crypto');
 const engine = require('../engine');
 const config = require('../config');
@@ -378,6 +381,7 @@ function attachRooms(io) {
   // ------------------------------------------------------------ connections
   io.on('connection', (socket) => {
     socket.emit('meta', {
+      build: BUILD_ID, // changes with every deploy: open pages reload to get the new code
       defaults: config.DEFAULTS,
       labels: config.LABELS,
       limits: config.LIMITS,

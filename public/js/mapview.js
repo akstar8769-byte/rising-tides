@@ -66,7 +66,10 @@ export function installMapControls(store) {
       const svg = svgAt(e);
       if (!svg) return;
       e.preventDefault();
-      zoomAt(store, svg, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0018)), e.clientX, e.clientY);
+      // Mouse wheel and two-finger scroll zoom. A trackpad pinch arrives as a wheel
+      // event with ctrlKey and small steps, so it gets a stronger factor.
+      const k = e.ctrlKey ? 0.012 : e.deltaMode === 1 ? 0.05 : 0.0025;
+      zoomAt(store, svg, Math.exp(-e.deltaY * k), e.clientX, e.clientY);
     },
     { passive: false },
   );

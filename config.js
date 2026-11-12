@@ -132,6 +132,8 @@ const DEFAULTS = {
     boardLayout: 'oceans',       // Total War board: 'oceans' = two continents split by an ocean (sea lanes); 'sea37' = the smaller board with sea bays
     fishingIncome: 1,            // oceans board: each fishing ground your ships hold earns this much a round
     blockades: true,             // oceans board: enemy ships next to your coastal tile (and none of yours) stop its income
+    navalHitPct: 50,             // bombardment and convoy interception: chance each naval shot destroys a unit (cruiser 1 shot, battleship 2)
+    convoyIntercept: true,       // oceans board: enemy cruisers/battleships next to your chain of ships fire on troops crossing (each destroyer in the chain blocks a shot)
     botDifficulty: 'normal',     // normal / hard / brutal: bots get +0 / +botBonusHard / +botBonusBrutal materials every round
     botBonusHard: 3,
     botBonusBrutal: 6,
@@ -436,6 +438,9 @@ LABELS['totalwar.boardLayout'] = 'Board (oceans: two continents split by an ocea
 LABELS['totalwar.fishingIncome'] = 'Oceans board: income from each fishing ground you hold';
 LABELS['totalwar.blockades'] = 'Oceans board: enemy ships off your coast stop that tile income (blockade)';
 LIMITS['totalwar.fishingIncome'] = [0, 10];
+LABELS['totalwar.navalHitPct'] = 'Naval guns: chance each bombardment / interception shot destroys a unit (%)';
+LIMITS['totalwar.navalHitPct'] = [0, 100];
+LABELS['totalwar.convoyIntercept'] = 'Oceans board: enemy warships fire on troops crossing the sea';
 LABELS['totalwar.botDifficulty'] = 'Bot difficulty (hard / brutal: bots get extra materials every round)';
 LABELS['totalwar.botBonusHard'] = 'Hard bots: extra materials per round';
 LABELS['totalwar.botBonusBrutal'] = 'Brutal bots: extra materials per round';

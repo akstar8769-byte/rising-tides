@@ -85,6 +85,12 @@ export function send(event, data = {}) {
 export const act = (action) => send('action', action);
 
 socket.on('meta', (m) => {
+  // The server was updated while this page was open: reload to get the new code
+  // (your seat comes back automatically).
+  if (store.meta && store.meta.build && m.build && m.build !== store.meta.build) {
+    location.reload();
+    return;
+  }
   store.meta = m;
   render();
 });
@@ -316,6 +322,11 @@ const actions = {
     if (!svg) return;
     if (+ds.f === 0) store.ui.mapView = { zoom: 1 };
     else zoomAt(store, svg, +ds.f);
+    render();
+  },
+  bombard: (ds) => {
+    store.ui.tileMenu = null;
+    act({ type: 'bombard', from: ds.from, target: ds.target });
     render();
   },
   closeTileMenu: () => {
