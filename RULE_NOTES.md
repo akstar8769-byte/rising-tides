@@ -330,7 +330,7 @@ Decided while building (all numbers are lobby settings in the Total War group):
 - **Amphibious attacks** (on by default): you can attack a land tile next to a bay your ships hold, from any of your coastal tiles that has troops. Ships themselves never go ashore.
 - **Shore bombardment:** cruisers and battleships in bays next to a land battle add 35% of their attack per second. They hit the enemy troops nearest the flag.
 - **Air battles** happen only when both sides send or hold aircraft at the fought-over tile.
-  - Interceptors do 150% against bombers. Bombers do 30% in a dogfight.
+  - Interceptors do 150% against bombers. Bombers are weak in a dogfight (20% of their attack).
   - Air battles have no flag. They last at most 45 s; then the side with more health left wins, and ties go to the defender.
   - The winner's surviving bombers join the land battle.
   - Interceptors, and the loser's planes, sit the land battle out.
@@ -348,6 +348,7 @@ Decided while building (all numbers are lobby settings in the Total War group):
 ## Artillery: visible fire, helpless up close (11 November 2026)
 - Guns now show their fire on the battlefield. Artillery, ships and anti-air shells fly from the gun to the target and burst on impact, about one visible shell per gun dot each second (damage is still dealt continuously). Shore bombardment comes in from the map edge, and anti-air shows as yellow tracers.
 - Aircraft now look like aircraft. Bombers and interceptors are drawn as plane silhouettes raised above the battlefield, with a shadow on the ground, pointing the way they're flying. Bombers attacking ground troops drop visible bombs (about one per bomber dot each second): each bomb falls from the plane, then a big orange blast with a smoke ring goes off.
+- **Stronger bombers:** attack 6 (was 4). They do 160% against tanks and mechanised infantry (was 120%) and 130% against troops (was 100%), so against ground targets they deal roughly double what they used to. Each bomb also splashes: other enemy ground units within about 1.5 squares of the target take 50% (`bomberSplashPct`), so packed formations suffer. Anti-air (500% against aircraft) is the counter.
 - Artillery caught in close combat does only 15% of its damage (was 40%) and takes 150% damage. Both numbers are lobby settings (`artilleryMeleeAttackPct`, `artilleryMeleeDamageTakenPct`). Keep your guns behind the line.
 - **Artillery range 14 (was 9), and the guns follow the army.** About once a second, artillery you haven't moved yourself moves to just inside its range of the nearest enemy, so it keeps firing as the front advances. Once you move a gun by hand it stays where you put it; picking a formation sends it back to following. Its speed is unchanged, and it's still weak in close combat.
 - **Moving in formation:** when you order several units at once, the whole group shifts together and keeps its shape, with the group's centre landing where you tap. A single unit still goes straight to the spot. The **⬢ Whole army** button selects everything.

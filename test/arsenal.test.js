@@ -374,3 +374,20 @@ test('bombers over ground troops drop bombs the battle screen can animate', () =
   assert.ok(bombs.length >= CFG.dotsPerUnit, 'each bomber dot drops bombs');
   assert.ok(bombs.length <= CFG.dotsPerUnit * 4, 'about one per second, not every tick');
 });
+
+test('bombs splash onto ground units packed next to the target', () => {
+  const T = { id: 'X', biome: 'quarry' };
+  const cfg = { ...CFG, dotsPerUnit: 1 };
+  const run = (splashPct) => {
+    const c = { ...cfg, bomberSplashPct: splashPct };
+    const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { bomber: 1 }, dTroops: { infantry: 3 }, cfg: c, rand: () => 0.5 });
+    const foes = b.dots.filter((d) => d.side === 'D');
+    foes.forEach((d, i) => Object.assign(d, { x: 40 + i * 1.1, y: 20, tx: 40 + i * 1.1, ty: 20 }));
+    const bomber = b.dots.find((d) => d.side === 'A');
+    Object.assign(bomber, { x: 41.1, y: 20, tx: 41.1, ty: 20 });
+    tw.stepBattle(b, 0.5, c);
+    return foes.filter((d) => d.hp < d.max).length;
+  };
+  assert.equal(run(0), 1, 'without splash only the target is hurt');
+  assert.ok(run(50) >= 2, 'with splash its neighbours are hurt too');
+});

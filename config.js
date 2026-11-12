@@ -150,7 +150,8 @@ const DEFAULTS = {
     mediumTank: { cost: 8, upkeep: 2, hp: 30, attack: 3, speed: 4.5, range: 0, vsArmorPct: 120, vsAirPct: 0 },
     heavyTank: { cost: 11, upkeep: 3, hp: 45, attack: 4, speed: 3, range: 0, vsArmorPct: 150, vsAirPct: 0 },
     interceptor: { cost: 6, upkeep: 2, hp: 14, attack: 3, speed: 9, range: 0, vsArmorPct: 0, vsAirPct: 100 },
-    bomber: { cost: 8, upkeep: 2, hp: 16, attack: 4, speed: 7, range: 0, vsArmorPct: 120, vsAirPct: 30 },
+    bomber: { cost: 8, upkeep: 2, hp: 16, attack: 6, speed: 7, range: 0, vsArmorPct: 160, vsAirPct: 20, vsSoftPct: 130 },
+    bomberSplashPct: 50,         // each bomb also hits other enemy ground units next to the target at this % (0 = off)
     destroyer: { cost: 6, upkeep: 2, hp: 20, attack: 2, speed: 6, range: 0, vsArmorPct: 0, vsAirPct: 0 },
     cruiser: { cost: 9, upkeep: 2, hp: 32, attack: 3, speed: 5, range: 6, vsArmorPct: 0, vsAirPct: 0 },
     battleship: { cost: 13, upkeep: 3, hp: 55, attack: 5, speed: 3.5, range: 10, vsArmorPct: 0, vsAirPct: 0 },
@@ -420,6 +421,8 @@ LIMITS['totalwar.botBonusBrutal'] = [0, 30];
 LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
 LABELS['totalwar.artilleryMeleeAttackPct'] = 'Artillery in close combat: damage dealt (%)';
 LABELS['totalwar.artilleryMeleeDamageTakenPct'] = 'Artillery in close combat: damage taken (%)';
+LABELS['totalwar.bomberSplashPct'] = 'Bomber splash: damage to other ground units next to the target (%)';
+LIMITS['totalwar.bomberSplashPct'] = [0, 200];
 LABELS['totalwar.bombardPct'] = 'Shore bombardment strength (% of ship attack)';
 LABELS['totalwar.amphibious'] = 'Amphibious attacks across sea bays you hold';
 LIMITS['totalwar.airBattleSeconds'] = [10, 300];
