@@ -162,8 +162,18 @@ function dotsLayer(store, b, now) {
     const stroke = selected ? '#fff' : d.cut ? '#d7263d' : '#111';
     const sw = selected ? 0.35 : d.cut ? 0.3 : 0.12;
     const dash = d.cut ? ' stroke-dasharray=".4 .25"' : '';
-    const shape = dotShape(d.type, x, y);
-    parts.push(`${shape} fill="${st.color}" fill-opacity="${op}" stroke="${stroke}" stroke-width="${sw}"${dash}/>`);
+    if (d.type === 'bomber' || d.type === 'interceptor') {
+      // Aircraft fly above the battle: a shadow on the ground, the plane lifted and
+      // turned towards where it is flying (otherwise towards the enemy's side).
+      const moving = Math.hypot(d.tx - x, d.ty - y) > 0.4;
+      const ang = moving ? (Math.atan2(d.ty - y, d.tx - x) * 180) / Math.PI : d.side === 'A' ? 0 : 180;
+      const big = d.type === 'bomber' ? 1.5 : 1.15;
+      parts.push(`<ellipse cx="${f2(x)}" cy="${f2(y + 0.2)}" rx="${f2(big * 0.8)}" ry="${f2(big * 0.35)}" fill="#000" fill-opacity=".22"/>`);
+      parts.push(`<g transform="translate(${f2(x)} ${f2(y - AIR_LIFT)}) rotate(${ang.toFixed(0)}) scale(${big})">${dotShape(d.type, 0, 0)} fill="${st.color}" fill-opacity="${op}" stroke="${stroke}" stroke-width="${f2(sw / big)}"${dash}/></g>`);
+    } else {
+      const shape = dotShape(d.type, x, y);
+      parts.push(`${shape} fill="${st.color}" fill-opacity="${op}" stroke="${stroke}" stroke-width="${sw}"${dash}/>`);
+    }
     const mark = dotMark(d.type, x, y);
     if (mark) parts.push(mark);
     if (d.side === mySide) parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.6" fill="transparent" data-dot="${d.id}"/>`);
@@ -183,7 +193,7 @@ export function addShells(snaps) {
   for (const s of snaps) {
     (s.shots || []).forEach(([x1, y1, x2, y2, k], i) => {
       const len = Math.hypot(x2 - x1, y2 - y1);
-      const flight = k === 'antiair' ? 160 : Math.min(700, 220 + len * 30);
+      const flight = k === 'antiair' ? 160 : k === 'bomb' ? 520 : Math.min(700, 220 + len * 30);
       // Spread the shots of one update over its 200 ms so volleys ripple.
       shells.push({ battle: s.id, x1, y1, x2, y2, k, t0: now + ((i * 37) % SNAP_MS), flight });
     });
@@ -192,6 +202,23 @@ export function addShells(snaps) {
 }
 
 const BURST_MS = 380;
+const AIR_LIFT = 1.3; // aircraft are drawn this far above their spot on the ground
+
+/** A bomb: falls from the plane to the target, shrinking as it drops, then a big double blast. */
+function bombFrame(s, age) {
+  if (age < s.flight) {
+    const p = age / s.flight;
+    const e = p * p; // speeds up as it falls
+    const x = s.x1 + (s.x2 - s.x1) * e;
+    const y = s.y1 - AIR_LIFT + (s.y2 - (s.y1 - AIR_LIFT)) * e;
+    const r = 0.45 - 0.2 * p;
+    return `<ellipse cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" rx="${(r * 0.7).toFixed(2)}" ry="${r.toFixed(2)}" fill="#1b1b1b"/>`;
+  }
+  const p = (age - s.flight) / BURST_MS;
+  const r1 = 1 + p * 3.4;
+  const r2 = 0.5 + p * 2;
+  return `<circle cx="${s.x2}" cy="${s.y2}" r="${r1.toFixed(2)}" fill="#5a4636" fill-opacity="${(0.45 * (1 - p)).toFixed(2)}"/><circle cx="${s.x2}" cy="${s.y2}" r="${r2.toFixed(2)}" fill="#ffb02e" fill-opacity="${(0.95 * (1 - p)).toFixed(2)}" stroke="#d6331f" stroke-opacity="${(1 - p).toFixed(2)}" stroke-width=".25"/>`;
+}
 function shellsLayer(battleId, now) {
   const out = [];
   for (let i = shells.length - 1; i >= 0; i--) {
@@ -202,6 +229,10 @@ function shellsLayer(battleId, now) {
       continue;
     }
     if (s.battle !== battleId || age < 0) continue;
+    if (s.k === 'bomb') {
+      out.push(bombFrame(s, age));
+      continue;
+    }
     if (age < s.flight) {
       // In flight: a dark shell with a short smoky trail (anti-air: a quick yellow tracer).
       const p = age / s.flight;
@@ -264,7 +295,7 @@ function dotShape(type, x, y) {
     case 'interceptor':
       return poly([[x + 0.9, y], [x - 0.7, y - 0.6], [x - 0.35, y], [x - 0.7, y + 0.6]]);
     case 'bomber':
-      return poly([[x + 0.8, y], [x - 0.2, y - 1], [x - 0.8, y - 1], [x - 0.5, y], [x - 0.8, y + 1], [x - 0.2, y + 1]]);
+      return poly([[x + 1, y], [x + 0.7, y - 0.15], [x + 0.2, y - 0.15], [x - 0.1, y - 1.1], [x - 0.35, y - 1.1], [x - 0.25, y - 0.15], [x - 0.7, y - 0.15], [x - 0.9, y - 0.5], [x - 1, y - 0.5], [x - 0.95, y], [x - 1, y + 0.5], [x - 0.9, y + 0.5], [x - 0.7, y + 0.15], [x - 0.25, y + 0.15], [x - 0.35, y + 1.1], [x - 0.1, y + 1.1], [x + 0.2, y + 0.15], [x + 0.7, y + 0.15]]);
     case 'destroyer':
     case 'cruiser':
     case 'battleship': {

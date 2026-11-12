@@ -362,3 +362,15 @@ test('anti-tank and anti-air are specialists: deadly against their target, weak 
   assert.ok(duel({ antitank: 2 }, { mediumTank: 1 }) > 0, 'anti-tank beats a tank');
   assert.ok(duel({ antitank: 2 }, { infantry: 2 }) < 0, 'but loses to infantry');
 });
+
+test('bombers over ground troops drop bombs the battle screen can animate', () => {
+  const T = { id: 'X', biome: 'quarry' };
+  const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { bomber: 1 }, dTroops: { infantry: 1 }, cfg: CFG, rand: () => 0.5 });
+  const inf = b.dots.find((d) => d.side === 'D');
+  for (const d of b.dots) if (d.side === 'A') Object.assign(d, { x: inf.x, y: inf.y, tx: inf.x, ty: inf.y });
+  for (let i = 0; i < 12; i++) tw.stepBattle(b, 0.25, CFG);
+  const snap = tw.snapshot(b);
+  const bombs = snap.shots.filter((s) => s[4] === 'bomb');
+  assert.ok(bombs.length >= CFG.dotsPerUnit, 'each bomber dot drops bombs');
+  assert.ok(bombs.length <= CFG.dotsPerUnit * 4, 'about one per second, not every tick');
+});

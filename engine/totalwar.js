@@ -671,6 +671,8 @@ function stepBattle(b, dt, cfg) {
       const target = useful.reduce((a, f) => (score(f) > score(a) ? f : a));
       // Artillery is almost helpless at close quarters.
       hit(d, target, d.type === 'artillery' ? (cfg.artilleryMeleeAttackPct ?? 15) / 100 : 1);
+      // Bombers over ground troops: show a bomb run (about one bomb per dot each second).
+      if (d.type === 'bomber' && !isAir(target)) shoot(b, d, target, 'bomb');
       continue;
     }
     let range = cfg[d.type].range || 0;
