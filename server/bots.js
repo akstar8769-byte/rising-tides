@@ -250,7 +250,8 @@ function oceanShipIdea(g, me, P) {
 function fleetMoveIdea(g, me, P) {
   if (!g.board.seaLanes) return null;
   const fleet = ships(g);
-  const stack = fleet.filter((t) => unitsOn(t, g.you) >= 2).sort((a, b) => unitsOn(b, g.you) - unitsOn(a, g.you))[0];
+  // Ships next to our coast are our transports: only spare ones (3+ in a hex) go off fishing or scouting.
+  const stack = fleet.filter((t) => unitsOn(t, g.you) >= 3).sort((a, b) => unitsOn(b, g.you) - unitsOn(a, g.you))[0];
   if (!stack) return null;
   const free = g.board.tiles.filter((t) => t.kind === 'sea' && t.controller == null && fleet.some((f) => adjacent(f, t)));
   if (!free.length) return null;
@@ -415,7 +416,8 @@ function buildStep(g, me, P, mem, fresh) {
     }
     const unit = g.tw ? pickUnitType(g, me, P, mem.roll) : 'militia';
     const unitCost = !unit ? Infinity : g.tw ? g.tw.units.find((u) => u.type === unit).cost : w.unitCost;
-    if (unit && me.units < target && wallsOk && total(me.materials) - unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
+    const hasLand = !g.stationed || g.board.tiles.some((t) => t.kind === 'land' && t.controller === g.you);
+    if (unit && hasLand && me.units < target && wallsOk && total(me.materials) - unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
       const action = { type: 'recruit', count: 1, materials: payFromLargest(me, unitCost) };
       if (g.tw) action.unit = unit;
       if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land') || me.homeTile;
@@ -591,9 +593,10 @@ function pickTarget(g, me, P) {
     if (g.stationed) {
       const srcs = g.attackSources[id] || [];
       if (!srcs.length) continue;
-      const s = srcs.reduce((a, x) => (x.units > a.units ? x : a));
+      const s = srcs.reduce((a, x) => (Math.min(x.units, x.capacity || Infinity) > Math.min(a.units, a.capacity || Infinity) ? x : a));
       from = s.tile;
-      sent = s.units;
+      sent = Math.min(s.units, s.capacity || Infinity);
+      var cap = s.capacity || null;
       defenders = Object.values(t.units || {}).reduce((a, n) => a + n, 0);
     } else {
       sent = me.units + (me.puppets || []).reduce((a, q) => a + g.players[q].units, 0);
@@ -611,6 +614,16 @@ function pickTarget(g, me, P) {
     if (score > bestScore) {
       bestScore = score;
       const troops = g.tw && from ? { ...((g.board.tiles.find((x) => x.id === from).troops || {})[g.you] || {}) } : null;
+      // Crossing by sea: only as many as the ships carry (strongest first).
+      if (troops && cap) {
+        let room = cap;
+        const order = Object.keys(troops).sort((a, b) => ((g.tw.units.find((u) => u.type === b) || {}).cost || 0) - ((g.tw.units.find((u) => u.type === a) || {}).cost || 0));
+        for (const k of order) {
+          const n = Math.min(troops[k], room);
+          troops[k] = n;
+          room -= n;
+        }
+      }
       bestIdea = { key: `attack-${id}`, action: { type: 'choose', action: 'attack', target: id, ...(from ? { from, count: sent } : {}), ...(troops && Object.keys(troops).length ? { troops } : {}) } };
     }
   }

@@ -20,6 +20,8 @@ function newGame(opts = {}) {
   if (!opts.truce) settings.totalwar.truceRounds = 0;
   // Older Total War tests use the 37-hex sea board's tile names; ocean tests pass { oceans: true }.
   if (!opts.oceans) settings.totalwar.boardLayout = 'sea37';
+  // Older Empire tests check provinces going back to the puppet; the new rule passes { takeAll: true }.
+  if (!opts.takeAll) settings.empire.capitalTakesAll = false;
   if (opts.settings) opts.settings(settings);
   const biomes = opts.biomes || BIOMES4.slice(0, n);
   return engine.createGame({

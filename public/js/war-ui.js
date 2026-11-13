@@ -277,7 +277,7 @@ function sourcePicker(store, sources) {
   const html = `<h3>Attack from</h3><div class="target-list">${sources
     .map(
       (x) =>
-        `<button class="target ${c.from === x.tile ? 'selected' : ''}" data-act="set" data-path="choice.from" data-value="${x.tile}" aria-pressed="${c.from === x.tile}"><span>${esc(tileLabel(g, x.tile))}</span><small>⚔ ${x.units} there${x.amphibious ? ' · 🚢 lands by sea' : ''}</small></button>`,
+        `<button class="target ${c.from === x.tile ? 'selected' : ''}" data-act="set" data-path="choice.from" data-value="${x.tile}" aria-pressed="${c.from === x.tile}"><span>${esc(tileLabel(g, x.tile))}</span><small>⚔ ${x.units} there${x.amphibious ? ` · 🚢 by sea${x.capacity ? ` — your ships carry ${x.capacity}` : ''}` : ''}</small></button>`,
     )
     .join('')}</div>
     ${g.tw ? `<h3>Send</h3>${troopSteppers('choice.troops', c.troops, sendable(g, c.from, c.target))}` : ''}

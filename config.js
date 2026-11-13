@@ -133,6 +133,9 @@ const DEFAULTS = {
     fishingIncome: 1,            // oceans board: each fishing ground your ships hold earns this much a round
     blockades: true,             // oceans board: enemy ships next to your coastal tile (and none of yours) stop its income
     navalHitPct: 50,             // bombardment and convoy interception: chance each naval shot destroys a unit (cruiser 1 shot, battleship 2)
+    capitalTakesAll: true,       // when a player's own capital falls, the rest of their land surrenders to the conqueror
+    transportPerShip: 3,         // oceans/random boards: troops each of your ships next to a coast can carry across the sea
+    transportRange: 6,           // ...up to this many sea hexes (counting the hex the ships are on), not through enemy ships
     convoyIntercept: true,       // oceans board: enemy cruisers/battleships next to your chain of ships fire on troops crossing (each destroyer in the chain blocks a shot)
     botDifficulty: 'normal',     // normal / hard / brutal: bots get +0 / +botBonusHard / +botBonusBrutal materials every round
     botBonusHard: 3,
@@ -211,6 +214,7 @@ const DEFAULTS = {
     captureStockDivisor: 2,      // capturing a capital takes 1/this of the stockpile, rounded DOWN
     revoltLoot: 3,
     productionAccess: true,      // PDF W8.2 "production access" on/off (Q21)
+    capitalTakesAll: true,       // when a capital falls, the rest of that player's land falls with it (to the new overlord); the puppet gets it back if freed
   },
 };
 
@@ -440,6 +444,12 @@ LABELS['totalwar.blockades'] = 'Oceans board: enemy ships off your coast stop th
 LIMITS['totalwar.fishingIncome'] = [0, 10];
 LABELS['totalwar.navalHitPct'] = 'Naval guns: chance each bombardment / interception shot destroys a unit (%)';
 LIMITS['totalwar.navalHitPct'] = [0, 100];
+LABELS['empire.capitalTakesAll'] = 'When a capital falls, the rest of that land falls too (back to the puppet if freed)';
+LABELS['totalwar.capitalTakesAll'] = "When a player's capital falls, all their land surrenders";
+LABELS['totalwar.transportPerShip'] = 'Transport: troops each ship carries across the sea';
+LABELS['totalwar.transportRange'] = 'Transport: how far ships carry troops (sea hexes)';
+LIMITS['totalwar.transportPerShip'] = [1, 20];
+LIMITS['totalwar.transportRange'] = [1, 20];
 LABELS['totalwar.convoyIntercept'] = 'Oceans board: enemy warships fire on troops crossing the sea';
 LABELS['totalwar.botDifficulty'] = 'Bot difficulty (hard / brutal: bots get extra materials every round)';
 LABELS['totalwar.botBonusHard'] = 'Hard bots: extra materials per round';

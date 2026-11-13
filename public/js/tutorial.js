@@ -195,7 +195,7 @@ function totalWarSteps(g) {
     },
     sea && {
       title: 'The navy',
-      text: 'Ships sail hex by hex. Troops cross the sea along an <b>unbroken chain of your ships</b> from your coast to theirs. Cruisers and battleships can 💥 <b>bombard</b> coasts next to them and fire on enemy convoys; destroyers escort yours. Enemy ships off your coast ⚓ blockade it (no income).',
+      text: 'Ships sail hex by hex. To cross the sea, put ships on a sea hex <b>next to your coast</b>: each one carries 3 troops straight to an enemy coast up to 6 sea hexes away (enemy ships in the way block the route). Cruisers and battleships can 💥 <b>bombard</b> coasts next to them and fire on enemy convoys; destroyers escort yours. Enemy ships off your coast ⚓ blockade it (no income).',
     },
     c.trade,
     c.endTurn,

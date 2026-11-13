@@ -482,21 +482,25 @@ test('sea lanes: fleets attack only the sea next to them and sail through free s
   assert.throws(() => act(s, 0, 'moveUnits', { from: 'G3', to: 'D3', troops: { destroyer: 1 } }), /No sea route/);
 });
 
-test('convoys: troops cross the sea only along an unbroken chain of your ships', () => {
-  let s = put(ocean(), 'C3', 0, { infantry: 3 });
-  for (const id of ['D3', 'E3', 'F3', 'G3', 'H3']) s = put(s, id, 0, { destroyer: 1 });
+test('transport ships: ships off your coast carry troops straight across, 3 per ship, within range', () => {
+  let s = put(ocean(), 'C3', 0, { infantry: 6 });
+  s = put(s, 'I3', 1, { infantry: 1 });
   let v = views(s, 0);
-  assert.ok(v.attackTargets.includes('I3'), 'the far coast is in reach');
-  assert.ok((v.attackSources.I3 || []).some((x) => x.tile === 'C3' && x.amphibious));
-  // Sink one ship in the middle: the chain is broken.
-  s = edit(s, (c) => {
-    const t = tile(c, 'F3');
-    t.units = {};
-    t.troops = {};
-    t.controller = null;
-  });
+  assert.ok(!v.attackTargets.includes('I3'), 'no ships, no crossing');
+  s = put(s, 'D3', 0, { destroyer: 1 }); // one ship next to C3: carries 3
   v = views(s, 0);
-  assert.ok(!(v.attackSources.I3 || []).some((x) => x.tile === 'C3'));
+  assert.ok(v.attackTargets.includes('I3'), 'the far coast is in reach');
+  const src = (v.attackSources.I3 || []).find((x) => x.tile === 'C3');
+  assert.ok(src && src.amphibious);
+  assert.equal(src.capacity, CFG.transportPerShip);
+  s = allReady(s);
+  assert.throws(() => act(s, 0, 'choose', { action: 'attack', target: 'I3', from: 'C3', count: 4, troops: { infantry: 4 } }), /can carry 3/);
+  s = act(s, 0, 'choose', { action: 'attack', target: 'I3', from: 'C3', count: 3, troops: { infantry: 3 } });
+  // Out of range: a short range means the ships can't reach the far coast.
+  let r = put(ocean(), 'C3', 0, { infantry: 3 });
+  r = put(r, 'D3', 0, { destroyer: 1 });
+  r = edit(r, (c) => (c.settings.totalwar.transportRange = 2));
+  assert.ok(!views(r, 0).attackTargets.includes('I3'));
 });
 
 test('fishing grounds pay their holder; enemy ships off a coast blockade it', () => {
@@ -535,21 +539,22 @@ test('bombardment: cruisers and battleships shell a coast next to them, once a r
   assert.throws(() => act(d, 0, 'bombard', { from: 'D3', target: 'C4' }), /Only cruisers and battleships/);
 });
 
-test('convoy interception: enemy warships beside the chain sink crossing troops; destroyers escort', () => {
+test('convoy interception: enemy warships beside the route sink crossing troops; destroyers escort', () => {
   const setup = (escort) => {
     let s = put(ocean(), 'C3', 0, { infantry: 4 });
     s = put(s, 'I3', 1, { infantry: 1 });
-    for (const id of ['D3', 'E3', 'F3', 'G3', 'H3']) s = put(s, id, 0, escort && id === 'E3' ? { destroyer: 2 } : { cruiser: 1 });
-    s = put(s, 'G4', 1, { battleship: 1 }); // next to the chain
+    s = put(s, 'D3', 0, escort ? { cruiser: 1, destroyer: 2 } : { cruiser: 2 }); // capacity 6 either way… or 9
+    s = put(s, 'G4', 1, { battleship: 1 }); // right next to H3, the only sea hex touching I3
     return edit(s, (c) => (c.settings.totalwar.navalHitPct = 100));
   };
-  let s = setup(false);
-  s = act(allReady(s), 0, 'choose', { action: 'attack', target: 'I3', from: 'C3', count: 4, troops: { infantry: 4 } });
-  for (const p of s.players) if (p.seat !== 0 && !p.choice) s = act(s, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
+  const run = (s) => {
+    s = act(allReady(s), 0, 'choose', { action: 'attack', target: 'I3', from: 'C3', count: 4, troops: { infantry: 4 } });
+    for (const p of s.players) if (p.seat !== 0 && !p.choice) s = act(s, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
+    return s;
+  };
+  const s = run(setup(false));
   assert.ok(s.log.some((e) => /fire on Ana's convoy/.test(e.text) && /2 infantry sunk/.test(e.text)), 'battleship: 2 shots, both hit');
-  let e = setup(true);
-  e = act(allReady(e), 0, 'choose', { action: 'attack', target: 'I3', from: 'C3', count: 4, troops: { infantry: 4 } });
-  for (const p of e.players) if (p.seat !== 0 && !p.choice) e = act(e, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
+  const e = run(setup(true));
   assert.ok(!e.log.some((x) => /convoy/.test(x.text)), 'two destroyers screen both shots');
 });
 
@@ -621,4 +626,22 @@ test('reinforcements: land units move to land you hold overseas along your chain
   t = act(t, 0, 'moveUnits', { from: 'C3', to: 'I3', troops: { infantry: 3 } });
   assert.equal(tile(t, 'I3').troops[0].infantry, 2, '1 + 3 shipped − 2 sunk');
   assert.ok(t.log.some((e) => /reinforcements to/.test(e.text)));
+});
+
+test('total war: when a capital falls, the rest of that player\'s land surrenders', () => {
+  let s = game();
+  assert.equal(CFG.capitalTakesAll, true);
+  s = edit(s, (c) => (tile(c, 'M1').controller = 0)); // one province already taken: the capital is open
+  s = put(s, 'M1', 0, { infantry: 3 });
+  s = put(s, 'E1', 1, { infantry: 2 }); // their other province, still defended
+  s = put(s, 'C1', 1, {}); // capital left empty
+  s = edit(s, (c) => (tile(c, 'C1').controller = 1));
+  s = allReady(s);
+  s = act(s, 0, 'choose', { action: 'attack', target: 'C1', from: 'M1', count: 3, troops: { infantry: 3 } });
+  for (const p of s.players) if (!p.choice) s = act(s, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
+  s = runBattle(s);
+  assert.equal(tile(s, 'C1').controller, 0);
+  assert.equal(tile(s, 'E1').controller, 0, 'the other province surrenders too');
+  assert.equal((tile(s, 'E1').troops[1] || {}).infantry || 0, 0);
+  assert.ok(s.log.some((e) => /whole territory surrenders/.test(e.text)));
 });

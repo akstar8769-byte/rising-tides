@@ -226,3 +226,33 @@ test('empire: a revolt is launched from one of the puppet\'s own tiles', () => {
   s = act(s, 1, 'choose', { action: 'revolt', from: 'C1', count: 1 });
   assert.equal(s.players[1].choice.from, 'C1');
 });
+
+// ---------------------------------------------------------------- capital takes all (new default)
+test('empire (default): when a capital falls, the rest of its land falls too; freedom gives it back', () => {
+  let s = newGame({ n: 4, mode: 'empire', biomes: BIOMES, takeAll: true });
+  s = structuredClone(s);
+  for (const t of s.board.tiles) if (t.kind === 'land') t.biome = t.owner != null ? s.players[t.owner].biome : 'quarry';
+  assert.equal(s.settings.empire.capitalTakesAll, true);
+  s = edit(s, (c) => {
+    tile(c, 'I1').controller = 0;
+    tile(c, 'E1').controller = 2; // a third party holds the other province
+    tile(c, 'I2').controller = 1; // seat 1 also holds an open tile, with troops on it
+  });
+  s = place(s, { 0: { E0: 3, I1: 1 }, 1: { C1: 1, I2: 2 }, 2: { E1: 1, C3: 1 } });
+  s = forceDice(allReady(s), [6, 6, 6, 1, 1]);
+  s = chooseAll(s, { 0: attack('C1', 'E0', 3) });
+  if (s.phase === 'loot') s = act(s, 'system', 'lootTimeout');
+  assert.equal(s.players[1].puppetOf, 0);
+  for (const id of ['I1', 'E1', 'I2']) assert.equal(tile(s, id).controller, 0, id + ' falls to the overlord');
+  assert.equal(at(s, 'I2', 1), 0, "the puppet's troops there lay down their arms");
+  assert.equal(at(s, 'E1', 2), 0, 'the third party goes home');
+  assert.equal(at(s, 'C3', 2), 2);
+  assert.equal(tile(s, 'C1').controller, 1, 'the puppet keeps its capital');
+  assert.ok(s.log.some((e) => /falls with it/.test(e.text)));
+  // Freed: its own provinces come back (the open tile stays with whoever holds it).
+  s = act(s, 0, 'planRelease', { puppet: 1 });
+  s = allReady(s);
+  assert.equal(s.players[1].puppetOf, null);
+  assert.equal(tile(s, 'I1').controller, 1);
+  assert.equal(tile(s, 'E1').controller, 1);
+});

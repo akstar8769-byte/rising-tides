@@ -87,13 +87,63 @@ function fleetGroups(s, seat) {
 const touches = (group, t) => [...group].some((sea) => areAdjacent(sea, t));
 
 /**
- * Sea hexes your troops can land from. Sea-lane boards: only fleets whose chain
- * of ships reaches one of your own coasts. Other boards: every bay you hold.
+ * TRANSPORT SHIPS (sea-lane boards). Your ships on sea hexes next to one of your
+ * coastal tiles can carry the troops there across the sea in one go: each ship
+ * carries transportPerShip units, up to transportRange sea hexes away (counting
+ * the hex the ships are on), through sea that is empty or yours. Enemy ships in
+ * the way block the route.
+ * Returns { ships, capacity, dist: Map(seaTile -> hexes), prev } or null.
+ */
+function transportFrom(s, seat, X) {
+  if (!LANES(s) || !X || X.kind !== 'land') return null;
+  const cfg = TWS(s);
+  const ships = s.board.tiles.filter((t) => t.kind === 'sea' && t.controller === seat && unitsAt(t, seat) > 0 && areAdjacent(t, X));
+  if (!ships.length) return null;
+  const capacity = ships.reduce((a, t) => a + unitsAt(t, seat), 0) * (cfg.transportPerShip ?? 3);
+  const range = cfg.transportRange ?? 6;
+  const dist = new Map();
+  const prev = new Map();
+  const queue = [];
+  for (const t of ships) {
+    dist.set(t, 1);
+    queue.push(t);
+  }
+  while (queue.length) {
+    const t = queue.shift();
+    const d = dist.get(t);
+    if (d >= range) continue;
+    for (const n of s.board.tiles) {
+      if (n.kind !== 'sea' || dist.has(n) || !areAdjacent(t, n) || (n.controller != null && n.controller !== seat)) continue;
+      dist.set(n, d + 1);
+      prev.set(n, t);
+      queue.push(n);
+    }
+  }
+  return { ships, capacity, dist, prev };
+}
+/** Can this transport land troops on coast T? */
+const reaches = (tr, T) => !!tr && [...tr.dist.keys()].some((sea) => areAdjacent(sea, T));
+/** The shortest sea route of a transport to coast T (list of sea hexes). */
+function routeTo(tr, T) {
+  let best = null;
+  for (const [sea, d] of tr.dist) if (areAdjacent(sea, T) && (!best || d < tr.dist.get(best))) best = sea;
+  const path = [];
+  for (let x = best; x; x = tr.prev.get(x)) path.push(x);
+  return path;
+}
+
+/**
+ * Sea hexes your troops can land from. Sea-lane boards: every sea hex your
+ * transports can reach. Other boards: every bay you hold.
  */
 function landingSeas(s, seat) {
   if (!LANES(s)) return seasHeld(s, seat);
-  const mine = controlled(s, seat);
-  return fleetGroups(s, seat).filter((g) => mine.some((m) => touches(g, m))).flatMap((g) => [...g]);
+  const out = new Set();
+  for (const X of controlled(s, seat)) {
+    const tr = transportFrom(s, seat, X);
+    if (tr) for (const sea of tr.dist.keys()) out.add(sea);
+  }
+  return [...out];
 }
 
 /** Enemy ships off this coastal tile, and none of the holder's own: it earns nothing. */
@@ -417,6 +467,9 @@ function payLargest(p, n) {
 
 function freePuppet(s, seat, text) {
   const q = s.players[seat];
+  const was = q.puppetOf;
+  // Its own provinces that fell with the capital come back with its freedom.
+  if (was != null) for (const t of s.board.tiles) if (t.kind === 'land' && t.owner === seat && t.controller === was) t.controller = seat;
   q.puppetOf = null;
   q.puppetSince = null;
   q.command = null;
@@ -636,6 +689,8 @@ function choose(s, actor, { action, mix, target, aid, from, count, troops } = {}
         if (tr) {
           count = battles.sum(tr);
           ch.troops = tr;
+          const srcInfo = attackSources(s, actor, target).find((x) => x.tile === from);
+          if (srcInfo && srcInfo.capacity && count > srcInfo.capacity) fail(`Your ships off ${from} can carry ${srcInfo.capacity} troops (${TWS(s).transportPerShip ?? 3} per ship). Send fewer or bring more ships.`);
         }
       }
       checkSend(src, actor, count);
@@ -837,19 +892,31 @@ function capture(s, overlord, victim) {
   V.puppetSince = s.seq;
   V.command = null;
   V.plans = { withdraw: V.plans.withdraw, release: [] };
-  for (const t of s.board.tiles) if (t.owner === victim && t.role === 'province') t.controller = victim;
+  const takeAll = E(s).capitalTakesAll !== false;
+  const cap = getTile(s, V.homeTile);
+  // The rest of the territory: with capitalTakesAll it falls with the capital (to the
+  // new overlord, empty); otherwise the provinces go back to the puppet as before.
+  const rest = s.board.tiles.filter((t) => t.kind === 'land' && t !== cap && ((t.owner === victim && t.role === 'province') || t.controller === victim));
   if (ST(s)) {
-    // Units on the fallen capital are destroyed; occupiers of its provinces go home.
-    const cap = getTile(s, V.homeTile);
+    // Units on the fallen capital are destroyed.
     for (const [k, n] of Object.entries(cap.units || {})) s.players[k].stats.unitsLost += n;
     cap.units = {};
     cap.troops = {};
-    for (const t of s.board.tiles) if (t.owner === victim && t.role === 'province') clearTile(s, t, 'home');
-  }
+    for (const t of rest) {
+      if (takeAll) {
+        // The victim's troops there surrender; anyone else's go home.
+        const lost = unitsAt(t, victim);
+        V.stats.unitsLost += lost;
+        setTroops(t, victim, zeroTroops());
+        t.controller = overlord;
+      } else if (t.owner === victim) t.controller = victim;
+      clearTile(s, t, 'home');
+    }
+  } else for (const t of rest) t.controller = takeAll ? overlord : t.owner === victim ? victim : t.controller;
   O.stats.captures += 1;
   addLog(
     s,
-    `${V.name}'s capital falls! ${V.name} becomes ${O.name}'s PUPPET${old != null ? ` (no longer ${s.players[old].name}'s)` : ''}. ${V.name}'s provinces return to them.`,
+    `${V.name}'s capital falls! ${V.name} becomes ${O.name}'s PUPPET${old != null ? ` (no longer ${s.players[old].name}'s)` : ''}. ${takeAll ? `The rest of ${V.name}'s land falls with it — ${O.name} now holds ${rest.length ? rest.map((t) => t.id).join(', ') : 'it'}.` : `${V.name}'s provinces return to them.`}`,
     { kind: 'bad' },
   );
 }
@@ -1255,9 +1322,13 @@ function attackSources(s, seat, targetId) {
   const near = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && areAdjacent(t, T));
   let amph = [];
   if (TW(s) && TWS(s).amphibious && LANES(s)) {
-    // Troops board on a coast your fleet touches and land where the same chain of ships reaches.
-    const groups = fleetGroups(s, seat).filter((g) => touches(g, T));
-    amph = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && !near.includes(t) && groups.some((g) => touches(g, t)));
+    // Troops board your ships off one of your coasts and sail to the target's coast.
+    amph = s.board.tiles
+      .filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && !near.includes(t))
+      .map((t) => ({ t, tr: transportFrom(s, seat, t) }))
+      .filter((x) => reaches(x.tr, T))
+      .map((x) => ({ tile: x.t, capacity: x.tr.capacity }));
+    return [...near.map((t) => ({ tile: t.id, units: unitsAt(t, seat) })), ...amph.map((x) => ({ tile: x.tile.id, units: unitsAt(x.tile, seat), amphibious: true, capacity: x.capacity }))];
   } else if (TW(s) && TWS(s).amphibious && seasHeld(s, seat).some((sea) => areAdjacent(sea, T))) {
     amph = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && isCoastal(s, t) && !near.includes(t));
   }
@@ -1340,7 +1411,11 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
     route = landRoute(s, actor, A, B, true);
     bySea = !!route;
   }
-  if (!route) fail(TW(s) ? 'No route: units travel through your own tiles, or across the sea along a chain of your ships.' : 'No route: units can only travel through your own tiles.');
+  if (!route) fail(TW(s) ? (LANES(s) ? `No route: units travel through your own tiles, or by sea on your ships next to the coast they leave from (up to ${TWS(s).transportRange ?? 6} sea hexes, not through enemy ships).` : 'No route: units travel through your own tiles, or across a sea bay you hold.') : 'No route: units can only travel through your own tiles.');
+  if (bySea && LANES(s)) {
+    const tr = transportFrom(s, actor, A);
+    if (count > tr.capacity) fail(`Your ships off ${A.id} can carry ${tr.capacity} troops (${TWS(s).transportPerShip ?? 3} per ship). Move fewer or bring more ships.`);
+  }
   const moving = exact ? takeTroops(A, actor, exact) : takeCheapest(A, actor, count);
   if (bySea) interceptConvoy(s, actor, A, B, moving, 'reinforcements');
   addTroops(B, actor, moving);
@@ -1355,6 +1430,7 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
  * hexes connect; other boards: every bay you hold is joined by the open ocean.
  */
 function landRoute(s, actor, A, B, viaSea) {
+  if (viaSea && LANES(s)) return reaches(transportFrom(s, actor, A), B);
   const ship = (t) => viaSea && t.kind === 'sea' && t.controller === actor && unitsAt(t, actor) > 0;
   const seen = new Set([A.id]);
   const queue = [A];
@@ -1639,7 +1715,18 @@ function nextWave(s) {
       takeTroops(src, e.seat, sent);
     } else sent = takeCheapest(src, e.seat, Math.min(e.count || 0, battles.sum(have)), dom);
     if (src.kind === 'sea') refreshSeas(s);
-    if (T.kind === 'land' && src.kind === 'land' && !areAdjacent(src, T)) interceptConvoy(s, e.seat, src, T, sent);
+    if (T.kind === 'land' && src.kind === 'land' && !areAdjacent(src, T)) {
+      const tr = transportFrom(s, e.seat, src);
+      if (tr && battles.sum(sent) > tr.capacity) {
+        // Ships were lost since the order: only what fits sails, the rest stay home.
+        const back = zeroTroops();
+        const rand = seededRand(s);
+        while (battles.sum(sent) > tr.capacity) back[loseOne(sent, rand)] += 1;
+        addTroops(src, e.seat, back);
+        addLog(s, `${A.name}'s ships off ${src.id} only carry ${tr.capacity}: ${battles.sum(back)} unit${battles.sum(back) === 1 ? '' : 's'} stay behind.`);
+      }
+      interceptConvoy(s, e.seat, src, T, sent);
+    }
     if (!battles.sum(sent)) {
       addLog(s, `${A.name}'s attack on ${name} fizzles: no units left on ${tileName(s, src)}.`);
       continue;
@@ -1805,6 +1892,20 @@ function conquerTW(s, taker, D, T, troops) {
   A.materials[res] += cfg.warSpoils;
   A.stats.warSpoils = (A.stats.warSpoils || 0) + cfg.warSpoils;
   addLog(s, `🏴 ${A.name} takes ${name}${T.role === 'capital' ? ' — A CAPITAL!' : '.'} Loot: ${describeBag(loot)}; war spoils: ${cfg.warSpoils} ${res}.`, { kind: 'good' });
+  // A player's own capital falls: the rest of their land surrenders with it.
+  if (T.role === 'capital' && T.owner === D && cfg.capitalTakesAll !== false) {
+    const rest = s.board.tiles.filter((t) => t.kind === 'land' && t !== T && t.controller === D);
+    let lost = 0;
+    for (const t of rest) {
+      lost += unitsAt(t, D);
+      setTroops(t, D, zeroTroops());
+      t.controller = taker;
+      clearTile(s, t, 'home'); // anyone else's troops there go home
+    }
+    Dp.stats.unitsLost += lost;
+    syncUnits(s);
+    if (rest.length) addLog(s, `🏳 With their capital gone, ${Dp.name}'s whole territory surrenders to ${A.name}: ${rest.map((t) => t.id).join(', ')}${lost ? ` (${lost} unit${lost === 1 ? '' : 's'} lay down their arms)` : ''}.`, { kind: 'bad' });
+  }
   // Holding every capital ends the war at once.
   const capitals = s.board.tiles.filter((t) => t.role === 'capital');
   if (capitals.every((t) => t.controller === taker)) {
@@ -2099,10 +2200,12 @@ function loseOne(c, rand) {
  */
 function interceptConvoy(s, seat, src, T, sent, what = 'convoy') {
   if (!LANES(s) || inTruce(s) || TWS(s).convoyIntercept === false) return;
-  const chain = fleetGroups(s, seat).find((g) => touches(g, src) && touches(g, T));
-  if (!chain) return;
+  const tr = transportFrom(s, seat, src);
+  if (!tr || !reaches(tr, T)) return;
+  // The route the ships sail; destroyers among the transports and on the route escort it.
+  const chain = new Set(routeTo(tr, T));
   const rand = seededRand(s);
-  let escorts = [...chain].reduce((a, t) => a + (troopsAt(t, seat).destroyer || 0), 0);
+  let escorts = [...new Set([...tr.ships, ...[...chain].filter((t) => t.controller === seat)])].reduce((a, t) => a + (troopsAt(t, seat).destroyer || 0), 0);
   const lost = [];
   const shooters = new Set();
   for (const sea of s.board.tiles) {
