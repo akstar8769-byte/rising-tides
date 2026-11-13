@@ -772,3 +772,30 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .lv-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; border: 1px solid #0001; font-size: 0.88rem; }
 .lv-list li.done { background: #e8f6ec; }
 .lv-list li.now { background: #fff6dc; }
+
+/* Battles take over the screen: the battlefield replaces the map and is sized to fit the window. */
+.table.drawer-wide { grid-template-areas: 'hud hud' 'alerts alerts' 'drawer drawer' 'dock dock'; }
+.table.drawer-wide .map { display: none; }
+.table.drawer-wide .drawer { width: auto !important; margin: 8px 10px; max-height: none; }
+.table.drawer-wide .drawer-body { padding: 8px 12px; }
+.table.drawer-wide .battle-card { margin: 0; }
+.battle-card #battle-wrap { display: flex; justify-content: center; }
+.battle-card #battle-svg { width: 100%; height: auto; max-height: calc(100dvh - 300px); min-height: 160px; }
+@media (max-width: 760px) {
+  .table.drawer-wide { grid-template-areas: 'hud' 'alerts' 'drawer' 'dock'; }
+  .table.drawer-wide .drawer { margin: 0; border-radius: 0; }
+  .battle-card #battle-svg { max-height: calc(100dvh - 330px); }
+}
+.battle-card #battle-svg { max-height: calc(100dvh - 330px); }
+/* Wide screens: battlefield on the left, orders and tips in a column on the right. */
+@media (min-width: 900px) {
+  .table.drawer-wide .battle-card { display: grid; grid-template-columns: minmax(0, 1fr) 290px; column-gap: 14px; align-items: start; grid-auto-flow: row dense; }
+  .table.drawer-wide .battle-card > * { grid-column: 2; }
+  .table.drawer-wide .battle-card > h2,
+  .table.drawer-wide .battle-card > .battle-meta { grid-column: 1 / -1; }
+  .table.drawer-wide .battle-card > #battle-wrap { grid-column: 1; grid-row: span 12; }
+  .table.drawer-wide .battle-card #battle-svg { max-height: calc(100dvh - 270px); }
+  .table.drawer-wide .battle-card .battle-controls { margin-top: 0; }
+}
+/* During battles, notes pop up bottom-right (over the tips column) so they don't hide the field. */
+@media (min-width: 900px) { body:has(.table.drawer-wide) #toasts { left: auto; right: 24px; width: min(300px, calc(100% - 32px)); } }

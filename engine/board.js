@@ -4,7 +4,8 @@
 'use strict';
 
 const LAYOUTS = require('./layouts');
-const { fail, randomInt } = require('./util');
+const { fail, randomInt, nextRandom } = require('./util');
+const { generateMap } = require('./mapgen');
 
 const BIOMES = {
   forest: { label: 'Forest', resource: 'wood' },
@@ -41,9 +42,10 @@ function defaultBiomeList(n, pick) {
  * In War modes (withTerritories) they also get two provinces.
  */
 function buildBoard(state, layoutName, withTerritories) {
-  const L = LAYOUTS[layoutName];
-  if (!L) fail(`Unknown board layout "${layoutName}".`);
   const n = state.players.length;
+  // 'random': a new map made for this game from the game's seed (falls back to the oceans map).
+  const L = layoutName === 'random' ? generateMap(() => nextRandom(state), n) || LAYOUTS.oceans : LAYOUTS[layoutName];
+  if (!L) fail(`Unknown board layout "${layoutName}".`);
   const wedgeIdx = L.seatsToWedges[n];
   if (!wedgeIdx) fail(`Board layout "${layoutName}" has no setup for ${n} players.`);
 

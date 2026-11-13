@@ -552,3 +552,53 @@ test('convoy interception: enemy warships beside the chain sink crossing troops;
   for (const p of e.players) if (p.seat !== 0 && !p.choice) e = act(e, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
   assert.ok(!e.log.some((x) => /convoy/.test(x.text)), 'two destroyers screen both shots');
 });
+
+// ---------------------------------------------------------------- random maps
+const { areAdjacent } = require('../engine/board');
+function randomGame(n, seed) {
+  return newGame({ n, mode: 'totalwar', oceans: true, seed, biomes: ['forest', 'quarry', 'riverbank', 'mixed', 'forest'].slice(0, n), settings: (c) => (c.totalwar.boardLayout = 'random') });
+}
+const groupsOf = (tiles) => {
+  const seen = new Set();
+  let n = 0;
+  for (const t of tiles) {
+    if (seen.has(t)) continue;
+    n++;
+    const q = [t];
+    seen.add(t);
+    while (q.length) {
+      const x = q.pop();
+      for (const y of tiles) if (!seen.has(y) && areAdjacent(x, y)) { seen.add(y); q.push(y); }
+    }
+  }
+  return n;
+};
+
+test('random maps: a valid new map for 3-5 players — one ocean, fair coastal starts, fishing, the Village', () => {
+  for (const n of [3, 4, 5]) {
+    for (let seed = 1; seed <= 6; seed++) {
+      const s = randomGame(n, seed * 13);
+      assert.equal(s.board.layout, 'random');
+      assert.ok(s.board.seaLanes);
+      const T = s.board.tiles;
+      const sea = T.filter((t) => t.kind === 'sea');
+      assert.equal(groupsOf(sea), 1, `seed ${seed}: the ocean is one connected sea`);
+      assert.equal(T.filter((t) => t.kind === 'village').length, 1);
+      assert.ok(T.filter((t) => t.fish).every((t) => t.kind === 'sea') && T.some((t) => t.fish));
+      const homes = s.players.map((p) => p.homeTile);
+      assert.equal(new Set(homes).size, n);
+      for (const p of s.players) {
+        const mine = T.filter((t) => t.owner === p.seat);
+        assert.equal(mine.length, 3, 'capital + 2 provinces');
+        assert.ok(mine.every((t) => t.kind === 'land'));
+        assert.ok(mine.some((t) => sea.some((x) => areAdjacent(x, t))), 'every player has a coast');
+      }
+    }
+  }
+});
+
+test('random maps: the same seed makes the same map; different seeds make different maps', () => {
+  const ids = (s) => s.board.tiles.map((t) => t.id + t.kind[0] + (t.owner ?? '')).join();
+  assert.equal(ids(randomGame(4, 99)), ids(randomGame(4, 99)));
+  assert.notEqual(ids(randomGame(4, 99)), ids(randomGame(4, 100)));
+});

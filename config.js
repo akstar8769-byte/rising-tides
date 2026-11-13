@@ -403,7 +403,7 @@ const DECIMALS = [];
 /** Allowed values for text settings. */
 const OPTIONS = {
   'general.boardLayout': ['standard19'],
-  'totalwar.boardLayout': ['oceans', 'sea37', 'standard19'],
+  'totalwar.boardLayout': ['oceans', 'random', 'sea37', 'standard19'],
   'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
 };
 
@@ -434,7 +434,7 @@ for (const [k, n] of Object.entries(FORMATION_NAMES)) {
   LABELS[`totalwar.formations.${k}.defencePct`] = `Formation ${n}: protection (%)`;
   LABELS[`totalwar.formations.${k}.speedPct`] = `Formation ${n}: speed (%)`;
 }
-LABELS['totalwar.boardLayout'] = 'Board (oceans: two continents split by an ocean; sea37: smaller, with sea bays)';
+LABELS['totalwar.boardLayout'] = 'Board (oceans: two continents split by an ocean; random: a new map every game; sea37: smaller, with sea bays)';
 LABELS['totalwar.fishingIncome'] = 'Oceans board: income from each fishing ground you hold';
 LABELS['totalwar.blockades'] = 'Oceans board: enemy ships off your coast stop that tile income (blockade)';
 LIMITS['totalwar.fishingIncome'] = [0, 10];

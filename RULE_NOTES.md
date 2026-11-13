@@ -373,3 +373,9 @@ Decided while building (all numbers are lobby settings in the Total War group):
 - **Bots** shell enemy coasts with their gun ships (except cautious bots).
 - **Updates:** pages now reload by themselves when the server is updated (so you never play with old code after a deploy), and browsers always check for new files.
 - **Research screen:** each technology has a ▸ levels dropdown for the units it unlocks (Infantry has its own row at the top).
+
+## 🎲 Random maps (added 13 November 2026)
+- New Total War board option **random** (lobby → Board): every game makes a new map from the game's seed (the same seed always gives the same map).
+- 13–15 columns × 8–9 rows (about 100–135 hexes). 2–4 continents are grown from random starting points and kept apart by sea; any lake cut off from the ocean is filled in, so the sea is always one connected ocean (sea lanes, convoys, bombardment and blockades all work as on the oceans board).
+- The Village goes on an island in open water near the middle when there is room (otherwise on the nearest sea hex that doesn't cut the ocean in two). 4–6 fishing grounds are spread over the ocean.
+- Starting spots: capitals are spread as far apart as possible, each with two neighbouring provinces, and every player gets at least one coastal tile (to launch ships). A map is only used if nobody has much less nearby land than the others (the smallest share must be at least 55% of the largest); otherwise a new one is drawn. In 900 test maps for 3–5 players every attempt produced a valid map (worst case under a second); if one ever failed, the game would use the oceans map.
