@@ -397,3 +397,14 @@ Decided while building (all numbers are lobby settings in the Total War group):
   - *War + Empire* (`empire.capitalTakesAll`, on by default): the puppet keeps only its capital; its provinces and any other land it held go to the new overlord (empty), the puppet's troops there lay down their arms, and anyone else's go home. If the puppet is freed (revolt, release or an unpaid garrison) its own provinces come back to it.
   - *Total War* (`totalwar.capitalTakesAll`, on by default): when a player's own capital is taken, all their other land surrenders to the conqueror and their troops there lay down their arms. Their ships stay at sea.
 - Bots: send only what their ships carry, keep ships at their coast as transports (only spare ships go fishing), and stop trying to recruit once they have no land.
+
+## 🤖 Tougher Total War bots (13 November 2026)
+A playtester massed cheap militia (low upkeep), saved up and out-built everyone late; the bots couldn't keep up even on Brutal. Measured in bots-only games (4 bots, Brutal): before, ~10 units and an army worth ~74 materials per bot at the end, with a third of it in cruisers they didn't need. Changes:
+- **Bigger armies:** the army size bots aim for grows every round and with difficulty (Normal ×1, Hard ×1.5, Brutal ×2).
+- **Mass early, upgrade later:** in rounds 1–6 bots fill their ranks with cheap upgradeable troops (infantry, cavalry), then upgrade them in bulk (several at a time) to motorised/mechanised infantry and tanks.
+- **No hoarding on Hard/Brutal** while the army is under 70% of its target; leftover materials buy troops.
+- **Counters:** bots look at what the other players field and build anti-tank (or heavier tanks) against armour and anti-air (or interceptors) against aircraft.
+- **Smarter attacks:** they compare real strength (cost × research level) instead of head counts; Hard/Brutal bots attack with smaller margins.
+- **Smaller, cheaper navy:** destroyers as transports; cruisers and battleships only when an enemy has warships; a bigger fleet only when an enemy is overseas.
+- **Bigger bonuses:** Hard +5 and Brutal +10 materials a round (were +3 / +6).
+- Result (Brutal): ~10 units/bot by round 6 and ~14 by the end, army value ~89 (Hard ~82; Normal is unchanged and gentle, ~5 units).

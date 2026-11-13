@@ -107,6 +107,23 @@ const UNIT_WISHES = {
 function pickUnitType(g, me, P, roll = Math.random()) {
   const unit = (t) => g.tw.units.find((u) => u.type === t);
   const budget = total(me.materials) - reserve(g, me, 1);
+  // Counter what the enemy fields: anti-tank against armour, anti-air against planes.
+  const foe = enemyMix(g);
+  const mine = myTroops(g);
+  const have = (list) => list.reduce((a, k) => a + (mine[k] || 0), 0);
+  const counter = (list, need) => {
+    if (have(list) >= need) return null;
+    const t = list.find((k) => unit(k) && unit(k).unlocked && budget >= unit(k).cost);
+    return t || null;
+  };
+  if (foe.armor >= 2 && roll < 0.6) {
+    const c = counter(['antitank', 'heavyTank', 'mediumTank'], Math.ceil(foe.armor * 0.6));
+    if (c) return c;
+  }
+  if (foe.air >= 2 && roll > 0.4) {
+    const c = counter(['antiair', 'interceptor'], Math.ceil(foe.air * 0.7));
+    if (c) return c;
+  }
   const name = P === PERSONALITIES.warlike ? 'warlike' : P === PERSONALITIES.balanced ? 'balanced' : 'cautious';
   const groups = UNIT_WISHES[name];
   const r = roll;
@@ -117,10 +134,64 @@ function pickUnitType(g, me, P, roll = Math.random()) {
     want = groups[gi].find(unlocked);
     if (want) break;
   }
+  // Early on, numbers win: fill the ranks with cheap troops that can be upgraded later
+  // (infantry -> motorised -> mechanised, cavalry -> tanks), like a human massing an army.
+  const target = Math.round((P.army * 2 + 6 + g.round * 0.8) * grit(g));
+  if (g.round <= 6 && me.units < Math.min(10, target)) {
+    const cheap = ['infantry', 'cavalry'][Math.floor(roll * 2)];
+    if (budget >= unit(cheap).cost) return cheap;
+  }
   if (want && budget >= unit(want).cost) return want;
-  if (me.units >= 4 && want && unit(want).cost > unit('infantry').cost) return null; // save up for it
+  // Saving up for something big — unless the army is still small (hard/brutal bots don't hoard).
+  const hoard = me.units >= 4 && want && unit(want).cost > unit('infantry').cost && !(grit(g) > 1 && me.units < target * 0.7);
+  if (hoard) return null;
   for (const gi of order) for (const t of groups[gi]) if (unlocked(t) && budget >= unit(t).cost) return t;
   return budget >= unit('infantry').cost ? 'infantry' : 'militia';
+}
+
+/** Total War difficulty: how much bigger and pushier bots are (normal 1, hard 1.5, brutal 2). */
+function grit(g) {
+  const d = g.settings.totalwar && g.settings.totalwar.botDifficulty;
+  return d === 'brutal' ? 2 : d === 'hard' ? 1.5 : 1;
+}
+/** Fighting value of a troop count: what it cost, raised by research levels. */
+function strength(g, troops, seat) {
+  const lv = (k) => {
+    if (seat !== g.you) {
+      const r = (g.players[seat].research && g.players[seat].research.done) || [];
+      let n = 1;
+      while (n < 4 && r.includes(`${k}L${n + 1}`)) n++;
+      return n;
+    }
+    return (g.tw.units.find((u) => u.type === k) || {}).level || 1;
+  };
+  let v = 0;
+  for (const [k, n] of Object.entries(troops || {})) {
+    const u = g.tw.units.find((x) => x.type === k);
+    if (u && n) v += n * u.cost * (1 + 0.15 * (lv(k) - 1));
+  }
+  return v;
+}
+/** What the other players field, by kind: armour, aircraft, everything. */
+function enemyMix(g) {
+  const mix = { armor: 0, air: 0, all: 0 };
+  for (const t of g.board.tiles)
+    for (const [seat, tr] of Object.entries(t.troops || {})) {
+      if (Number(seat) === g.you) continue;
+      for (const [k, n] of Object.entries(tr || {})) {
+        const u = g.tw.units.find((x) => x.type === k);
+        if (!u || !n) continue;
+        mix.all += n;
+        if (u.cls === 'armor') mix.armor += n;
+        if (u.domain === 'air') mix.air += n;
+      }
+    }
+  return mix;
+}
+function myTroops(g) {
+  const out = {};
+  for (const t of g.board.tiles) for (const [k, n] of Object.entries((t.troops || {})[g.you] || {})) out[k] = (out[k] || 0) + n;
+  return out;
 }
 
 /** Total War research plans, in order, by personality. */
@@ -191,7 +262,11 @@ function upgradeIdea(g, me, P) {
         if (each > spare) continue;
         if (!best || u.cost > best.u.cost) best = { u, each };
       }
-      if (best) return { key: `upgrade-${g.round}-${t.id}-${from}-${n}`, action: { type: 'upgradeUnits', tile: t.id, from, to: best.u.type, count: 1, materials: payFromLargest(me, best.each) } };
+      if (best) {
+        // Upgrade several at once when we can afford it (hard/brutal bots modernise faster).
+        const count = Math.max(1, Math.min(n, Math.floor(spare / best.each), grit(g) > 1 ? n : 2));
+        return { key: `upgrade-${g.round}-${t.id}-${from}-${n}`, action: { type: 'upgradeUnits', tile: t.id, from, to: best.u.type, count, materials: payFromLargest(me, best.each * count) } };
+      }
     }
   }
   return null;
@@ -233,9 +308,13 @@ function overseas(g) {
 /** Ocean boards: keep a fleet that grows with the game (fishing, then invasions). */
 function oceanShipIdea(g, me, P) {
   if (!g.tw.seas || !g.tw.seas.length || me.units < 3) return null;
-  const want = (P === PERSONALITIES.cautious ? 2 : overseas(g) ? 3 : 2) + Math.floor(g.round / (P === PERSONALITIES.warlike ? 3 : 4));
+  // A few ships for transport and fishing; a real navy only when enemies are overseas.
+  const want = overseas(g) ? 2 + Math.floor(g.round / (P === PERSONALITIES.warlike ? 4 : 6)) : 1 + Math.floor(g.round / 9);
   if (fleetSize(g) >= want || !chance(P === PERSONALITIES.cautious ? 0.3 : 0.55)) return null;
-  const t = ['battleship', 'cruiser', 'destroyer'].map((k) => g.tw.units.find((u) => u.type === k)).find((u) => u && u.unlocked && total(me.materials) - u.cost >= reserve(g, me, 1));
+  // Destroyers are cheap transports; gun ships only when the enemy has a navy to fight.
+  const enemyShips = g.board.tiles.some((t) => t.kind === 'sea' && t.controller != null && t.controller !== g.you);
+  const order = enemyShips ? ['battleship', 'cruiser', 'destroyer'] : ['destroyer', 'cruiser'];
+  const t = order.map((k) => g.tw.units.find((u) => u.type === k)).find((u) => u && u.unlocked && total(me.materials) - u.cost >= reserve(g, me, 1));
   if (!t) return null;
   // Launch next to the fleet if we have one, so the chain stays joined.
   const fleet = ships(g);
@@ -397,7 +476,7 @@ function buildStep(g, me, P, mem, fresh) {
     const w = g.settings.war;
     // 3. Recruit up to the personality's army size — but walls come first unless warlike,
     //    and cautious/balanced bots stay under the army-emissions limit.
-    let target = g.tw ? P.army * 2 + 6 : P.army;
+    let target = g.tw ? Math.round((P.army * 2 + 6 + g.round * 0.8) * grit(g)) : P.army;
     // Big armies pollute (army emissions). Careful bots always stay under that size;
     // warlike bots too once the Flood is getting high or their own home is at risk.
     const armyPollutes = w.armyFloodPerUnits > 0 && (P !== PERSONALITIES.warlike || g.threshold - g.flood <= 8 || floodDanger(g, me));
@@ -590,13 +669,15 @@ function pickTarget(g, me, P) {
     let sent;
     let from = null;
     let defenders;
+    let cap = null;
     if (g.stationed) {
       const srcs = g.attackSources[id] || [];
       if (!srcs.length) continue;
-      const s = srcs.reduce((a, x) => (Math.min(x.units, x.capacity || Infinity) > Math.min(a.units, a.capacity || Infinity) ? x : a));
+      const usable = (x) => Math.min(x.units, x.capacity || Infinity);
+      const s = srcs.reduce((a, x) => (usable(x) > usable(a) ? x : a));
       from = s.tile;
-      sent = Math.min(s.units, s.capacity || Infinity);
-      var cap = s.capacity || null;
+      sent = usable(s);
+      cap = s.capacity || null;
       defenders = Object.values(t.units || {}).reduce((a, n) => a + n, 0);
     } else {
       sent = me.units + (me.puppets || []).reduce((a, q) => a + g.players[q].units, 0);
@@ -604,27 +685,37 @@ function pickTarget(g, me, P) {
     }
     if (sent < 1) continue;
     if (t.controller != null && (g.limits.protectedSeats[t.controller] || !willHit(g, t.controller, P))) continue;
+    // The troops we'd send (Total War), trimmed to what the ships carry when crossing by sea.
+    let troops = g.tw && from ? { ...((g.board.tiles.find((x) => x.id === from).troops || {})[g.you] || {}) } : null;
+    if (troops && cap) {
+      let room = cap;
+      const order = Object.keys(troops).sort((a, b) => ((g.tw.units.find((u) => u.type === b) || {}).cost || 0) - ((g.tw.units.find((u) => u.type === a) || {}).cost || 0));
+      for (const k of order) {
+        const n = Math.min(troops[k], room);
+        troops[k] = n;
+        room -= n;
+      }
+      sent = Object.values(troops).reduce((a, n) => a + n, 0);
+    }
+    // Can we win? Total War compares real strength (cost x level); other modes count units.
+    let winnable = sent > defenders || defenders === 0;
+    if (g.tw && troops && t.controller != null && defenders > 0) {
+      const ours = strength(g, troops, g.you);
+      const theirs = strength(g, (t.troops || {})[t.controller], t.controller);
+      const need = (P === PERSONALITIES.warlike ? 1.0 : P === PERSONALITIES.cautious ? 1.6 : 1.25) / Math.sqrt(grit(g));
+      winnable = ours >= theirs * need;
+    }
     let score;
     if (t.controller == null) score = 2; // open tile: free claim
-    else if (t.owner === g.you) score = sent >= defenders ? 5 : 0; // take back our land
-    else if (sent > defenders || defenders === 0) score = 3 + (t.role === 'capital' ? 2 : 0);
-    else score = P === PERSONALITIES.warlike && sent === defenders ? 1 : 0;
+    else if (t.owner === g.you) score = winnable || sent >= defenders ? 5 : 0; // take back our land
+    else if (winnable) score = 3 + (t.role === 'capital' ? 2 : 0);
+    else score = P === PERSONALITIES.warlike && sent === defenders && !g.tw ? 1 : 0;
     if (score && t.controller != null) score += grudge(g, t.controller); // pay back those who hit us
     if (score && t.controller != null && allianceEnemies(g).includes(t.controller)) score += 2; // our alliance's target
     if (score > bestScore) {
       bestScore = score;
-      const troops = g.tw && from ? { ...((g.board.tiles.find((x) => x.id === from).troops || {})[g.you] || {}) } : null;
-      // Crossing by sea: only as many as the ships carry (strongest first).
-      if (troops && cap) {
-        let room = cap;
-        const order = Object.keys(troops).sort((a, b) => ((g.tw.units.find((u) => u.type === b) || {}).cost || 0) - ((g.tw.units.find((u) => u.type === a) || {}).cost || 0));
-        for (const k of order) {
-          const n = Math.min(troops[k], room);
-          troops[k] = n;
-          room -= n;
-        }
-      }
-      bestIdea = { key: `attack-${id}`, action: { type: 'choose', action: 'attack', target: id, ...(from ? { from, count: sent } : {}), ...(troops && Object.keys(troops).length ? { troops } : {}) } };
+      if (troops && !Object.keys(troops).length) troops = null;
+      bestIdea = { key: `attack-${id}`, action: { type: 'choose', action: 'attack', target: id, ...(from ? { from, count: sent } : {}), ...(troops ? { troops } : {}) } };
     }
   }
   return bestIdea;

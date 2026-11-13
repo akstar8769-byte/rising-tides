@@ -138,8 +138,8 @@ const DEFAULTS = {
     transportRange: 6,           // ...up to this many sea hexes (counting the hex the ships are on), not through enemy ships
     convoyIntercept: true,       // oceans board: enemy cruisers/battleships next to your chain of ships fire on troops crossing (each destroyer in the chain blocks a shot)
     botDifficulty: 'normal',     // normal / hard / brutal: bots get +0 / +botBonusHard / +botBonusBrutal materials every round
-    botBonusHard: 3,
-    botBonusBrutal: 6,
+    botBonusHard: 5,
+    botBonusBrutal: 10,
     // Unit types (what each one is: engine/arsenal.js). cost = materials to recruit,
     // upkeep = upkeep points, hp = toughness, attack = damage per second in battle,
     // speed = map squares per second, range = shooting range (0 = must be in contact),

@@ -475,7 +475,8 @@ test('total war: bot difficulty gives bots extra materials every round', () => {
     return engine.createGame({ mode: 'totalwar', settings, players: [{ name: 'Me', biome: 'forest' }, { name: 'Bot A', biome: 'quarry', bot: true }, { name: 'Bot B', biome: 'riverbank', bot: true }], seed: 5 });
   };
   const total = (p) => p.materials.wood + p.materials.stone + p.materials.sandbag;
-  for (const [diff, extra] of [['normal', 0], ['hard', 3], ['brutal', 6]]) {
+  const d = cloneDefaults().totalwar;
+  for (const [diff, extra] of [['normal', 0], ['hard', d.botBonusHard], ['brutal', d.botBonusBrutal]]) {
     const s = structuredClone(make(diff));
     const before = s.players.map(total);
     war.upkeep(s);
