@@ -152,7 +152,7 @@ function pickUnitType(g, me, P, roll = Math.random()) {
 /** Total War difficulty: how much bigger and pushier bots are (normal 1, hard 1.5, brutal 2). */
 function grit(g) {
   const d = g.settings.totalwar && g.settings.totalwar.botDifficulty;
-  return d === 'brutal' ? 2 : d === 'hard' ? 1.5 : 1;
+  return d === 'brutal' ? 2.5 : d === 'hard' ? 1.6 : 1;
 }
 /** Fighting value of a troop count: what it cost, raised by research levels. */
 function strength(g, troops, seat) {

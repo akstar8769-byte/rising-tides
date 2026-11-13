@@ -408,3 +408,8 @@ A playtester massed cheap militia (low upkeep), saved up and out-built everyone 
 - **Smaller, cheaper navy:** destroyers as transports; cruisers and battleships only when an enemy has warships; a bigger fleet only when an enemy is overseas.
 - **Bigger bonuses:** Hard +5 and Brutal +10 materials a round (were +3 / +6).
 - Result (Brutal): ~10 units/bot by round 6 and ~14 by the end, army value ~89 (Hard ~82; Normal is unchanged and gentle, ~5 units).
+- **Update (same day): bots that keep pace with big human armies.** Playtesters still ended with 18–25 units each against the bots' ~14. Now:
+  - **Cheaper upkeep for bots:** Hard bots pay 75% and Brutal bots 50% of normal upkeep (`botUpkeepPctHard`, `botUpkeepPctBrutal`).
+  - **Catch-up:** every round, a Hard/Brutal bot whose army is worth less (in materials) than the strongest human army gets 15% / 30% of the gap as extra materials, at most 15 a round (`botCatchUpPctHard`, `botCatchUpPctBrutal`, `botCatchUpMax`). The log says who is catching up.
+  - Army goals are bigger: Hard ×1.6, Brutal ×2.5.
+  - Measured (bots-only games plus one seat counted as human): Brutal bots ~24 units and an army worth ~140 materials each by the end; Hard ~20 units, ~112.

@@ -455,6 +455,9 @@ function upkeepDue(s, p) {
     const c = troopsAt(t, p.seat);
     for (const k of battles.TYPES) points += c[k] * cfg[k].upkeep;
   }
+  // Hard / Brutal bots keep their armies for less.
+  if (p.bot && cfg.botDifficulty === 'hard') points = (points * (cfg.botUpkeepPctHard ?? 100)) / 100;
+  if (p.bot && cfg.botDifficulty === 'brutal') points = (points * (cfg.botUpkeepPctBrutal ?? 100)) / 100;
   return Math.floor(points / cfg.upkeepPointsPerMaterial);
 }
 
@@ -485,14 +488,24 @@ function botBonus(s) {
   if (!n) return;
   const bots = s.players.filter((p) => p.bot);
   if (!bots.length) return;
+  // Catch-up: a bot whose army is worth less than the strongest human army gets a share
+  // of the gap every round, so the bots keep pace with players who build big armies.
+  const worth = (seat) => s.board.tiles.reduce((a, t) => a + battles.TYPES.reduce((b, k) => b + (troopsAt(t, seat)[k] || 0) * cfg[k].cost, 0), 0);
+  const humans = s.players.filter((p) => !p.bot);
+  const top = humans.length ? Math.max(...humans.map((p) => worth(p.seat))) : 0;
+  const pct = cfg.botDifficulty === 'brutal' ? cfg.botCatchUpPctBrutal ?? 0 : cfg.botCatchUpPctHard ?? 0;
+  const extra = {};
   for (const p of bots) {
+    const gap = top - worth(p.seat);
+    extra[p.seat] = gap > 0 ? Math.min(cfg.botCatchUpMax ?? 15, Math.round((gap * pct) / 100)) : 0;
     // Spread it out: each material goes to the smallest pile.
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n + extra[p.seat]; i++) {
       const m = ['wood', 'stone', 'sandbag'].reduce((a, x) => (p.materials[x] < p.materials[a] ? x : a), 'wood');
       p.materials[m]++;
     }
   }
-  addLog(s, `🤖 ${cfg.botDifficulty === 'brutal' ? 'Brutal' : 'Hard'} bots: each bot gets +${n} materials.`);
+  const caught = bots.filter((p) => extra[p.seat] > 0);
+  addLog(s, `🤖 ${cfg.botDifficulty === 'brutal' ? 'Brutal' : 'Hard'} bots: each bot gets +${n} materials${caught.length ? ` (catching up: ${caught.map((p) => `${p.name} +${extra[p.seat]}`).join(', ')})` : ''}.`);
 }
 
 function upkeep(s) {

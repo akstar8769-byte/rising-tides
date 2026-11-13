@@ -140,6 +140,11 @@ const DEFAULTS = {
     botDifficulty: 'normal',     // normal / hard / brutal: bots get +0 / +botBonusHard / +botBonusBrutal materials every round
     botBonusHard: 5,
     botBonusBrutal: 10,
+    botUpkeepPctHard: 75,        // Hard bots pay this % of normal upkeep
+    botUpkeepPctBrutal: 50,      // Brutal bots pay this % of normal upkeep
+    botCatchUpPctHard: 15,       // catch-up: a bot behind the strongest human army gets this % of the gap (in materials) every round
+    botCatchUpPctBrutal: 30,
+    botCatchUpMax: 15,           // most catch-up materials a bot gets in one round
     // Unit types (what each one is: engine/arsenal.js). cost = materials to recruit,
     // upkeep = upkeep points, hp = toughness, attack = damage per second in battle,
     // speed = map squares per second, range = shooting range (0 = must be in contact),
@@ -455,6 +460,13 @@ LABELS['totalwar.botDifficulty'] = 'Bot difficulty (hard / brutal: bots get extr
 LABELS['totalwar.botBonusHard'] = 'Hard bots: extra materials per round';
 LABELS['totalwar.botBonusBrutal'] = 'Brutal bots: extra materials per round';
 LIMITS['totalwar.botBonusHard'] = [0, 30];
+LABELS['totalwar.botUpkeepPctHard'] = 'Hard bots: upkeep they pay (%)';
+LABELS['totalwar.botUpkeepPctBrutal'] = 'Brutal bots: upkeep they pay (%)';
+LABELS['totalwar.botCatchUpPctHard'] = 'Hard bots: catch-up (% of the gap to the strongest human army, per round)';
+LABELS['totalwar.botCatchUpPctBrutal'] = 'Brutal bots: catch-up (% of the gap to the strongest human army, per round)';
+LABELS['totalwar.botCatchUpMax'] = 'Bots: most catch-up materials per round';
+for (const k of ['botUpkeepPctHard', 'botUpkeepPctBrutal', 'botCatchUpPctHard', 'botCatchUpPctBrutal']) LIMITS[`totalwar.${k}`] = [0, 200];
+LIMITS['totalwar.botCatchUpMax'] = [0, 60];
 LIMITS['totalwar.botBonusBrutal'] = [0, 30];
 LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
 LABELS['totalwar.artilleryMeleeAttackPct'] = 'Artillery in close combat: damage dealt (%)';
