@@ -1332,26 +1332,45 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
   if (exact) count = battles.sum(exact);
   checkSend(A, actor, count);
   if (!canStand(s, actor, B)) fail("Your units can't go there.");
+  // Over your own land first; failing that (Total War), also across the sea along your ships —
+  // the same chain of ships an invasion crosses, so troops can follow up a landing.
+  let route = landRoute(s, actor, A, B, false);
+  let bySea = false;
+  if (!route && TW(s) && TWS(s).amphibious) {
+    route = landRoute(s, actor, A, B, true);
+    bySea = !!route;
+  }
+  if (!route) fail(TW(s) ? 'No route: units travel through your own tiles, or across the sea along a chain of your ships.' : 'No route: units can only travel through your own tiles.');
+  const moving = exact ? takeTroops(A, actor, exact) : takeCheapest(A, actor, count);
+  if (bySea) interceptConvoy(s, actor, A, B, moving, 'reinforcements');
+  addTroops(B, actor, moving);
+  syncUnits(s);
+  const n = battles.sum(moving);
+  addLog(s, `${p.name} ${bySea ? 'shipped' : 'moved'} ${n} unit${n === 1 ? '' : 's'} from ${tileName(s, A)} to ${tileName(s, B)}${bySea ? ' by sea' : ''}.`);
+}
+
+/**
+ * Is there a way for land units from A to B? Through tiles you can stand on, and
+ * (viaSea) through sea hexes your ships hold. Sea-lane boards: only neighbouring
+ * hexes connect; other boards: every bay you hold is joined by the open ocean.
+ */
+function landRoute(s, actor, A, B, viaSea) {
+  const ship = (t) => viaSea && t.kind === 'sea' && t.controller === actor && unitsAt(t, actor) > 0;
   const seen = new Set([A.id]);
   const queue = [A];
-  let found = false;
   while (queue.length) {
     const t = queue.shift();
-    if (t === B) {
-      found = true;
-      break;
-    }
+    if (t === B) return true;
     for (const n of s.board.tiles) {
-      if (!seen.has(n.id) && areAdjacent(t, n) && canStand(s, actor, n)) {
+      if (seen.has(n.id)) continue;
+      const linked = areAdjacent(t, n) || (!LANES(s) && ship(t) && ship(n));
+      if (linked && (canStand(s, actor, n) || ship(n))) {
         seen.add(n.id);
         queue.push(n);
       }
     }
   }
-  if (!found) fail('No route: units can only travel through your own tiles.');
-  const moving = exact ? takeTroops(A, actor, exact) : takeCheapest(A, actor, count);
-  addTroops(B, actor, moving);
-  addLog(s, `${p.name} moved ${count} unit${count === 1 ? '' : 's'} from ${tileName(s, A)} to ${tileName(s, B)}.`);
+  return false;
 }
 
 /** Winning a non-revolt battle for tile T (shared by attacks and clashes). */
@@ -2078,7 +2097,7 @@ function loseOne(c, rand) {
  * enemy cruisers and battleships next to the chain of ships carrying them. Each
  * of the attacker's destroyers in the chain screens off one shot.
  */
-function interceptConvoy(s, seat, src, T, sent) {
+function interceptConvoy(s, seat, src, T, sent, what = 'convoy') {
   if (!LANES(s) || inTruce(s) || TWS(s).convoyIntercept === false) return;
   const chain = fleetGroups(s, seat).find((g) => touches(g, src) && touches(g, T));
   if (!chain) return;
@@ -2107,9 +2126,9 @@ function interceptConvoy(s, seat, src, T, sent) {
   const A = s.players[seat];
   const by = [...shooters].map((x) => s.players[x].name).join(' and ');
   if (lost.length) {
-    addLog(s, `🚢 ${by}'s warships fire on ${A.name}'s convoy to ${tileName(s, T)}: ${describeTroops(countOf(lost))} sunk on the way.`, { kind: 'battle' });
+    addLog(s, `🚢 ${by}'s warships fire on ${A.name}'s ${what} to ${tileName(s, T)}: ${describeTroops(countOf(lost))} sunk on the way.`, { kind: 'battle' });
     syncUnits(s);
-  } else addLog(s, `🚢 ${by}'s warships fire on ${A.name}'s convoy to ${tileName(s, T)} but miss.`, { kind: 'battle' });
+  } else addLog(s, `🚢 ${by}'s warships fire on ${A.name}'s ${what} to ${tileName(s, T)} but miss.`, { kind: 'battle' });
 }
 function countOf(list) {
   const c = zeroTroops();

@@ -385,3 +385,7 @@ Decided while building (all numbers are lobby settings in the Total War group):
 - It starts by itself **the first time** you play a mode on a device (remembered in the browser). **Skip tutorial** or finishing it means it never pops up by itself again for that mode. Leaving the game in the middle of the tour doesn't count, so it comes back next time.
 - The **❓** button in the top bar restarts the tour from the beginning at any time. Keys: → next, ← back, Esc skips.
 - Also fixed: on phones, the host's **Host ▾** button was hidden in the top bar.
+
+## Reinforcing across the sea (fixed 13 November 2026)
+- You could invade across the sea but couldn't move more troops to the land you took. Now **Move** (Talk & Build) also sends land units across the sea along your ships: the same unbroken chain an invasion uses (on the 37-hex board, any bays you hold, since they are joined by the ocean). Moves over your own land are tried first.
+- Troops shipped this way can be shot at like a convoy: enemy cruisers and battleships next to the chain fire, and each of your destroyers in the chain blocks one shot.

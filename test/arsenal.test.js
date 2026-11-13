@@ -602,3 +602,23 @@ test('random maps: the same seed makes the same map; different seeds make differ
   assert.equal(ids(randomGame(4, 99)), ids(randomGame(4, 99)));
   assert.notEqual(ids(randomGame(4, 99)), ids(randomGame(4, 100)));
 });
+
+test('reinforcements: land units move to land you hold overseas along your chain of ships', () => {
+  let s = put(ocean(), 'C3', 0, { infantry: 4 });
+  s = put(s, 'I3', 0, { infantry: 1 }); // a beachhead we took across the sea
+  assert.throws(() => act(s, 0, 'moveUnits', { from: 'C3', to: 'I3', troops: { infantry: 2 } }), /No route/);
+  for (const id of ['D3', 'E3', 'F3', 'G3', 'H3']) s = put(s, id, 0, { destroyer: 1 });
+  s = act(s, 0, 'moveUnits', { from: 'C3', to: 'I3', troops: { infantry: 2 } });
+  assert.equal(tile(s, 'I3').troops[0].infantry, 3);
+  assert.equal(tile(s, 'C3').troops[0].infantry, 2);
+  assert.ok(s.log.some((e) => /shipped 2 units .* by sea/.test(e.text)));
+  // Enemy guns next to the chain fire on them (the destroyers screen 5 shots; a battleship fires 2 → not enough).
+  let t = put(ocean(), 'C3', 0, { infantry: 4 });
+  t = put(t, 'I3', 0, { infantry: 1 });
+  for (const id of ['D3', 'E3', 'F3', 'G3', 'H3']) t = put(t, id, 0, { cruiser: 1 });
+  t = put(t, 'G4', 1, { battleship: 1 });
+  t = edit(t, (c) => (c.settings.totalwar.navalHitPct = 100));
+  t = act(t, 0, 'moveUnits', { from: 'C3', to: 'I3', troops: { infantry: 3 } });
+  assert.equal(tile(t, 'I3').troops[0].infantry, 2, '1 + 3 shipped − 2 sunk');
+  assert.ok(t.log.some((e) => /reinforcements to/.test(e.text)));
+});
