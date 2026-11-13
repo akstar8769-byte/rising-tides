@@ -112,6 +112,7 @@ function hud(store) {
       ${g.war ? `<span class="res" title="Your units">⚔<b>${me.units}</b></span>` : ''}
     </div>
     <div class="hud-room">
+      <button class="btn small tut-btn" data-act="tutorial" title="How to play (tutorial)" aria-label="Tutorial">❓</button>
       <span class="small">Room ${esc(d.code)}</span>
       ${d.you.isHost ? `<button class="btn small" data-act="toggleHost" aria-expanded="${store.ui.hostOpen}">Host ▾</button>` : ''}
     </div>

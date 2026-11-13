@@ -10,6 +10,7 @@ import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
 import { payLargest } from './war-ui.js';
 import { installMapControls, justDragged, zoomAt } from './mapview.js';
+import { initTutorial, afterRender as tutorialAfterRender, startTutorial } from './tutorial.js';
 import { addShells, refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation } from './battle-ui.js';
 
 /* global io */
@@ -259,6 +260,7 @@ export function render() {
     if (key && panelOpen.has(key)) det.open = panelOpen.get(key);
   }
 
+  tutorialAfterRender();
   for (const [key, top] of scrollers) {
     const el = root.querySelector(`[data-keep-scroll="${key}"]`);
     if (el) el.scrollTop = top;
@@ -329,6 +331,7 @@ const actions = {
     act({ type: 'bombard', from: ds.from, target: ds.target });
     render();
   },
+  tutorial: () => startTutorial(),
   closeTileMenu: () => {
     store.ui.tileMenu = null;
     render();
@@ -758,4 +761,5 @@ document.addEventListener('submit', (e) => {
 
 render();
 installMapControls(store);
+initTutorial(store, render);
 startBattleAnimation(store); // smooth battlefield animation (only draws when a battle is on screen)

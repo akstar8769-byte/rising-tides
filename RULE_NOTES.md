@@ -379,3 +379,9 @@ Decided while building (all numbers are lobby settings in the Total War group):
 - 13–15 columns × 8–9 rows (about 100–135 hexes). 2–4 continents are grown from random starting points and kept apart by sea; any lake cut off from the ocean is filled in, so the sea is always one connected ocean (sea lanes, convoys, bombardment and blockades all work as on the oceans board).
 - The Village goes on an island in open water near the middle when there is room (otherwise on the nearest sea hex that doesn't cut the ocean in two). 4–6 fishing grounds are spread over the ocean.
 - Starting spots: capitals are spread as far apart as possible, each with two neighbouring provinces, and every player gets at least one coastal tile (to launch ships). A map is only used if nobody has much less nearby land than the others (the smallest share must be at least 55% of the largest); otherwise a new one is drawn. In 900 test maps for 3–5 players every attempt produced a valid map (worst case under a second); if one ever failed, the game would use the oceans map.
+
+## ❓ Tutorials (added 13 November 2026)
+- Every mode (Base, War, War + Empire, Total War) has a short guided tour of the game screen: a spotlight on each part of the screen with a card that explains it (11–13 steps, about a minute). The rule numbers in it come from the game's own settings, so they match whatever the host set in the lobby.
+- It starts by itself **the first time** you play a mode on a device (remembered in the browser). **Skip tutorial** or finishing it means it never pops up by itself again for that mode. Leaving the game in the middle of the tour doesn't count, so it comes back next time.
+- The **❓** button in the top bar restarts the tour from the beginning at any time. Keys: → next, ← back, Esc skips.
+- Also fixed: on phones, the host's **Host ▾** button was hidden in the top bar.

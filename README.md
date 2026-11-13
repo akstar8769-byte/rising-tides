@@ -70,7 +70,8 @@ We use **Render** (free plan). You do this once; after that, Render updates the 
 4. **Host:** pick the mode and change any settings, then press **Start game** (needs 3–5 players).
    - **Seats:** seat 1 is the first starting player, and play goes clockwise in seat order. Use ▲▼ or **Shuffle seats**.
    - **Biomes:** random by default, or choose **Host picks** to set each player's biome.
-5. The map fills the screen. The top bar shows the round, the phase, the Flood and your materials; rivals are banners on the map (tap one for details). **Tap any tile** for what you can do there (recruit, move troops, attack, build a factory). The dock at the bottom opens panels — 🎯 **Turn**, 🏗️ **Build**, 🤝 **Trade**, 🌊 **Flood**, 📜 **Log**, 💬 **Chat** — and the red **End turn** button marks you Ready (or opens your secret choice). Big events pop up as short notes; the full story is in the Log.
+5. **First time playing?** A short tutorial walks you through the screen the first time you play each mode. Skip it if you like; press **❓** in the top bar to see it again any time.
+6. The map fills the screen. The top bar shows the round, the phase, the Flood and your materials; rivals are banners on the map (tap one for details). **Tap any tile** for what you can do there (recruit, move troops, attack, build a factory). The dock at the bottom opens panels — 🎯 **Turn**, 🏗️ **Build**, 🤝 **Trade**, 🌊 **Flood**, 📜 **Log**, 💬 **Chat** — and the red **End turn** button marks you Ready (or opens your secret choice). Big events pop up as short notes; the full story is in the Log.
 
 **Testing on your own? Add bots.** In the lobby the host can press **🤖 Add bot** to fill empty seats (3 players minimum, so you plus 2 bots works). Each bot has a personality you can change in the lobby:
 - **cautious** — builds walls, rarely fights, donates to the seawall when the Flood gets close;
