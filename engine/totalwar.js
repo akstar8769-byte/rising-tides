@@ -251,7 +251,7 @@ function defenceFactor(ch, cfg) {
  * `rand` is the game's seeded random number function, so battles replay exactly.
  * bombard: { A, D } shore-bombardment damage per second from ships offshore.
  */
-function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null }) {
+function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null }) {
   const dpu = Math.max(1, Math.min(SLOTS.length, cfg.dotsPerUnit || 1));
   const b = {
     id,
@@ -284,6 +284,10 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     bombardAt: { A: null, D: null },
     shots: [], // recent shells, for the battle screen
     levels: levels || { A: {}, D: {} }, // research levels: { side: { type: level } }
+    // Veterans: { side: { type: [seasoned, veteran, elite] } } brought into the battle; the
+    // best are handed out first, whatever isn't used (e.g. planes held in reserve) is kept here.
+    rankLeft: JSON.parse(JSON.stringify(ranks || { A: {}, D: {} })),
+    ranks0: JSON.parse(JSON.stringify(ranks || { A: {}, D: {} })), // as they came in (an air battle passes them on to the land battle)
     supplyTimer: 0,
     losses: { A: zero(), D: zero() }, // dots destroyed
     surrendered: { A: zero(), D: zero() }, // dots that surrendered
@@ -293,13 +297,23 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
   };
   let nextDot = 1;
   let nextUnit = 1;
+  const takeRank = (side, type) => {
+    const a = (b.rankLeft[side] || {})[type];
+    if (!a) return 0;
+    for (let r = 2; r >= 0; r--) if (a[r] > 0) {
+      a[r]--;
+      return r + 1;
+    }
+    return 0;
+  };
   const addUnit = (side, seat, type, cx, cy) => {
     const unit = nextUnit++;
-    const hp = (cfg[type].hp * ARS.levelBoost(b.levels[side][type], cfg.levelHpPct)) / dpu;
+    const rk = takeRank(side, type);
+    const hp = (cfg[type].hp * ARS.levelBoost(b.levels[side][type], cfg.levelHpPct) * rankBoost(rk, cfg.rankBonusPct)) / dpu;
     for (let k = 0; k < dpu; k++) {
       const x = clamp(cx + SLOTS[k][0], 1, MAP_W - 1);
       const y = clamp(cy + SLOTS[k][1], 1, MAP_H - 1);
-      b.dots.push({ id: nextDot++, unit, slot: k, side, seat, type, x, y, tx: x, ty: y, hp, max: hp, cut: false, cutT: 0 });
+      b.dots.push({ id: nextDot++, unit, slot: k, side, seat, type, x, y, tx: x, ty: y, hp, max: hp, cut: false, cutT: 0, rk });
     }
   };
   // Where a unit starts, by how it fights: guns at the back, fast units forward,
@@ -630,7 +644,7 @@ function stepBattle(b, dt, cfg) {
     const togo = Math.hypot(d.tx - d.x, d.ty - d.y);
     if (togo < 0.15) continue;
     const slowed = !isAir(d) && contact.get(d).length;
-    const sp = cfg[d.type].speed * lvl(b, d, cfg.levelSpeedPct) * bonus[d.side].spd * speedFactor(terrainAt(b, d.x, d.y), d.type) * (slowed ? 0.3 : 1) * dt;
+    const sp = cfg[d.type].speed * lvl(b, d, cfg.levelSpeedPct) * (d.rk >= 2 ? 1 + (cfg.rankSpeedPct ?? 5) / 100 : 1) * bonus[d.side].spd * speedFactor(terrainAt(b, d.x, d.y), d.type) * (slowed ? 0.3 : 1) * dt;
     const k = Math.min(1, sp / togo);
     d.x += (d.tx - d.x) * k;
     d.y += (d.ty - d.y) * k;
@@ -658,7 +672,7 @@ function stepBattle(b, dt, cfg) {
   // anti-air, big ships) also fire at range when nothing is in contact.
   const damage = new Map();
   const hit = (d, target, base) => {
-    let dmg = ((cfg[d.type].attack * lvl(b, d, cfg.levelAttackPct)) / dpu) * ARS.matchup(d.type, target.type, cfg, target.cut) * base * bonus[d.side].att * dt;
+    let dmg = ((cfg[d.type].attack * lvl(b, d, cfg.levelAttackPct) * rankBoost(d.rk, cfg.rankBonusPct)) / dpu) * ARS.matchup(d.type, target.type, cfg, target.cut) * base * bonus[d.side].att * dt;
     if (d.cut) dmg *= 0.75; // cut-off troops are low on supplies
     if (dmg > 0) damage.set(target, (damage.get(target) || 0) + dmg);
   };
@@ -737,7 +751,8 @@ function stepBattle(b, dt, cfg) {
     }
     b.dots = b.dots.filter((d) => {
       d.cutT = d.cut ? d.cutT + dt : 0;
-      if (d.cutT < cfg.surrenderSeconds) return true;
+      // Elite troops hold out longer when cut off before they give up.
+      if (d.cutT < cfg.surrenderSeconds * (d.rk >= 3 ? (cfg.eliteHoldPct ?? 200) / 100 : 1)) return true;
       b.surrendered[d.side][d.type]++;
       return false;
     });
@@ -804,6 +819,25 @@ function unitsSurrendered(b, side) {
 }
 
 const r1 = (n) => Math.round(n * 10) / 10;
+/** Veteran rank multiplier: rank 0 green, 1 seasoned, 2 veteran, 3 elite. */
+function rankBoost(rk, pct) {
+  return 1 + (rk || 0) * (pct ?? 10) / 100;
+}
+/**
+ * Ranks of a side's survivors AFTER the battle: every surviving unit (won or lost)
+ * goes up one rank, to elite at most. Returns { type: [seasoned, veteran, elite] }.
+ */
+function survivorRanks(b, side) {
+  const units = new Map();
+  for (const d of b.dots) if (d.side === side && !units.has(d.unit)) units.set(d.unit, d);
+  const out = {};
+  for (const d of units.values()) {
+    const r = Math.min(3, (d.rk || 0) + 1);
+    const a = (out[d.type] = out[d.type] || [0, 0, 0]);
+    a[r - 1]++;
+  }
+  return out;
+}
 /** A dot's level multiplier for one stat (pct per level from config). */
 function lvl(b, d, pct) {
   return ARS.levelBoost(b.levels && b.levels[d.side] && b.levels[d.side][d.type], pct);
@@ -836,11 +870,14 @@ function snapshot(b) {
       Math.round(d.tx * 10) / 10,
       Math.round(d.ty * 10) / 10,
       d.unit,
+      d.rk || 0,
     ]),
   };
 }
 
 module.exports = {
+  survivorRanks,
+  rankBoost,
   MAP_W,
   MAP_H,
   TCELL,

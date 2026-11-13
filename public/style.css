@@ -825,3 +825,7 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .tut-btns { display: flex; justify-content: space-between; gap: 8px; }
 .tut-btns .btn { min-height: 40px; }
 .hud-room .tut-btn { min-width: 34px; padding: 0 8px; }
+
+/* Veterans */
+#battle-svg .rank-stars { font-size: 0.9px; fill: #f3c623; stroke: #6b4a00; stroke-width: 0.08px; paint-order: stroke; pointer-events: none; }
+.vet-line { color: var(--brass-dark); font-weight: 700; }

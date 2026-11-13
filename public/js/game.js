@@ -175,7 +175,11 @@ function tileMenu(store) {
     .map(([s, n]) => {
       const tr = t.troops && t.troops[s];
       const detail = tr && g.tw ? Object.entries(tr).filter(([, k]) => k > 0).map(([k, c]) => `${(g.tw.units.find((u) => u.type === k) || { shape: '●' }).shape}${c}`).join(' ') : '';
-      return `<li>${chip(+s, g.players[s].name)} ⚔ ${n}${detail ? ` <small>${detail}</small>` : ''}</li>`;
+      // Veterans on this tile: ★ seasoned, ★★ veteran, ★★★ elite.
+      const by = [0, 0, 0];
+      for (const r of Object.values((t.vet && t.vet[s]) || {})) for (let i = 0; i < 3; i++) by[i] += r[i];
+      const vet = [2, 1, 0].filter((i) => by[i]).map((i) => `${by[i]}${'★'.repeat(i + 1)}`).join(' ');
+      return `<li>${chip(+s, g.players[s].name)} ⚔ ${n}${detail ? ` <small>${detail}</small>` : ''}${vet ? ` <small class="vet-line" title="Veterans: ★ seasoned, ★★ veteran, ★★★ elite">🎖 ${vet}</small>` : ''}</li>`;
     })
     .join('');
   const b = BIOME[t.biome];

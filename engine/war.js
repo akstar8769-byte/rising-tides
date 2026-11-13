@@ -1210,15 +1210,96 @@ function setTroops(t, seat, c) {
   if (n <= 0) {
     delete t.units[seat];
     delete t.troops[seat];
+    if (t.vet) delete t.vet[seat];
     return;
   }
   t.units[seat] = n;
   t.troops[seat] = Object.fromEntries(battles.TYPES.filter((k) => c[k] > 0).map((k) => [k, c[k]]));
+  normVet(t, seat);
 }
 function addTroops(t, seat, c) {
   const cur = troopsAt(t, seat);
   for (const k of battles.TYPES) cur[k] += c[k] || 0;
   setTroops(t, seat, cur);
+  if (RANKS.has(c)) addRanks(t, seat, RANKS.get(c));
+}
+
+// ---------------------------------------------------------------- veterans (Total War)
+// Each tile remembers how many of a player's units of each type are veterans:
+// t.vet[seat][type] = [seasoned, veteran, elite] (the rest are green recruits).
+// Units that survive a battle go up a rank. When troops leave a tile the best go
+// first; when units are lost outside battle (upkeep, shelling, convoys) recruits go first.
+// Troop counts being carried somewhere get their ranks attached here:
+const RANKS = new WeakMap();
+const tagRanks = (c, rk) => {
+  if (rk && Object.keys(rk).length) RANKS.set(c, rk);
+  return c;
+};
+function vetAt(t, seat) {
+  return (t.vet && t.vet[seat]) || {};
+}
+/** Veterans never outnumber the units of their type; the least experienced go first. */
+function normVet(t, seat) {
+  if (!t.vet || !t.vet[seat]) return;
+  const tr = troopsAt(t, seat);
+  const v = t.vet[seat];
+  for (const k of Object.keys(v)) {
+    let over = v[k][0] + v[k][1] + v[k][2] - (tr[k] || 0);
+    for (let r = 0; r < 3 && over > 0; r++) {
+      const x = Math.min(over, v[k][r]);
+      v[k][r] -= x;
+      over -= x;
+    }
+    if (!v[k].some(Boolean)) delete v[k];
+  }
+  if (!Object.keys(v).length) delete t.vet[seat];
+}
+function addRanks(t, seat, rk) {
+  if (!rk) return;
+  t.vet = t.vet || {};
+  const v = (t.vet[seat] = t.vet[seat] || {});
+  for (const [k, a] of Object.entries(rk)) {
+    const cur = (v[k] = v[k] || [0, 0, 0]);
+    for (let r = 0; r < 3; r++) cur[r] += a[r] || 0;
+  }
+  normVet(t, seat);
+}
+/** Take the best-ranked units (elite first) for counts c out of a rank table (changes it). */
+function pickBest(table, c) {
+  const out = {};
+  for (const k of battles.TYPES) {
+    let n = c[k] || 0;
+    const a = table[k];
+    if (!n || !a) continue;
+    const o = [0, 0, 0];
+    for (let r = 2; r >= 0 && n > 0; r--) {
+      const x = Math.min(n, a[r]);
+      a[r] -= x;
+      o[r] += x;
+      n -= x;
+    }
+    if (o.some(Boolean)) out[k] = o;
+  }
+  return out;
+}
+/** Run take() (which removes troops from t and returns them): the best ranks leave with them. */
+function withRanks(t, seat, take) {
+  const snap = JSON.parse(JSON.stringify(vetAt(t, seat)));
+  const taken = take();
+  const rk = pickBest(snap, taken);
+  t.vet = t.vet || {};
+  t.vet[seat] = snap;
+  normVet(t, seat);
+  return tagRanks(taken, rk);
+}
+function mergeRanks(...list) {
+  const out = {};
+  for (const rk of list)
+    for (const [k, a] of Object.entries(rk || {})) {
+      const cur = (out[k] = out[k] || [0, 0, 0]);
+      for (let r = 0; r < 3; r++) cur[r] += a[r] || 0;
+    }
+  return out;
 }
 function takeTroops(t, seat, c) {
   const cur = troopsAt(t, seat);
@@ -1405,7 +1486,7 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
     const exactS = troops ? cleanTroops(troops) : null;
     if (exactS) count = battles.sum(exactS);
     checkSend(A, actor, count);
-    const moving = exactS ? takeTroops(A, actor, exactS) : takeCheapest(A, actor, count);
+    const moving = withRanks(A, actor, () => (exactS ? takeTroops(A, actor, exactS) : takeCheapest(A, actor, count)));
     B.controller = actor;
     addTroops(B, actor, moving);
     refreshSeas(s);
@@ -1429,7 +1510,7 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
     const tr = transportFrom(s, actor, A);
     if (count > tr.capacity) fail(`Your ships off ${A.id} can carry ${tr.capacity} troops (${TWS(s).transportPerShip ?? 3} per ship). Move fewer or bring more ships.`);
   }
-  const moving = exact ? takeTroops(A, actor, exact) : takeCheapest(A, actor, count);
+  const moving = withRanks(A, actor, () => (exact ? takeTroops(A, actor, exact) : takeCheapest(A, actor, count)));
   if (bySea) interceptConvoy(s, actor, A, B, moving, 'reinforcements');
   addTroops(B, actor, moving);
   syncUnits(s);
@@ -1723,10 +1804,10 @@ function nextWave(s) {
     let sent;
     const dom = T.kind === 'sea' ? 'sea' : 'land';
     if (e.troops) {
-      sent = zeroTroops();
-      for (const k of battles.TYPES) sent[k] = (domainOf(k) === 'sea') === (dom === 'sea') ? Math.min(e.troops[k] || 0, have[k]) : 0;
-      takeTroops(src, e.seat, sent);
-    } else sent = takeCheapest(src, e.seat, Math.min(e.count || 0, battles.sum(have)), dom);
+      const want = zeroTroops();
+      for (const k of battles.TYPES) want[k] = (domainOf(k) === 'sea') === (dom === 'sea') ? Math.min(e.troops[k] || 0, have[k]) : 0;
+      sent = withRanks(src, e.seat, () => takeTroops(src, e.seat, want));
+    } else sent = withRanks(src, e.seat, () => takeCheapest(src, e.seat, Math.min(e.count || 0, battles.sum(have)), dom));
     if (src.kind === 'sea') refreshSeas(s);
     if (T.kind === 'land' && src.kind === 'land' && !areAdjacent(src, T)) {
       const tr = transportFrom(s, e.seat, src);
@@ -1768,13 +1849,14 @@ function nextWave(s) {
       continue;
     }
     // A real battle.
+    const defRanks = JSON.parse(JSON.stringify(vetAt(T, D)));
     setTroops(T, D, zeroTroops()); // the defenders are in the battle now
     busy.add(T.id);
     busy.add(src.id);
     fighting.add(e.seat);
     fighting.add(D);
     rise += TWS(s).battleFlood;
-    const b = beginBattleTW(s, { attacker: e.seat, defender: D, T, src, sent, defenders });
+    const b = beginBattleTW(s, { attacker: e.seat, defender: D, T, src, sent, defenders, ranks: { A: RANKS.get(sent) || {}, D: defRanks } });
     addLog(s, `⚔ ${T.kind === 'sea' ? 'NAVAL BATTLE' : 'BATTLE'} for ${name}: ${A.name} (${describeTroops(sent)}) attacks ${s.players[D].name} (${describeTroops(defenders)}).${b.kind === 'air' ? ' Both sides have aircraft: the air battle comes first!' : ''}`, { kind: 'battle', event: 'battleStart', battle: b.id });
   }
   s.battleQueueTW = later;
@@ -1818,10 +1900,10 @@ function bombardFor(s, T, seat) {
  * brought aircraft, an AIR battle first (the land battle follows when it ends).
  * Otherwise straight to the land battle, with the bombers of whoever has aircraft.
  */
-function beginBattleTW(s, { attacker, defender, T, src, sent, defenders }) {
+function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks = null }) {
   const cfg = TWS(s);
   const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -1940,8 +2022,19 @@ function finishAirTW(s, b) {
   const win = b.winner === 'A' ? A : D;
   addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
   const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
-  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0 }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
   addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
+}
+
+/** "Ana's survivors gain experience: 2 Veterans ★★" — one line per side that gained ranks. */
+function promotionLog(s, b, rkA, rkD) {
+  const NAMES = ['Seasoned ★', 'Veterans ★★', 'Elite ★★★'];
+  for (const [seat, rk] of [[b.attacker, rkA], [b.defender, rkD]]) {
+    const by = [0, 0, 0];
+    for (const a of Object.values(rk)) for (let r = 0; r < 3; r++) by[r] += a[r];
+    const parts = [2, 1, 0].filter((r) => by[r]).map((r) => `${by[r]} ${NAMES[r]}`);
+    if (parts.length) addLog(s, `🎖 ${s.players[seat].name}'s survivors gain experience: ${parts.join(', ')}.`);
+  }
 }
 
 /** Apply a finished battle to the board. */
@@ -1953,6 +2046,12 @@ function finishBattleTW(s, b) {
   const D = s.players[b.defender];
   const aLeft = battles.survivors(b, 'A');
   const dLeft = battles.survivors(b, 'D');
+  // Survivors on both sides go up a rank; units that sat the battle out keep theirs.
+  const rkA = battles.survivorRanks(b, 'A');
+  const rkD = battles.survivorRanks(b, 'D');
+  const keptA = (b.rankLeft && b.rankLeft.A) || {};
+  const keptD = (b.rankLeft && b.rankLeft.D) || {};
+  promotionLog(s, b, rkA, rkD);
   // Casualties are counted in whole units: surviving dots are grouped back into units.
   const lost = (side) => battles.unitsLost(b, side);
   A.stats.unitsLost += lost('A');
@@ -1970,12 +2069,12 @@ function finishBattleTW(s, b) {
   if (T.kind === 'sea') {
     if (b.winner === 'A') {
       T.controller = b.attacker;
-      addTroops(T, b.attacker, aLeft);
-      seaRetreat(s, T, b.defender, dLeft);
+      addTroops(T, b.attacker, tagRanks(aLeft, rkA));
+      seaRetreat(s, T, b.defender, tagRanks(dLeft, rkD));
       addLog(s, `⚓ ${A.name} takes control of ${T.id}.`, { kind: 'good' });
     } else {
-      addTroops(T, b.defender, dLeft);
-      seaRetreat(s, src, b.attacker, aLeft, true);
+      addTroops(T, b.defender, tagRanks(dLeft, rkD));
+      seaRetreat(s, src, b.attacker, tagRanks(aLeft, rkA), true);
     }
     refreshSeas(s);
     syncUnits(s);
@@ -1993,15 +2092,20 @@ function finishBattleTW(s, b) {
   };
   const aHome = addAll(aPlanes, res.A, lostAir.A);
   const dPlanesAll = addAll(dPlanes, res.D, lostAir.D);
+  // Hand the ranks out: ground survivors, then planes (survivors + those that sat it out).
+  tagRanks(aGround, pickBest(rkA, aGround));
+  tagRanks(dGround, pickBest(rkD, dGround));
+  tagRanks(aHome, mergeRanks(pickBest(rkA, aPlanes), keptA));
+  tagRanks(dPlanesAll, mergeRanks(pickBest(rkD, dPlanes), keptD));
   if (b.winner === 'A') {
     // Surviving defenders who weren't cut off fall back to a neighbouring tile.
-    retreat(s, T, b.defender, addAll(dGround, dPlanesAll));
+    retreat(s, T, b.defender, tagRanks(addAll(dGround, dPlanesAll), mergeRanks(RANKS.get(dGround), RANKS.get(dPlanesAll))));
     if (battles.sum(aGround)) conquerTW(s, b.attacker, b.defender, T, aGround);
     else addLog(s, `${A.name}'s bombers wiped out the defence of ${tileName(s, T)}, but there are no ground troops to take it.`);
     returnStrike(s, b.attacker, src, aHome);
   } else {
-    addTroops(T, b.defender, addAll(dGround, dPlanesAll));
-    returnStrike(s, b.attacker, src, addAll(aGround, aHome));
+    addTroops(T, b.defender, tagRanks(addAll(dGround, dPlanesAll), mergeRanks(RANKS.get(dGround), RANKS.get(dPlanesAll))));
+    returnStrike(s, b.attacker, src, tagRanks(addAll(aGround, aHome), mergeRanks(RANKS.get(aGround), RANKS.get(aHome))));
   }
   syncUnits(s);
 }
@@ -2171,8 +2275,10 @@ function upgradeUnits(s, actor, { tile, from, to, count = 1, materials } = {}) {
   if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
   diplomacy.checkUnits(s, actor, p.units); // same number of units: only treaties on totals matter
   subBag(p.materials, bag);
-  takeTroops(T, actor, { ...zeroTroops(), [from]: count });
-  addTroops(T, actor, { ...zeroTroops(), [to]: count });
+  // Same soldiers, new kit: their rank comes with them.
+  const old = withRanks(T, actor, () => takeTroops(T, actor, { ...zeroTroops(), [from]: count }));
+  const rk = (RANKS.get(old) || {})[from];
+  addTroops(T, actor, tagRanks({ ...zeroTroops(), [to]: count }, rk ? { [to]: rk } : null));
   p.stats.upgrades = (p.stats.upgrades || 0) + count;
   addLog(s, `⬆ ${p.name} upgraded ${count} ${ARS.UNITS[from].name.toLowerCase()} to ${ARS.UNITS[to].name.toLowerCase()} on ${tileName(s, T)}.`);
 }

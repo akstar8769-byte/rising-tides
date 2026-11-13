@@ -645,3 +645,56 @@ test('total war: when a capital falls, the rest of that player\'s land surrender
   assert.equal((tile(s, 'E1').troops[1] || {}).infantry || 0, 0);
   assert.ok(s.log.some((e) => /whole territory surrenders/.test(e.text)));
 });
+
+// ---------------------------------------------------------------- veterans
+test('veterans: ranked units fight harder; every survivor (won or lost) goes up a rank', () => {
+  const T = { id: 'M1', kind: 'land' };
+  const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { infantry: 2 }, dTroops: { infantry: 1 }, cfg: { ...CFG, dotsPerUnit: 1 }, rand: () => 0.5, ranks: { A: { infantry: [0, 1, 0] }, D: {} } });
+  const a = b.dots.filter((d) => d.side === 'A');
+  const vet = a.find((d) => d.rk === 2);
+  const green = a.find((d) => d.rk === 0);
+  assert.ok(vet && green, 'one veteran, one recruit');
+  assert.equal(Math.round(vet.max * 100), Math.round(green.max * (1 + 2 * CFG.rankBonusPct / 100) * 100));
+  // The recruit dies; the veteran and the defender survive.
+  b.dots = b.dots.filter((d) => d !== green);
+  assert.deepEqual(tw.survivorRanks(b, 'A'), { infantry: [0, 0, 1] }, 'veteran -> elite');
+  assert.deepEqual(tw.survivorRanks(b, 'D'), { infantry: [1, 0, 0] }, 'the defender survived too: seasoned');
+});
+
+test('veterans: ranks travel with moves and upgrades; units lost outside battle are recruits first', () => {
+  let s = learn(game(), 0, 'motorised');
+  s = put(s, 'C0', 0, { infantry: 3 });
+  s = edit(s, (c) => (tile(c, 'C0').vet = { 0: { infantry: [0, 0, 1] } })); // one elite, two recruits
+  s = act(s, 0, 'moveUnits', { from: 'C0', to: 'M0', troops: { infantry: 1 } });
+  assert.deepEqual(tile(s, 'M0').vet[0], { infantry: [0, 0, 1] }, 'the elite leads the move');
+  assert.ok(!(tile(s, 'C0').vet || {})[0], 'only recruits stay behind');
+  s = act(s, 0, 'upgradeUnits', { tile: 'M0', from: 'infantry', to: 'motorised', count: 1, materials: bag(CFG.motorised.cost - CFG.infantry.cost) });
+  assert.deepEqual(tile(s, 'M0').vet[0], { motorised: [0, 0, 1] }, 'same soldiers, new trucks: still elite');
+  // Lose units outside battle: recruits go first.
+  let t = put(game(), 'C0', 0, { infantry: 3 });
+  t = edit(t, (c) => (tile(c, 'C0').vet = { 0: { infantry: [1, 0, 0] } }));
+  t = edit(t, (c) => {
+    const x = tile(c, 'C0');
+    x.troops[0].infantry = 2;
+    x.units[0] = 2;
+  });
+  t = act(t, 0, 'moveUnits', { from: 'C0', to: 'M0', troops: { infantry: 1 } }); // touch the tile so it re-checks
+  assert.deepEqual(tile(t, 'M0').vet[0], { infantry: [1, 0, 0] });
+});
+
+test('veterans: after a real battle the survivors come home with a rank and the log says so', () => {
+  let s = game();
+  s = edit(s, (c) => (tile(c, 'M1').controller = 0)); // a province already taken: the capital is open
+  s = put(s, 'M1', 0, { mediumTank: 4 });
+  s = put(s, 'C1', 1, { militia: 1 });
+  s = allReady(s);
+  s = act(s, 0, 'choose', { action: 'attack', target: 'C1', from: 'M1', count: 4, troops: { mediumTank: 4 } });
+  for (const p of s.players) if (!p.choice) s = act(s, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
+  for (let i = 0; i < 400 && s.phase === 'battle'; i++) {
+    for (const b of s.battles || []) b.auto = { A: true, D: true };
+    engine.stepBattles(s, 0.5);
+  }
+  assert.ok(s.log.some((e) => /survivors gain experience/.test(e.text)));
+  const vets = Object.values((tile(s, 'C1').vet || {})[0] || {}).concat(Object.values((tile(s, 'M1').vet || {})[0] || {}));
+  assert.ok(vets.some((a) => a[0] > 0), 'surviving tanks are now seasoned');
+});

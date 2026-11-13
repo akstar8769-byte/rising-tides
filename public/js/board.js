@@ -29,7 +29,8 @@ function unitBadge(t, x, y) {
   const stacks = Object.entries(t.units || {}).filter(([, n]) => n > 0);
   if (!stacks.length) return '';
   stacks.sort(([a], [b]) => (Number(b) === t.controller) - (Number(a) === t.controller));
-  const label = '⚔' + stacks.map(([, n]) => n).join('+');
+  const vets = t.vet && t.vet[stacks[0][0]] ? Object.values(t.vet[stacks[0][0]]).reduce((a, r) => a + r[0] + r[1] + r[2], 0) : 0;
+  const label = '⚔' + stacks.map(([, n]) => n).join('+') + (vets ? '★' : '');
   const w = 16 + label.length * 9;
   const bx = x - 38;
   const by = y - 34;

@@ -413,3 +413,13 @@ A playtester massed cheap militia (low upkeep), saved up and out-built everyone 
   - **Catch-up:** every round, a Hard/Brutal bot whose army is worth less (in materials) than the strongest human army gets 15% / 30% of the gap as extra materials, at most 15 a round (`botCatchUpPctHard`, `botCatchUpPctBrutal`, `botCatchUpMax`). The log says who is catching up.
   - Army goals are bigger: Hard ×1.6, Brutal ×2.5.
   - Measured (bots-only games plus one seat counted as human): Brutal bots ~24 units and an army worth ~140 materials each by the end; Hard ~20 units, ~112.
+
+## 🎖 Veterans (added 13 November 2026)
+Battle experience now matters, as it did in real wars.
+- **Every unit that survives a battle goes up one rank** — whether its side won or lost (holding out teaches too): green → **Seasoned ★** → **Veteran ★★** → **Elite ★★★** (the top).
+- **Bonuses:** +10% damage and toughness per rank (`rankBonusPct`); veterans and elites move 5% faster (`rankSpeedPct`); elites hold out twice as long when cut off before surrendering (`eliteHoldPct`).
+- They stack with research levels (levels = better equipment, ranks = better soldiers).
+- **Kept on upgrade:** upgrading veterans (e.g. infantry → motorised) keeps their rank — same soldiers, new kit.
+- **Where ranks go:** each tile remembers how many of each unit type are veterans. When troops leave a tile (moves, attacks), the best go first. Units lost outside battle (upkeep, shelling, convoy losses, surrender of a territory) are recruits first; veterans who die in battle are gone, with their experience.
+- **Seen on screen:** gold outlines and ★ above veteran units in battle; ⚔3★ on map badges when a stack has veterans; the tile menu lists them (🎖 2★★ 1★); the log says when survivors gain experience.
+- **Bots** count veterans when judging whether an attack can win.

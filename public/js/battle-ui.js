@@ -46,7 +46,7 @@ export function liveBattle(store, id) {
     forms: snap.forms,
     terr: snap.terr,
     lv: snap.lv || full.levels,
-    dots: snap.dots.map(([id2, side, type, x, y, hp, cut, tx, ty, unit]) => ({ id: id2, side, type, x, y, hpPct: hp, cut: !!cut, tx, ty, unit, seat: side === 'A' ? full.attacker : full.defender })),
+    dots: snap.dots.map(([id2, side, type, x, y, hp, cut, tx, ty, unit, rk]) => ({ id: id2, side, type, x, y, hpPct: hp, cut: !!cut, tx, ty, unit, rk: rk || 0, seat: side === 'A' ? full.attacker : full.defender })),
   };
 }
 
@@ -160,8 +160,9 @@ function dotsLayer(store, b, now) {
     const st = PLAYER_STYLE[d.seat];
     const op = (0.35 + 0.65 * ((d.hpPct ?? 100) / 100)).toFixed(2);
     const selected = sel.has(d.id) && d.side === mySide;
-    const stroke = selected ? '#fff' : d.cut ? '#d7263d' : '#111';
-    const sw = selected ? 0.35 : d.cut ? 0.3 : 0.12;
+    // Veterans wear gold: a thicker gold outline the higher their rank.
+    const stroke = selected ? '#fff' : d.cut ? '#d7263d' : d.rk ? '#d4a017' : '#111';
+    const sw = selected ? 0.35 : d.cut ? 0.3 : d.rk ? 0.14 + 0.08 * d.rk : 0.12;
     const dash = d.cut ? ' stroke-dasharray=".4 .25"' : '';
     if (d.type === 'bomber' || d.type === 'interceptor') {
       // Aircraft fly above the battle: a shadow on the ground, the plane lifted and
@@ -177,6 +178,11 @@ function dotsLayer(store, b, now) {
     }
     const mark = dotMark(d.type, x, y);
     if (mark) parts.push(mark);
+    // One star per rank above the unit's first dot.
+    if (d.rk && !b.dots.some((o) => o.unit === d.unit && o.side === d.side && o.id < d.id)) {
+      const ly = d.type === 'bomber' || d.type === 'interceptor' ? y - AIR_LIFT - 1.3 : y - 1.15;
+      parts.push(`<text x="${x.toFixed(2)}" y="${ly.toFixed(2)}" class="rank-stars" text-anchor="middle">${'★'.repeat(d.rk)}</text>`);
+    }
     if (d.side === mySide) parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.6" fill="transparent" data-dot="${d.id}"/>`);
   }
   parts.push(shellsLayer(b.id, now));

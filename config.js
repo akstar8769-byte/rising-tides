@@ -177,6 +177,10 @@ const DEFAULTS = {
     levelAttackPct: 15,          // damage per level
     levelSpeedPct: 5,            // speed per level
     levelCost: { 2: 4, 3: 6, 4: 9 }, // research cost of each level (any mix)
+    // Veterans: units that survive a battle (won or lost) go up a rank: seasoned ★, veteran ★★, elite ★★★.
+    rankBonusPct: 10,            // damage and toughness per rank
+    rankSpeedPct: 5,             // veterans and elites move this much faster
+    eliteHoldPct: 200,           // elites hold out this % as long when cut off before surrendering
     // Formations: bonuses while a formation is in use (100 = no change).
     formations: {
       line: { attackPct: 100, defencePct: 115, speedPct: 100 },
@@ -427,6 +431,12 @@ for (const [k, u] of Object.entries(ARSENAL.UNITS)) {
   DECIMALS.push(`totalwar.${k}.attack`, `totalwar.${k}.speed`);
 }
 for (const [k, t] of Object.entries(ARSENAL.TECHS)) if (!t.level) LABELS[`totalwar.research.${k}`] = `Research cost: ${t.name}`;
+LABELS['totalwar.rankBonusPct'] = 'Veterans: extra damage and toughness per rank (%)';
+LABELS['totalwar.rankSpeedPct'] = 'Veterans: extra speed for veterans and elites (%)';
+LABELS['totalwar.eliteHoldPct'] = 'Veterans: how long elites hold out when cut off (% of normal)';
+LIMITS['totalwar.rankBonusPct'] = [0, 100];
+LIMITS['totalwar.rankSpeedPct'] = [0, 50];
+LIMITS['totalwar.eliteHoldPct'] = [100, 500];
 LABELS['totalwar.levelHpPct'] = 'Unit levels: extra toughness per level (%)';
 LABELS['totalwar.levelAttackPct'] = 'Unit levels: extra damage per level (%)';
 LABELS['totalwar.levelSpeedPct'] = 'Unit levels: extra speed per level (%)';

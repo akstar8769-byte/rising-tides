@@ -155,7 +155,7 @@ function grit(g) {
   return d === 'brutal' ? 2.5 : d === 'hard' ? 1.6 : 1;
 }
 /** Fighting value of a troop count: what it cost, raised by research levels. */
-function strength(g, troops, seat) {
+function strength(g, troops, seat, vet = null) {
   const lv = (k) => {
     if (seat !== g.you) {
       const r = (g.players[seat].research && g.players[seat].research.done) || [];
@@ -169,6 +169,9 @@ function strength(g, troops, seat) {
   for (const [k, n] of Object.entries(troops || {})) {
     const u = g.tw.units.find((x) => x.type === k);
     if (u && n) v += n * u.cost * (1 + 0.15 * (lv(k) - 1));
+    // Veterans count for more: +10% of the unit's worth per rank.
+    const r = vet && vet[k];
+    if (u && r) v += u.cost * 0.1 * (r[0] + 2 * r[1] + 3 * r[2]);
   }
   return v;
 }
@@ -700,8 +703,9 @@ function pickTarget(g, me, P) {
     // Can we win? Total War compares real strength (cost x level); other modes count units.
     let winnable = sent > defenders || defenders === 0;
     if (g.tw && troops && t.controller != null && defenders > 0) {
-      const ours = strength(g, troops, g.you);
-      const theirs = strength(g, (t.troops || {})[t.controller], t.controller);
+      const src = g.board.tiles.find((x) => x.id === from);
+      const ours = strength(g, troops, g.you, src.vet && src.vet[g.you]);
+      const theirs = strength(g, (t.troops || {})[t.controller], t.controller, t.vet && t.vet[t.controller]);
       const need = (P === PERSONALITIES.warlike ? 1.0 : P === PERSONALITIES.cautious ? 1.6 : 1.25) / Math.sqrt(grit(g));
       winnable = ours >= theirs * need;
     }
