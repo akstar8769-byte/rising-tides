@@ -225,8 +225,11 @@ function terrainAt(b, x, y) {
   return r[clamp(Math.floor(x / TCELL), 0, r.length - 1)];
 }
 
-function speedFactor(ch, type) {
+function speedFactor(ch, type, cfg = {}) {
   if (ARS.UNITS[type].domain !== 'land') return 1;
+  // Tanks bog down in rough ground (worse than trucks).
+  if (ARS.TRACKED.includes(type) && ch === 'f') return (cfg.tankForestSpeedPct ?? 40) / 100;
+  if (ARS.TRACKED.includes(type) && ch === 'h') return (cfg.tankHillSpeedPct ?? 50) / 100;
   const wheeled = ARS.TANKS.includes(type) || type === 'motorised' || type === 'mechanised' || ARS.GUNS.includes(type);
   if (ch === 'f') return type === 'cavalry' ? 0.45 : wheeled ? 0.55 : 0.7;
   if (ch === 'h') return wheeled ? 0.65 : 0.75;
@@ -251,7 +254,7 @@ function defenceFactor(ch, cfg) {
  * `rand` is the game's seeded random number function, so battles replay exactly.
  * bombard: { A, D } shore-bombardment damage per second from ships offshore.
  */
-function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null }) {
+function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null, tech = null }) {
   const dpu = Math.max(1, Math.min(SLOTS.length, cfg.dotsPerUnit || 1));
   const b = {
     id,
@@ -284,6 +287,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     bombardAt: { A: null, D: null },
     shots: [], // recent shells, for the battle screen
     levels: levels || { A: {}, D: {} }, // research levels: { side: { type: level } }
+    tech: tech || { A: {}, D: {} }, // battle-relevant research: { side: { bazooka: true } }
     // Veterans: { side: { type: [seasoned, veteran, elite] } } brought into the battle; the
     // best are handed out first, whatever isn't used (e.g. planes held in reserve) is kept here.
     rankLeft: JSON.parse(JSON.stringify(ranks || { A: {}, D: {} })),
@@ -656,7 +660,7 @@ function stepBattle(b, dt, cfg) {
     const togo = Math.hypot(d.tx - d.x, d.ty - d.y);
     if (togo < 0.15) continue;
     const slowed = !isAir(d) && contact.get(d).length;
-    const sp = cfg[d.type].speed * lvl(b, d, cfg.levelSpeedPct) * (d.rk >= 2 ? 1 + (cfg.rankSpeedPct ?? 5) / 100 : 1) * bonus[d.side].spd * speedFactor(terrainAt(b, d.x, d.y), d.type) * (slowed ? 0.3 : 1) * dt;
+    const sp = cfg[d.type].speed * lvl(b, d, cfg.levelSpeedPct) * (d.rk >= 2 ? 1 + (cfg.rankSpeedPct ?? 5) / 100 : 1) * bonus[d.side].spd * speedFactor(terrainAt(b, d.x, d.y), d.type, cfg) * (slowed ? 0.3 : 1) * dt;
     const k = Math.min(1, sp / togo);
     d.x += (d.tx - d.x) * k;
     d.y += (d.ty - d.y) * k;
@@ -690,7 +694,15 @@ function stepBattle(b, dt, cfg) {
   // anti-air, big ships) also fire at range when nothing is in contact.
   const damage = new Map();
   const hit = (d, target, base) => {
-    let dmg = ((cfg[d.type].attack * lvl(b, d, cfg.levelAttackPct) * rankBoost(d.rk, cfg.rankBonusPct)) / dpu) * ARS.matchup(d.type, target.type, cfg, target.cut) * base * bonus[d.side].att * dt;
+    let m = ARS.matchup(d.type, target.type, cfg, target.cut);
+    if (ARS.UNITS[target.type].cls === 'armor' && ARS.UNITS[target.type].domain === 'land') {
+      // Bazookas: infantry close enough to fight can knock out tanks.
+      if (ARS.INFANTRY_LINE.includes(d.type) && b.tech && b.tech[d.side] && b.tech[d.side].bazooka) m = Math.max(m, (cfg.bazookaVsArmorPct ?? 100) / 100);
+      // Ambush: foot soldiers in a forest or on a hill hit passing tanks much harder.
+      const ground = terrainAt(b, d.x, d.y);
+      if (ARS.AMBUSHERS.includes(d.type) && (ground === 'f' || ground === 'h')) m *= (cfg.ambushVsArmorPct ?? 150) / 100;
+    }
+    let dmg = ((cfg[d.type].attack * lvl(b, d, cfg.levelAttackPct) * rankBoost(d.rk, cfg.rankBonusPct)) / dpu) * m * base * bonus[d.side].att * dt;
     if (d.cut) dmg *= 0.75; // cut-off troops are low on supplies
     if (dmg > 0) damage.set(target, (damage.get(target) || 0) + dmg);
   };

@@ -698,3 +698,50 @@ test('veterans: after a real battle the survivors come home with a rank and the 
   const vets = Object.values((tile(s, 'C1').vet || {})[0] || {}).concat(Object.values((tile(s, 'M1').vet || {})[0] || {}));
   assert.ok(vets.some((a) => a[0] > 0), 'surviving tanks are now seasoned');
 });
+
+// ---------------------------------------------------------------- counters to tanks
+/** One infantry dot next to one medium tank dot on chosen ground; how much damage does the tank take in one step? */
+function duelDamage({ ground = '.', tech = {}, attacker = 'infantry', target = 'mediumTank' } = {}) {
+  const T = { id: 'M1', kind: 'land' };
+  const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { [attacker]: 1 }, dTroops: { [target]: 1 }, cfg: { ...CFG, dotsPerUnit: 1 }, rand: () => 0.5, tech: { A: tech, D: {} } });
+  b.terrain = b.terrain.map((row) => '.'.repeat(row.length)); // open ground everywhere…
+  const a = b.dots.find((d) => d.side === 'A');
+  const d = b.dots.find((x) => x.side === 'D');
+  Object.assign(a, { x: 31.5, y: 20, tx: 31.5, ty: 20 }); // terrain square 7 (may be forest)
+  Object.assign(d, { x: 32.5, y: 20, tx: 32.5, ty: 20 }); // square 8: always open ground
+  if (ground !== '.') b.terrain = b.terrain.map((row, y) => (y === 5 ? row.slice(0, 7) + ground + row.slice(8) : row)); // …except where the infantry stands
+  b.auto = { A: false, D: false };
+  b.ordered = { A: true, D: true };
+  const before = d.hp;
+  tw.stepBattle(b, 0.5, CFG);
+  return before - d.hp;
+}
+
+test('bazookas: research after Infantry level 4; infantry then hit tanks at full strength', () => {
+  assert.deepEqual(ARS.TECHS.bazookas.needs, ['infantryL4']);
+  let s = game();
+  assert.throws(() => act(s, 0, 'research', { tech: 'bazookas', materials: bag(CFG.research.bazookas) }), /Infantry level 4 first/);
+  s = learn(s, 0, 'infantryL2', 'infantryL3', 'infantryL4');
+  s = act(s, 0, 'research', { tech: 'bazookas', materials: bag(CFG.research.bazookas) });
+  assert.equal(s.players[0].research.current, 'bazookas');
+  const plain = duelDamage();
+  const zook = duelDamage({ tech: { bazooka: true } });
+  assert.ok(Math.abs(zook / plain - CFG.bazookaVsArmorPct / CFG.infantry.vsArmorPct) < 0.01, `bazookas: ${plain} -> ${zook}`);
+});
+
+test('terrain: foot soldiers in a forest ambush tanks; tanks bog down in forests and hills', () => {
+  const open = duelDamage();
+  const forest = duelDamage({ ground: 'f' });
+  assert.ok(Math.abs(forest / open - CFG.ambushVsArmorPct / 100) < 0.01, `ambush: ${open} -> ${forest}`);
+  assert.equal(tw.speedFactor ? tw.speedFactor('f', 'mediumTank', CFG) : CFG.tankForestSpeedPct / 100, CFG.tankForestSpeedPct / 100);
+});
+
+test('tank destroyers: after Anti-tank guns + Medium tanks; deadly to tanks, so-so against troops', () => {
+  assert.deepEqual(ARS.TECHS.tankDestroyers.needs, ['antiTank', 'mediumTanks']);
+  assert.ok(ARS.upgradePath('antitank', 'tankDestroyer'));
+  assert.ok(ARS.LEVELED.includes('tankDestroyer'));
+  const vsTank = duelDamage({ attacker: 'tankDestroyer', target: 'mediumTank' });
+  const vsInf = duelDamage({ attacker: 'tankDestroyer', target: 'infantry' });
+  assert.ok(vsTank > vsInf * 4, `tank destroyer vs tank ${vsTank}, vs infantry ${vsInf}`);
+  assert.ok(CFG.tankDestroyer.speed > CFG.antitank.speed, 'faster than a towed anti-tank gun');
+});

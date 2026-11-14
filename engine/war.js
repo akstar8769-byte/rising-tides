@@ -1903,7 +1903,9 @@ function bombardFor(s, T, seat) {
 function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks = null }) {
   const cfg = TWS(s);
   const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks };
+  const knows = (seat, id) => ((s.players[seat].research && s.players[seat].research.done) || []).includes(id);
+  const tech = { A: { bazooka: knows(attacker, 'bazookas') }, D: { bazooka: knows(defender, 'bazookas') } };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -2022,7 +2024,7 @@ function finishAirTW(s, b) {
   const win = b.winner === 'A' ? A : D;
   addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
   const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
-  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0 }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
   addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
 }
 

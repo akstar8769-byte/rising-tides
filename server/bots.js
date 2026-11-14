@@ -117,7 +117,7 @@ function pickUnitType(g, me, P, roll = Math.random()) {
     return t || null;
   };
   if (foe.armor >= 2 && roll < 0.6) {
-    const c = counter(['antitank', 'heavyTank', 'mediumTank'], Math.ceil(foe.armor * 0.6));
+    const c = counter(['tankDestroyer', 'antitank', 'heavyTank', 'mediumTank'], Math.ceil(foe.armor * 0.6));
     if (c) return c;
   }
   if (foe.air >= 2 && roll > 0.4) {
@@ -199,9 +199,9 @@ function myTroops(g) {
 
 /** Total War research plans, in order, by personality. */
 const RESEARCH_PLAN = {
-  warlike: ['artillery', 'lightTanks', 'mediumTanks', 'aircraft', 'motorised', 'heavyTanks', 'selfPropelled', 'mechanised', 'antiAir', 'shipyards'],
-  balanced: ['artillery', 'motorised', 'lightTanks', 'mediumTanks', 'aircraft', 'selfPropelled', 'mechanised', 'antiTank', 'antiAir', 'heavyTanks'],
-  cautious: ['motorised', 'antiTank', 'artillery', 'lightTanks', 'aircraft', 'mechanised', 'antiAir', 'mediumTanks', 'selfPropelled'],
+  warlike: ['artillery', 'lightTanks', 'mediumTanks', 'aircraft', 'motorised', 'heavyTanks', 'selfPropelled', 'mechanised', 'antiAir', 'shipyards', 'antiTank', 'tankDestroyers', 'bazookas'],
+  balanced: ['artillery', 'motorised', 'lightTanks', 'mediumTanks', 'aircraft', 'selfPropelled', 'mechanised', 'antiTank', 'tankDestroyers', 'antiAir', 'heavyTanks', 'bazookas'],
+  cautious: ['motorised', 'antiTank', 'artillery', 'lightTanks', 'mediumTanks', 'tankDestroyers', 'aircraft', 'mechanised', 'antiAir', 'selfPropelled', 'bazookas'],
 };
 function researchIdea(g, me, P) {
   if (!me.research || me.research.current) return null;

@@ -167,14 +167,20 @@ const DEFAULTS = {
     lightTank: { cost: 6, upkeep: 2, hp: 20, attack: 2.4, speed: 5, range: 0, vsArmorPct: 100, vsAirPct: 0 },
     mediumTank: { cost: 8, upkeep: 2, hp: 30, attack: 3, speed: 4.5, range: 0, vsArmorPct: 120, vsAirPct: 0 },
     heavyTank: { cost: 11, upkeep: 3, hp: 45, attack: 4, speed: 3, range: 0, vsArmorPct: 150, vsAirPct: 0 },
+    // Tank destroyer: armoured and quick, built to kill tanks, so-so against troops (upgrade from anti-tank guns).
+    tankDestroyer: { cost: 8, upkeep: 2, hp: 24, attack: 2.4, speed: 4.5, range: 0, vsArmorPct: 300, vsAirPct: 0, vsSoftPct: 50 },
     interceptor: { cost: 6, upkeep: 2, hp: 14, attack: 3, speed: 9, range: 0, vsArmorPct: 0, vsAirPct: 100 },
     bomber: { cost: 8, upkeep: 2, hp: 16, attack: 6, speed: 7, range: 0, vsArmorPct: 160, vsAirPct: 20, vsSoftPct: 130 },
+    bazookaVsArmorPct: 100,      // with Bazookas, infantry / motorised / mechanised do at least this % of their damage to tanks
+    ambushVsArmorPct: 150,       // foot soldiers standing in a forest or on a hill do this % damage to tanks (ambush)
+    tankForestSpeedPct: 40,      // tanks, tank destroyers and self-propelled guns move this % of their speed in forests...
+    tankHillSpeedPct: 50,        // ...and on hills (they bog down)
     bomberSplashPct: 50,         // each bomb also hits other enemy ground units next to the target at this % (0 = off)
     destroyer: { cost: 6, upkeep: 2, hp: 20, attack: 2, speed: 6, range: 0, vsArmorPct: 0, vsAirPct: 0 },
     cruiser: { cost: 9, upkeep: 2, hp: 32, attack: 3, speed: 5, range: 6, vsArmorPct: 0, vsAirPct: 0 },
     battleship: { cost: 13, upkeep: 3, hp: 55, attack: 5, speed: 3.5, range: 10, vsArmorPct: 0, vsAirPct: 0 },
     // Research: materials (any mix) to research each technology; it is ready next round.
-    research: { artillery: 5, selfPropelled: 7, lightTanks: 6, mediumTanks: 8, heavyTanks: 10, motorised: 5, mechanised: 7, aircraft: 8, antiTank: 4, antiAir: 4, shipyards: 5, cruisers: 7, battleships: 10 },
+    research: { tankDestroyers: 7, bazookas: 8, artillery: 5, selfPropelled: 7, lightTanks: 6, mediumTanks: 8, heavyTanks: 10, motorised: 5, mechanised: 7, aircraft: 8, antiTank: 4, antiAir: 4, shipyards: 5, cruisers: 7, battleships: 10 },
     // Unit levels (research "Light tank level 2" etc.): every level above 1 adds these
     // percentages to EVERY unit of that type. Types with levels: infantry lines,
     // artillery, tanks, aircraft and ships (engine/arsenal.js LEVELED).
@@ -493,6 +499,12 @@ LIMITS['totalwar.botBonusBrutal'] = [0, 30];
 LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
 LABELS['totalwar.artilleryMeleeAttackPct'] = 'Artillery in close combat: damage dealt (%)';
 LABELS['totalwar.artilleryMeleeDamageTakenPct'] = 'Artillery in close combat: damage taken (%)';
+LABELS['totalwar.bazookaVsArmorPct'] = 'Bazookas: infantry damage vs tanks (%, at least)';
+LABELS['totalwar.ambushVsArmorPct'] = 'Ambush: foot soldiers in forests / hills vs tanks (%)';
+LABELS['totalwar.tankForestSpeedPct'] = 'Tanks in forests: speed (%)';
+LABELS['totalwar.tankHillSpeedPct'] = 'Tanks on hills: speed (%)';
+for (const k of ['bazookaVsArmorPct', 'ambushVsArmorPct']) LIMITS[`totalwar.${k}`] = [0, 500];
+for (const k of ['tankForestSpeedPct', 'tankHillSpeedPct']) LIMITS[`totalwar.${k}`] = [10, 100];
 LABELS['totalwar.bomberSplashPct'] = 'Bomber splash: damage to other ground units next to the target (%)';
 LIMITS['totalwar.bomberSplashPct'] = [0, 200];
 LABELS['totalwar.bombardPct'] = 'Shore bombardment strength (% of ship attack)';

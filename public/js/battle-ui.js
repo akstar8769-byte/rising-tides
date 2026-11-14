@@ -307,6 +307,9 @@ function dotShape(type, x, y) {
       const s = type === 'lightTank' ? 0.75 : type === 'mediumTank' ? 0.9 : 1.05;
       return poly([[x, y - s], [x + s, y], [x, y + s], [x - s, y]]);
     }
+    case 'tankDestroyer':
+      // A low, wide hull with a long gun: a flattened hexagon.
+      return poly([[x - 0.95, y], [x - 0.5, y - 0.6], [x + 0.5, y - 0.6], [x + 0.95, y], [x + 0.5, y + 0.6], [x - 0.5, y + 0.6]]);
     case 'artillery':
     case 'spArtillery':
       return poly([[x - 0.25, y - 0.8], [x + 0.25, y - 0.8], [x + 0.25, y - 0.25], [x + 0.8, y - 0.25], [x + 0.8, y + 0.25], [x + 0.25, y + 0.25], [x + 0.25, y + 0.8], [x - 0.25, y + 0.8], [x - 0.25, y + 0.25], [x - 0.8, y + 0.25], [x - 0.8, y - 0.25], [x - 0.25, y - 0.25]]);
@@ -328,6 +331,7 @@ function dotShape(type, x, y) {
 function dotMark(type, x, y) {
   if (type === 'antitank') return `<rect x="${f2(x - 0.4)}" y="${f2(y - 0.1)}" width=".8" height=".2" fill="#111"/>`;
   if (type === 'antiair') return `<circle cx="${f2(x)}" cy="${f2(y)}" r=".22" fill="#fff"/>`;
+  if (type === 'tankDestroyer') return `<line x1="${f2(x)}" y1="${f2(y)}" x2="${f2(x + 1.3)}" y2="${f2(y)}" stroke="#111" stroke-width=".22"/>`;
   if (type === 'spArtillery') return `<rect x="${f2(x - 0.85)}" y="${f2(y + 0.55)}" width="1.7" height=".3" rx=".12" fill="#111"/>`;
   if (type === 'motorised' || type === 'mechanised') return `<line x1="${f2(x - 0.5)}" y1="${f2(y + 0.35)}" x2="${f2(x + 0.5)}" y2="${f2(y + 0.35)}" stroke="#111" stroke-width=".15"/>`;
   return '';

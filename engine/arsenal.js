@@ -25,6 +25,7 @@ const UNITS = {
   lightTank: { name: 'Light tank', domain: 'land', cls: 'armor', tech: 'lightTanks', from: 'cavalry', shape: '◆' },
   mediumTank: { name: 'Medium tank', domain: 'land', cls: 'armor', tech: 'mediumTanks', from: 'lightTank', shape: '⬢' },
   heavyTank: { name: 'Heavy tank', domain: 'land', cls: 'armor', tech: 'heavyTanks', from: 'mediumTank', shape: '⬣' },
+  tankDestroyer: { name: 'Tank destroyer', domain: 'land', cls: 'armor', tech: 'tankDestroyers', from: 'antitank', shape: '◈' },
   interceptor: { name: 'Interceptor', domain: 'air', cls: 'air', tech: 'aircraft', shape: '✈' },
   bomber: { name: 'Bomber', domain: 'air', cls: 'air', tech: 'aircraft', shape: '✈' },
   destroyer: { name: 'Destroyer', domain: 'sea', cls: 'sea', tech: 'shipyards', shape: '◗' },
@@ -40,6 +41,12 @@ const FAST = ['cavalry', 'lightTank', 'mediumTank', 'heavyTank', 'motorised', 'm
 /** Long-range guns that sit at the back and shell from afar. */
 const GUNS = ['artillery', 'spArtillery'];
 const FOOT = ['militia', 'antitank', 'antiair', 'infantry', 'motorised', 'mechanised'];
+/** Infantry that gets bazookas (research Bazookas, after Infantry level 4). */
+const INFANTRY_LINE = ['infantry', 'motorised', 'mechanised'];
+/** Foot soldiers who ambush tanks from forests and hills. */
+const AMBUSHERS = ['militia', 'antitank', 'infantry', 'motorised', 'mechanised'];
+/** Heavy tracked vehicles that bog down in forests and hills. */
+const TRACKED = ['lightTank', 'mediumTank', 'heavyTank', 'tankDestroyer', 'spArtillery'];
 
 /** The research tree. needs = research that must be finished first. */
 const TECHS = {
@@ -48,6 +55,8 @@ const TECHS = {
   lightTanks: { name: 'Light tanks', needs: ['artillery'], unlocks: ['lightTank'] },
   mediumTanks: { name: 'Medium tanks', needs: ['lightTanks'], unlocks: ['mediumTank'] },
   heavyTanks: { name: 'Heavy tanks', needs: ['mediumTanks'], unlocks: ['heavyTank'] },
+  tankDestroyers: { name: 'Tank destroyers', needs: ['antiTank', 'mediumTanks'], unlocks: ['tankDestroyer'] },
+  bazookas: { name: 'Bazookas', needs: ['infantryL4'], unlocks: [], effect: 'infantry, motorised and mechanised infantry hit tanks hard' },
   motorised: { name: 'Motorised infantry', needs: [], unlocks: ['motorised'] },
   mechanised: { name: 'Mechanised infantry', needs: ['motorised'], unlocks: ['mechanised'] },
   aircraft: { name: 'Aircraft', needs: ['mechanised'], unlocks: ['interceptor', 'bomber'] },
@@ -64,7 +73,7 @@ const TECHS = {
  * How much stronger, and what each level costs, is in config.js (totalwar.level…).
  */
 const MAX_LEVEL = 4;
-const LEVELED = ['infantry', 'motorised', 'mechanised', 'artillery', 'spArtillery', 'lightTank', 'mediumTank', 'heavyTank', 'interceptor', 'bomber', 'destroyer', 'cruiser', 'battleship'];
+const LEVELED = ['infantry', 'motorised', 'mechanised', 'artillery', 'spArtillery', 'lightTank', 'mediumTank', 'heavyTank', 'tankDestroyer', 'interceptor', 'bomber', 'destroyer', 'cruiser', 'battleship'];
 const levelTech = (type, n) => `${type}L${n}`;
 for (const type of LEVELED) {
   for (let n = 2; n <= MAX_LEVEL; n++) {
@@ -144,4 +153,4 @@ function matchup(att, def, cfg, cut = false) {
   return (a.vsSoftPct ?? 100) / 100; // specialists (anti-tank, anti-air) are poor against troops
 }
 
-module.exports = { UNITS, TYPES, LAND, AIR, SEA, TANKS, FAST, FOOT, GUNS, TECHS, TECH_IDS, MAX_LEVEL, LEVELED, levelTech, levelOf, levelsOf, levelBoost, techCost, zero, sum, canBuild, upgradePath, matchup };
+module.exports = { INFANTRY_LINE, AMBUSHERS, TRACKED, UNITS, TYPES, LAND, AIR, SEA, TANKS, FAST, FOOT, GUNS, TECHS, TECH_IDS, MAX_LEVEL, LEVELED, levelTech, levelOf, levelsOf, levelBoost, techCost, zero, sum, canBuild, upgradePath, matchup };

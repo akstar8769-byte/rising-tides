@@ -347,7 +347,7 @@ function unitPicker(g, current) {
       .join('');
     return `<h4 class="unit-domain">${DOMAIN_TITLE[dom]}</h4><div class="unit-picker">${cards}</div>`;
   });
-  return `${groups.join('')}<p class="hint">Tanks shrug off rifles; anti-tank guns shred tanks. Only anti-air and aircraft can hit planes. Artillery, anti-air, cruisers and battleships fire at range. Cavalry rides down militia and encircled infantry. Ships hold sea bays, shell coastal battles and carry your troops across.</p>`;
+  return `${groups.join('')}<p class="hint">Tanks shrug off rifles — until your infantry get Bazookas; anti-tank guns and tank destroyers shred tanks, and foot soldiers in forests or on hills ambush them. Tanks bog down in forests and hills. Only anti-air and aircraft can hit planes. Artillery, anti-air, cruisers and battleships fire at range. Cavalry rides down militia and encircled infantry. Ships hold sea bays, shell coastal battles and carry your troops across.</p>`;
 }
 
 /** "🎖 Veterans: 2★★ medium tanks on C3, 3★ infantry on B2" — or how to get some. */
@@ -399,7 +399,7 @@ function researchPanel(store, canBuild) {
     else if (now) right = '<span class="tag">🔬 ready next round</span>';
     else if (!ready) right = `<span class="muted small">needs ${t.needs.map((x) => esc(g.tw.techs.find((y) => y.id === x).name)).join(', ')}</span>`;
     else right = `<button class="btn small" data-act="research" data-tech="${t.id}" ${canBuild && !r.current && pay ? '' : 'disabled'} title="Paid from your biggest piles">Research (${t.cost})</button>`;
-    const unlocks = t.start ? 'trained from the start' : t.unlocks.map((k) => `${unitOf(g, k).shape} ${esc(unitOf(g, k).name)}`).join(', ');
+    const unlocks = t.start ? 'trained from the start' : t.unlocks.length ? t.unlocks.map((k) => `${unitOf(g, k).shape} ${esc(unitOf(g, k).name)}`).join(', ') : esc(t.effect || '');
     const levels = t.unlocks.filter((k) => (g.tw.units.find((u) => u.type === k) || {}).leveled).map((k) => levelDrop(g, r, k, done, canBuild)).join('');
     return `<li class="tech ${done && !t.start ? 'done' : now ? 'now' : ready || t.start ? 'ready' : 'locked'}"><div class="tech-main"><div><b>${esc(t.name)}</b> <small class="muted">→ ${unlocks}</small></div>${right}</div>${levels}</li>`;
   });
