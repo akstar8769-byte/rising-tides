@@ -827,5 +827,7 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .hud-room .tut-btn { min-width: 34px; padding: 0 8px; }
 
 /* Veterans */
-#battle-svg .rank-stars { font-size: 0.9px; fill: #f3c623; stroke: #6b4a00; stroke-width: 0.08px; paint-order: stroke; pointer-events: none; }
+#battle-svg .rank-stars { font-size: 1.4px; fill: #f3c623; stroke: #6b4a00; stroke-width: 0.08px; paint-order: stroke; pointer-events: none; }
 .vet-line { color: var(--brass-dark); font-weight: 700; }
+
+.board .vbadge { font-size: 13px; font-weight: 800; fill: #3b2a00; text-anchor: middle; }

@@ -2033,7 +2033,7 @@ function promotionLog(s, b, rkA, rkD) {
     const by = [0, 0, 0];
     for (const a of Object.values(rk)) for (let r = 0; r < 3; r++) by[r] += a[r];
     const parts = [2, 1, 0].filter((r) => by[r]).map((r) => `${by[r]} ${NAMES[r]}`);
-    if (parts.length) addLog(s, `🎖 ${s.players[seat].name}'s survivors gain experience: ${parts.join(', ')}.`);
+    if (parts.length) addLog(s, `🎖 ${s.players[seat].name}'s survivors gain experience: ${parts.join(', ')}.`, { kind: 'good' });
   }
 }
 

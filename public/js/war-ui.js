@@ -107,6 +107,7 @@ export function warMyPanel(store) {
     ${me.puppetOf != null ? puppetBox(store) : ''}
     <div class="row wrap"><span>⚔ <b>${me.units}</b> ${g.tw ? '' : 'militia '}unit${me.units === 1 ? '' : 's'}${g.stationed ? ` — ${unitSpread(g, g.you)}` : ''}</span>
       ${g.tw ? `<span class="small">${troopSummary(g, g.you)}</span>` : ''}
+      ${g.tw ? veteranSummary(g) : ''}
       ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}${me.production.fishing ? ` (incl. ${me.production.fishing} fishing ground${me.production.fishing === 1 ? '' : 's'} 🐟)` : ''}</span>` : ''}
       ${me.production && me.production.blockaded && me.production.blockaded.length ? `<span class="small warn">⚓ Blockaded, earning nothing: ${me.production.blockaded.join(', ')} — drive the enemy ships off or bring your own.</span>` : ''}
       <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span>
@@ -347,6 +348,22 @@ function unitPicker(g, current) {
     return `<h4 class="unit-domain">${DOMAIN_TITLE[dom]}</h4><div class="unit-picker">${cards}</div>`;
   });
   return `${groups.join('')}<p class="hint">Tanks shrug off rifles; anti-tank guns shred tanks. Only anti-air and aircraft can hit planes. Artillery, anti-air, cruisers and battleships fire at range. Cavalry rides down militia and encircled infantry. Ships hold sea bays, shell coastal battles and carry your troops across.</p>`;
+}
+
+/** "🎖 Veterans: 2★★ medium tanks on C3, 3★ infantry on B2" — or how to get some. */
+function veteranSummary(g) {
+  const rows = [];
+  for (const t of g.board.tiles) {
+    const v = (t.vet || {})[g.you];
+    if (!v) continue;
+    for (const [k, r] of Object.entries(v)) {
+      const parts = [2, 1, 0].filter((i) => r[i]).map((i) => `${r[i]}${'★'.repeat(i + 1)}`);
+      if (parts.length) rows.push(`${parts.join(' ')} ${esc(unitOf(g, k).name.toLowerCase())} on ${t.id}`);
+    }
+  }
+  return rows.length
+    ? `<span class="small vet-line">🎖 Veterans: ${rows.join(' · ')}</span>`
+    : '<span class="small muted">🎖 No veterans yet — units that survive a battle earn a ★ (Seasoned → Veteran → Elite).</span>';
 }
 
 /** Pay n materials from the biggest piles (research and upgrades). */

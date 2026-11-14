@@ -30,13 +30,17 @@ function unitBadge(t, x, y) {
   if (!stacks.length) return '';
   stacks.sort(([a], [b]) => (Number(b) === t.controller) - (Number(a) === t.controller));
   const vets = t.vet && t.vet[stacks[0][0]] ? Object.values(t.vet[stacks[0][0]]).reduce((a, r) => a + r[0] + r[1] + r[2], 0) : 0;
-  const label = '⚔' + stacks.map(([, n]) => n).join('+') + (vets ? '★' : '');
+  const label = '⚔' + stacks.map(([, n]) => n).join('+');
   const w = 16 + label.length * 9;
   const bx = x - 38;
   const by = y - 34;
   const ring = PLAYER_STYLE[Number(stacks[0][0])].color;
-  return `<g class="unit-badge"><rect x="${bx}" y="${by}" width="${w}" height="23" rx="11" fill="#1c2833" stroke="${ring}" stroke-width="3"/>
-    <text x="${bx + w / 2}" y="${by + 16.5}" class="ubadge">${label}</text></g>`;
+  // Veterans: a gold medal next to the badge with how many there are.
+  const medal = vets
+    ? `<g class="vet-medal"><title>${vets} veteran${vets === 1 ? '' : 's'} here</title><rect x="${bx + w - 4}" y="${by - 2}" width="${18 + String(vets).length * 8}" height="21" rx="10" fill="#f3c623" stroke="#6b4a00" stroke-width="2"/><text x="${bx + w - 4 + (18 + String(vets).length * 8) / 2}" y="${by + 13.5}" class="vbadge">★${vets}</text></g>`
+    : '';
+  return `<g class="unit-badge"><rect x="${bx}" y="${by}" width="${w}" height="23" rx="11" fill="#1c2833" stroke="${vets ? '#f3c623' : ring}" stroke-width="3"/>
+    <text x="${bx + w / 2}" y="${by + 16.5}" class="ubadge">${label}</text>${medal}</g>`;
 }
 
 /** Factory: 🌿 green ring (sustainable) or 🏭 grey ring with smoke (unsustainable), in the owner's colour. */

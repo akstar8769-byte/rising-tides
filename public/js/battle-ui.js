@@ -364,6 +364,8 @@ export function battlePanel(store) {
   };
   const typesIn = [...new Set(b.dots.map((d) => d.type))];
   const lvOf = (side, t) => (b.lv && b.lv[side] && b.lv[side][t]) || (b.levels && b.levels[side] && b.levels[side][t]) || 1;
+  // Veteran units on each side (any rank): shown after the army line.
+  const vetCount = (side) => new Set(b.dots.filter((d) => d.side === side && d.rk > 0).map((d) => d.unit)).size;
   const army = (side) => typesIn.map((t) => (units(side, t) ? `<span title="${esc(nameOf(g, t))}${lvOf(side, t) > 1 ? ' level ' + lvOf(side, t) : ''}">${shapeOf(g, t)}${units(side, t)}${lvOf(side, t) > 1 ? `<sup class="lv">L${lvOf(side, t)}</sup>` : ''}</span>` : '')).filter(Boolean).join(' ') || 'none left';
   const myTypes = mySide ? [...new Set(b.dots.filter((d) => d.side === mySide).map((d) => d.type))] : [];
   const kind = b.kind || 'land';
@@ -376,9 +378,9 @@ export function battlePanel(store) {
   return `<div class="card phase-card battle-card">
     <h2>${KIND_TITLE[kind]} ${esc(tileLabel(g, b.tile))}</h2>
     <div class="battle-meta row wrap">
-      <span>${chip(A.seat, A.name)} <small>attacking · <span class="army-A">${army('A')}</span></small></span>
+      <span>${chip(A.seat, A.name)} <small>attacking · <span class="army-A">${army('A')}</span>${vetCount('A') ? ` <b class="vet-line">★${vetCount('A')} veteran${vetCount('A') === 1 ? '' : 's'}</b>` : ''}</small></span>
       <span>vs</span>
-      <span>${chip(D.seat, D.name)} <small>defending · <span class="army-D">${army('D')}</span></small></span>
+      <span>${chip(D.seat, D.name)} <small>defending · <span class="army-D">${army('D')}</span>${vetCount('D') ? ` <b class="vet-line">★${vetCount('D')} veteran${vetCount('D') === 1 ? '' : 's'}</b>` : ''}</small></span>
     </div>
     <div class="battle-meta row wrap small">
       <span>⏱ <b class="battle-clock">${done ? 'over' : fmt((b.limit - b.time) / (b.speed || 1))}</b></span>
