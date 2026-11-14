@@ -403,22 +403,27 @@ function sendUnits(b, side, units, tx, ty) {
  */
 function computeSupply(b) {
   if (b.kind !== 'land') return;
-  const ground = b.dots.filter((d) => !isAir(d));
-  for (let cy = 0; cy < ROWS; cy++) {
-    for (let cx = 0; cx < COLS; cx++) {
-      const p = { x: (cx + 0.5) * SCELL, y: (cy + 0.5) * SCELL };
-      let best = PAINT;
-      let side = null;
-      for (const d of ground) {
-        const dd = dist(d, p);
-        if (dd < best) {
-          best = dd;
-          side = d.side;
+  // Each ground dot paints the squares within PAINT of it; a square goes to the nearest
+  // dot (same result as asking every square about every dot, far less work).
+  const best = new Float64Array(COLS * ROWS).fill(PAINT);
+  const owner = new Array(COLS * ROWS).fill(null);
+  const reachCells = Math.ceil(PAINT / SCELL);
+  for (const d of b.dots) {
+    if (isAir(d)) continue;
+    const cx0 = Math.floor(d.x / SCELL);
+    const cy0 = Math.floor(d.y / SCELL);
+    for (let cy = Math.max(0, cy0 - reachCells); cy <= Math.min(ROWS - 1, cy0 + reachCells); cy++) {
+      for (let cx = Math.max(0, cx0 - reachCells); cx <= Math.min(COLS - 1, cx0 + reachCells); cx++) {
+        const dd = Math.hypot(d.x - (cx + 0.5) * SCELL, d.y - (cy + 0.5) * SCELL);
+        const i = cy * COLS + cx;
+        if (dd < best[i]) {
+          best[i] = dd;
+          owner[i] = d.side;
         }
       }
-      if (side) b.territory[cy * COLS + cx] = side;
     }
   }
+  for (let i = 0; i < owner.length; i++) if (owner[i]) b.territory[i] = owner[i];
   for (const side of SIDES) {
     const enemy = side === 'A' ? 'D' : 'A';
     const seen = new Uint8Array(COLS * ROWS);
@@ -635,9 +640,16 @@ function stepBattle(b, dt, cfg) {
     }
   }
 
-  // Who is in contact with whom
+  // Who is in contact with whom (a grid of CONTACT-sized cells: only neighbouring cells are checked)
   const contact = new Map();
-  for (const d of b.dots) contact.set(d, b.dots.filter((e) => e.side !== d.side && Math.abs(e.x - d.x) <= CONTACT && dist(d, e) <= CONTACT && canMelee(d, e)));
+  const g1 = gridOf(b.dots);
+  for (const d of b.dots) {
+    const near = [];
+    nearby(g1, d, (e) => {
+      if (e.side !== d.side && dist(d, e) <= CONTACT && canMelee(d, e)) near.push(e);
+    });
+    contact.set(d, near);
+  }
 
   // Movement: ground dots in contact can still move, but slowly. Aircraft fly freely.
   for (const d of b.dots) {
@@ -650,10 +662,16 @@ function stepBattle(b, dt, cfg) {
     d.y += (d.ty - d.y) * k;
   }
   // Keep dots of the same side (and the same layer: ground or air) from piling up.
-  for (let i = 0; i < b.dots.length; i++) {
-    for (let j = i + 1; j < b.dots.length; j++) {
-      const a = b.dots[i];
-      const c = b.dots[j];
+  // Only dots in neighbouring grid cells can be that close.
+  const g2 = gridOf(b.dots);
+  b.dots.forEach((d, i) => (d._i = i));
+  for (const a of b.dots) {
+    const close = [];
+    nearby(g2, a, (e) => {
+      if (e._i > a._i) close.push(e);
+    });
+    close.sort((p, q) => p._i - q._i);
+    for (const c of close) {
       if (a.side !== c.side || isAir(a) !== isAir(c)) continue;
       const dd = dist(a, c);
       if (dd > 0 && dd < 1.1) {
@@ -819,6 +837,27 @@ function unitsSurrendered(b, side) {
 }
 
 const r1 = (n) => Math.round(n * 10) / 10;
+/** Dots bucketed into CONTACT-sized cells, so neighbour checks don't scan the whole battle. */
+function gridOf(dots) {
+  const m = new Map();
+  for (const d of dots) {
+    const k = Math.floor(d.x / CONTACT) * 4096 + Math.floor(d.y / CONTACT);
+    const list = m.get(k);
+    if (list) list.push(d);
+    else m.set(k, [d]);
+  }
+  return m;
+}
+/** Call fn for every dot in d's cell and the 8 cells around it (everything within CONTACT). */
+function nearby(grid, d, fn) {
+  const cx = Math.floor(d.x / CONTACT);
+  const cy = Math.floor(d.y / CONTACT);
+  for (let dx = -1; dx <= 1; dx++)
+    for (let dy = -1; dy <= 1; dy++) {
+      const list = grid.get((cx + dx) * 4096 + cy + dy);
+      if (list) for (const e of list) if (e !== d) fn(e);
+    }
+}
 /** Veteran rank multiplier: rank 0 green, 1 seasoned, 2 veteran, 3 elite. */
 function rankBoost(rk, pct) {
   return 1 + (rk || 0) * (pct ?? 10) / 100;

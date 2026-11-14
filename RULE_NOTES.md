@@ -434,3 +434,9 @@ From the playtest comments:
 - Everything is a lobby setting. The older tests still check the rulebook game and the first playtest (v1.1) settings; the new rules have their own tests.
 - **The printed Base Rulebook v1.1 is now out of date** on these five points.
 - **Guided first round (Base game):** the screen tour wasn't easy enough for new players, so the first time someone plays Base they now get a hands-on tutorial that plays round 1 with them, like other games: "Tap your home" → "Open Build" → "Press End turn" → "Pick Sustainable" → "Lock it in" → what happened at the reveal → "Build again" → "Finish the round". Each "do this" step highlights the thing to tap (pulsing gold), waits until you've done it and then moves on by itself; the game stays clickable while it runs. The ❓ button now offers both: **Play the first round with me** or **Tour of the screen**. Other modes still start with the screen tour.
+
+## ⚡ Smoother Total War battles (14 November 2026)
+Battles felt laggy with big armies. Measured and fixed (no rule changes):
+- **Server:** supply lines and territory were worked out by checking every square against every unit; now each unit paints the squares near it. Contact and spacing checks only look at nearby units (a grid) instead of every pair. A big battle (~380 dots) now takes ~3.3 ms per update instead of ~7.8 ms (on the free hosting plan, which has a small slice of a CPU, that difference is much larger).
+- **Less data:** updates are only sent for battles still being fought, and the territory map and formation list only when they change (plus every 2 seconds for anyone who just joined).
+- **Browser:** the battlefield is redrawn at 30 frames a second instead of 60, the battle data is rebuilt once per update (5 a second) instead of every frame, the territory layer only when it changes, and the veteran-star check no longer compares every unit with every other.

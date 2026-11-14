@@ -170,6 +170,13 @@ function announceEvents(d) {
 
 // Total War: battle positions arrive 5 times a second; redraw just the battlefield.
 socket.on('battles', (snaps) => {
+  // Territory and formation lists only come when they change: keep the last ones.
+  const prev = store.battleSnaps || {};
+  for (const b of snaps) {
+    const p = prev[b.id];
+    if (b.terr === undefined && p) b.terr = p.terr;
+    if (b.forms === undefined && p) b.forms = p.forms;
+  }
   store.battleSnaps = Object.fromEntries(snaps.map((b) => [b.id, b]));
   addShells(snaps); // artillery, anti-air and ships' shells to animate
   refreshBattle(store);

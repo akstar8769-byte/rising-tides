@@ -35,7 +35,9 @@ export function liveBattle(store, id) {
   if (!full) return null;
   const snap = (store.battleSnaps || {})[id];
   if (!snap) return { ...full, dots: full.dots.map((d) => ({ ...d, hpPct: Math.round((d.hp / d.max) * 100) })) };
-  return {
+  // Built once per snapshot (5 a second), not once per animation frame.
+  if (snap._live && snap._live.full === full) return snap._live.b;
+  const merged = {
     ...full,
     time: snap.time,
     capture: snap.capture,
@@ -48,6 +50,8 @@ export function liveBattle(store, id) {
     lv: snap.lv || full.levels,
     dots: snap.dots.map(([id2, side, type, x, y, hp, cut, tx, ty, unit, rk]) => ({ id: id2, side, type, x, y, hpPct: hp, cut: !!cut, tx, ty, unit, rk: rk || 0, seat: side === 'A' ? full.attacker : full.defender })),
   };
+  Object.defineProperty(snap, '_live', { value: { full, b: merged }, configurable: true });
+  return merged;
 }
 
 function pickBattle(store) {
@@ -155,6 +159,12 @@ function dotsLayer(store, b, now) {
       parts.push(`<line x1="${pos.x}" y1="${pos.y}" x2="${d.tx}" y2="${d.ty}" stroke="#111" stroke-width=".15" stroke-dasharray=".5 .5"/>`);
     }
   }
+  // The first dot of each unit carries its rank stars.
+  const firstDot = new Map();
+  for (const d of b.dots) {
+    const k = d.side + d.unit;
+    if (!firstDot.has(k) || d.id < firstDot.get(k)) firstDot.set(k, d.id);
+  }
   for (const d of b.dots) {
     const { x, y } = (anim.battle === b.id && drawnPos(d.id, now)) || d;
     const st = PLAYER_STYLE[d.seat];
@@ -179,7 +189,7 @@ function dotsLayer(store, b, now) {
     const mark = dotMark(d.type, x, y);
     if (mark) parts.push(mark);
     // One star per rank above the unit's first dot.
-    if (d.rk && !b.dots.some((o) => o.unit === d.unit && o.side === d.side && o.id < d.id)) {
+    if (d.rk && firstDot.get(d.side + d.unit) === d.id) {
       const ly = d.type === 'bomber' || d.type === 'interceptor' ? y - AIR_LIFT - 1.3 : y - 1.15;
       parts.push(`<text x="${x.toFixed(2)}" y="${ly.toFixed(2)}" class="rank-stars" text-anchor="middle">${'★'.repeat(d.rk)}</text>`);
     }
@@ -426,7 +436,12 @@ export function refreshBattle(store) {
     const el = svg.querySelector(sel);
     if (el) el.innerHTML = html;
   };
-  set('#bt-terr', territoryLayer(b));
+  // Territory only changes a couple of times a second: redraw it only when it does.
+  const tl = svg.querySelector('#bt-terr');
+  if (tl && tl.dataset.terr !== (b.terr || '')) {
+    tl.innerHTML = territoryLayer(b);
+    tl.dataset.terr = b.terr || '';
+  }
   set('#bt-obj', objectiveLayer(b));
   const clock = document.querySelector('.battle-clock');
   if (clock) clock.textContent = b.status === 'live' ? fmt((b.limit - b.time) / (b.speed || 1)) : 'over';
@@ -456,7 +471,11 @@ export function refreshBattle(store) {
 let storeRef = null;
 export function startBattleAnimation(store) {
   storeRef = store;
-  const frame = () => {
+  let lastDraw = 0;
+  const frame = (now) => {
+    // 30 frames a second is plenty for the battlefield and halves the drawing work.
+    if (now - lastDraw < 32) return requestAnimationFrame(frame);
+    lastDraw = now;
     const svg = document.getElementById('battle-svg');
     const layer = svg && svg.querySelector('#bt-dots');
     if (layer && storeRef && storeRef.data && storeRef.data.game) {

@@ -304,7 +304,23 @@ function attachRooms(io) {
       broadcast(room); // a battle finished: everyone gets the full new state
       syncBattleLoop(room);
     } else if (room.battleTick % 2 === 0) {
-      io.to('room:' + room.code).emit('battles', (s.battles || []).map((b) => engine.battleSnapshot(b)));
+      // Only battles still being fought, and the territory / formation lists only when
+      // they changed (browsers keep the last ones): far less data per update.
+      room.sentBattle = room.sentBattle || {};
+      const snaps = (s.battles || [])
+        .filter((b) => b.status === 'live')
+        .map((b) => {
+          const snap = engine.battleSnapshot(b);
+          const last = room.sentBattle[b.id] || {};
+          const forms = JSON.stringify(snap.forms);
+          const terrSame = last.terr === snap.terr;
+          const formsSame = last.forms === forms;
+          room.sentBattle[b.id] = { terr: snap.terr, forms };
+          if (terrSame && room.battleTick % 20 !== 0) delete snap.terr; // still resent every 2 s, for anyone who just joined
+          if (formsSame && room.battleTick % 20 !== 0) delete snap.forms;
+          return snap;
+        });
+      io.to('room:' + room.code).emit('battles', snaps);
     }
   }
 
