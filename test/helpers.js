@@ -15,6 +15,14 @@ function newGame(opts = {}) {
   if (!opts.factories) {
     settings.base.startingFlood = 2;
     settings.base.factoriesEnabled = false;
+    // ...on the rulebook's 19-tile board, with the rulebook's Flood rule (each Unsustainable +1).
+    settings.base.boardLayout = 'standard19';
+    settings.base.floodByMajority = false;
+  }
+  // Factory tests check the first in-person playtest (v1.1: Flood 5, 19 tiles, every factory
+  // moving the Flood); the current Base rules are tested with { latest: true }.
+  if (opts.factories && !opts.latest) {
+    Object.assign(settings.base, { startingFlood: 5, boardLayout: 'standard19', floodByMajority: false, factorySusMakes: 1, factoryUnsPer: 1 });
   }
   // Older Total War tests attack in round 1; truce tests pass { truce: true }.
   if (!opts.truce) settings.totalwar.truceRounds = 0;

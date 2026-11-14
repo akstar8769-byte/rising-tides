@@ -66,7 +66,9 @@ function counts(state) {
 function floodEffect(state) {
   const c = cfg(state);
   const n = counts(state);
-  return { up: n.unsustainable * c.factoryUnsFlood, down: Math.floor(n.sustainable / Math.max(1, c.factoryGreenPer)) * c.factoryGreenDrop };
+  // Every factoryUnsPer unsustainable factories on the board raise the Flood (everyone's together),
+  // every factoryGreenPer sustainable ones lower it.
+  return { up: Math.floor(n.unsustainable / Math.max(1, c.factoryUnsPer ?? 1)) * c.factoryUnsFlood, down: Math.floor(n.sustainable / Math.max(1, c.factoryGreenPer)) * c.factoryGreenDrop };
 }
 
 /** Tiles where `seat` may build a factory right now. */

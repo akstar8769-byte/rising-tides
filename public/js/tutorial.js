@@ -97,12 +97,12 @@ function baseSteps(g) {
       title: 'Factories',
       target: '.drawer',
       drawer: 'build',
-      text: `Factories are how you grow. Build one on your home or an empty tile next to your land.<br>🌿 <b>Sustainable</b> (${b.factorySusWood} wood, ${b.factorySusStone} stone, ${b.factorySusSandbag} sandbag): makes ${b.factorySusMakes} a round, and every ${b.factoryGreenPer} on the board (everyone's together) <b>lower the Flood</b> by ${b.factoryGreenDrop} each round.<br>🏭 <b>Unsustainable</b> (${b.factoryUnsWood} wood, ${b.factoryUnsStone} stone): makes ${b.factoryUnsMakes} a round but <b>raises the Flood</b> ${b.factoryUnsFlood} every round (max ${b.factoryUnsMax} each).`,
+      text: `Factories are how you grow. Build one on your home or an empty tile next to your land.<br>🌿 <b>Sustainable</b> (${b.factorySusWood} wood, ${b.factorySusStone} stone, ${b.factorySusSandbag} sandbag): makes ${b.factorySusMakes} a round, and every ${b.factoryGreenPer} on the board (everyone's together) <b>lower the Flood</b> by ${b.factoryGreenDrop} each round.<br>🏭 <b>Unsustainable</b> (${b.factoryUnsWood} wood, ${b.factoryUnsStone} stone): makes ${b.factoryUnsMakes} a round, but every ${b.factoryUnsPer ?? 1} on the board <b>raise the Flood</b> ${b.factoryUnsFlood} each round (max ${b.factoryUnsMax} each).`,
     },
     {
       title: 'Choose secretly',
       target: '.dock-btn[data-id="turn"]',
-      text: `Each round everyone picks one action in secret, then all are revealed together:<br>🌿 <b>Sustainable</b>: collect ${b.sustainableCollect} of your home material. Flood unchanged.<br>🏭 <b>Unsustainable</b>: collect any ${b.unsustainableCollect}, but the Flood rises ${b.unsustainableFlood}.<br>${F ? `🏴 <b>Claim a factory</b>: pay ${b.claimCostWood} wood and roll a die against its owner (higher wins, ties to the owner) to take it.` : `🗡 <b>Raid</b>: pay ${b.raidCostWood} wood and roll against another player to steal up to ${b.raidMaxLoot} materials.`}`,
+      text: `Each round everyone picks one action in secret, then all are revealed together:<br>🌿 <b>Sustainable</b>: collect ${b.sustainableCollect} of your home material.<br>🏭 <b>Unsustainable</b>: collect any ${b.unsustainableCollect}.<br>${b.floodByMajority ? `🗳 The Flood follows the table: if <b>more than half</b> choose Sustainable it falls ${b.majorityFloodDown}; if more than half choose Unsustainable it rises ${b.majorityFloodUp}.<br>` : `(Unsustainable raises the Flood ${b.unsustainableFlood}.)<br>`}${F ? `🏴 <b>Claim a factory</b>: pay ${b.claimCostWood} wood and roll a die against its owner (higher wins, ties to the owner) to take it.` : `🗡 <b>Raid</b>: pay ${b.raidCostWood} wood and roll against another player to steal up to ${b.raidMaxLoot} materials.`}`,
     },
     c.trade,
     c.rivals,
@@ -203,7 +203,113 @@ function totalWarSteps(g) {
   ].filter(Boolean);
 }
 
+/**
+ * GUIDED FIRST ROUND (Base game): "do this" steps. A step with `wait` has no Next
+ * button — it moves on by itself once the player has done what it says.
+ */
+function guidedSteps(g) {
+  const b = g.settings.base;
+  const store = hooks.store;
+  const me = g.players[g.you];
+  const home = `.board [data-tile="${me.homeTile}"]`;
+  const wallCost = { wood: b.wallCostWood, stone: b.wallCostStone, sandbag: b.wallCostSandbag };
+  const canWall = Object.entries(wallCost).every(([m, n]) => me.materials[m] >= n);
+  const mixed = !BIOME_RES[me.biome];
+  const round0 = tut.round0 || g.round;
+  return [
+    {
+      title: 'Your first round 🌊',
+      text: "Let's play one round together. I'll point at each thing and tell you what to do — just follow the cards. (You can skip any time.)",
+    },
+    {
+      title: 'The Flood',
+      target: '.flood-pill',
+      text: `This is the <b>Flood</b>: ${g.flood} now. If it reaches <b>${g.threshold}</b> everyone loses. At the end your home must have <b>walls</b> at least as high as the Flood.`,
+    },
+    {
+      title: '👉 Tap your home',
+      target: home,
+      drawer: 'none', // close panels so the map is big
+      text: 'Tap <b>your home tile</b> on the map — the one with your name on it.',
+      wait: () => store.ui.tileMenu && store.ui.tileMenu.id === me.homeTile,
+    },
+    {
+      title: 'Your home',
+      target: '.tile-menu',
+      keepMenu: true,
+      text: `This card shows what a tile is. Your home makes <b>${BIOME_RES[me.biome] || 'any material'}</b> when you choose Sustainable. Tap anywhere to close it, then press Next.`,
+    },
+    {
+      title: 'Your materials',
+      target: '.hud-res',
+      text: 'Up here are your <b>wood</b>, <b>stone</b> and <b>sandbags</b>, and your <b>walls</b>. "at risk" means your walls are lower than the Flood — you’ll want to build more.',
+    },
+    {
+      title: '👉 Open Build',
+      target: '.dock-btn[data-id="build"]',
+      text: 'Tap <b>Build</b> at the bottom.',
+      wait: () => store.ui.drawer === 'build',
+    },
+    {
+      title: 'Building',
+      target: '.drawer',
+      text: `Here you build <b>walls</b> (${b.wallCostWood} wood + ${b.wallCostStone} stone + ${b.wallCostSandbag} sandbag), <b>factories</b> and use the <b>market</b>. ${canWall ? 'You can afford a wall now!' : "You probably can't afford a wall yet — you'll collect more this round."} Press Next.`,
+    },
+    {
+      title: '👉 End your turn',
+      target: '.end-turn',
+      text: 'Press <b>End turn</b> (bottom right). That tells everyone you are ready.',
+      wait: (gg) => gg.players[gg.you].ready || gg.phase !== 'talk',
+    },
+    {
+      title: 'Waiting…',
+      text: 'Waiting for the other players to finish building. This moves on by itself.',
+      wait: (gg) => gg.phase !== 'talk',
+    },
+    {
+      title: '👉 Pick Sustainable',
+      target: '.action-card.sustainable',
+      text: `Now everyone secretly picks an action. Tap <b>Sustainable</b>: you collect ${b.sustainableCollect} ${BIOME_RES[me.biome] || 'materials of your choice'}${b.floodByMajority ? ', and if most players pick it the Flood goes <b>down</b>' : ''}.${mixed ? ' (Your home is Mixed: then pick which 2 materials you want.)' : ''}`,
+      wait: (gg) => store.ui.choice.action === 'sustainable' || !!gg.players[gg.you].choice || gg.phase !== 'choose',
+    },
+    {
+      title: '👉 Lock it in',
+      target: '[data-act="lockIn"]',
+      text: `Press <b>Lock in</b>${mixed ? ' (after picking 2 materials)' : ''}. Nobody sees your choice until everyone has chosen.`,
+      wait: (gg) => !!gg.players[gg.you].choice || gg.phase !== 'choose',
+    },
+    {
+      title: 'Waiting for the reveal…',
+      text: 'When everyone has chosen, all the choices are shown at once and everyone collects. This moves on by itself.',
+      wait: (gg) => gg.phase !== 'choose',
+    },
+    {
+      title: 'What happened',
+      target: '.flood-pill',
+      text: `Everyone collected. The Flood is now <b>${g.flood}</b>${b.floodByMajority ? ' — it went down if most players chose Sustainable, up if most chose Unsustainable' : ''}. Open 📜 <b>Log</b> any time to see exactly what everyone did.`,
+    },
+    {
+      title: 'Build again',
+      target: '.dock-btn[data-id="build"]',
+      text: `It's <b>Trade &amp; build</b> again. ${canWall ? 'You have enough for a <b>wall</b> — open Build and press Build wall!' : 'Not enough for a wall yet? Ask someone in 🤝 <b>Trade</b>, or swap at the <b>market</b> in Build.'} Press Next when you've had a look.`,
+    },
+    {
+      title: '👉 Finish the round',
+      target: '.end-turn',
+      text: 'Press <b>End turn</b> to finish the round.',
+      wait: (gg) => gg.players[gg.you].ready || gg.round > round0,
+    },
+    {
+      title: 'You did it! 🎉',
+      text: `That's a whole round. The game lasts ${b.rounds} rounds: build walls, keep the Flood down together, and collect spare materials — they're your points if your home survives.<br><br>Want the full screen tour? Press <b>❓</b> at the top any time.`,
+    },
+  ];
+}
+const BIOME_RES = { forest: 'wood', quarry: 'stone', riverbank: 'sandbags', mixed: null };
+
 function stepsFor(g) {
+  if (tut && tut.kind === 'guided') return guidedSteps(g);
+  if (tut && tut.kind === 'pick') return [{ title: 'Tutorials', pick: true, text: 'Which one?' }];
   if (g.mode === 'totalwar') return totalWarSteps(g);
   if (g.war) return warSteps(g);
   return baseSteps(g);
@@ -217,6 +323,19 @@ let autoChecked = new Set();
 export function initTutorial(store, render) {
   hooks = { store, render };
   addEventListener('resize', () => tut && place());
+  // Keep the spotlight on its target when a panel or the page scrolls.
+  let raf = 0;
+  document.addEventListener(
+    'scroll',
+    () => {
+      if (!tut || raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (tut) place();
+      });
+    },
+    true,
+  );
   document.addEventListener('keydown', (e) => {
     if (!tut) return;
     if (e.key === 'Escape') skip();
@@ -229,14 +348,21 @@ export function initTutorial(store, render) {
     if (b.dataset.tut === 'next') next();
     else if (b.dataset.tut === 'back') back();
     else if (b.dataset.tut === 'skip') skip();
+    else if (b.dataset.tut === 'guided') startTutorial('guided');
+    else if (b.dataset.tut === 'tour') startTutorial('tour');
   });
 }
 
-/** Start the tour for the current game's mode (from the ❓ button, or the first time). */
-export function startTutorial() {
+/**
+ * Start a tutorial. kind: 'guided' (Base: play the first round step by step),
+ * 'tour' (what everything on screen is), or nothing = the ❓ button: Base offers
+ * both, other modes go straight to the tour.
+ */
+export function startTutorial(kind) {
   const g = hooks && hooks.store.data && hooks.store.data.game;
   if (!g) return;
-  tut = { mode: g.mode, i: 0 };
+  if (!kind) kind = g.mode === 'base' ? 'pick' : 'tour';
+  tut = { mode: g.mode, i: 0, kind, round0: g.round };
   show();
 }
 
@@ -254,7 +380,8 @@ export function afterRender() {
   }
   if (!tut && !autoChecked.has(g.mode)) {
     autoChecked.add(g.mode);
-    if (!seen(g.mode)) setTimeout(() => !tut && hooks.store.data && hooks.store.data.game && startTutorial(), 900);
+    // First time: Base players get the guided first round; other modes the screen tour.
+    if (!seen(g.mode)) setTimeout(() => !tut && hooks.store.data && hooks.store.data.game && startTutorial(g.mode === 'base' && g.round <= 2 ? 'guided' : 'tour'), 900);
   }
   if (tut) place();
 }
@@ -269,9 +396,9 @@ function current() {
 function show() {
   const { store, render } = hooks;
   const { step } = current();
-  store.ui.tileMenu = null;
+  if (!step.keepMenu) store.ui.tileMenu = null;
   store.ui.rival = null;
-  if (step.drawer) store.ui.drawer = step.drawer;
+  if (step.drawer) store.ui.drawer = step.drawer === 'none' ? null : step.drawer;
   render(); // draws the game, then afterRender() positions the tour
 }
 
@@ -301,23 +428,45 @@ function close() {
 }
 
 /** Draw the spotlight and the card next to the target (or centred when there's none). */
+let advancing = false;
 function place() {
   const el = document.getElementById('tutorial');
   const { g, steps, step } = current();
+  // "Do this" steps move on by themselves once it's done.
+  if (step.wait && !advancing && step.wait(g)) {
+    advancing = true;
+    setTimeout(() => {
+      advancing = false;
+      if (tut) next();
+    }, 250);
+  }
   const sel = typeof step.target === 'function' ? step.target(g) : step.target;
   const target = sel ? [...document.querySelectorAll(sel)].find((x) => x.getClientRects().length) : null;
+  // Bring the thing to tap into view (once per step), e.g. a button low in a panel.
+  if (target && step.wait && tut.scrolled !== tut.i) {
+    tut.scrolled = tut.i;
+    target.scrollIntoView({ block: 'nearest' });
+  }
   const r = target ? target.getBoundingClientRect() : null;
   const pad = 6;
   const last = tut.i === steps.length - 1;
-  const card = `<div class="tut-card" role="dialog" aria-label="Tutorial">
-      <div class="tut-top"><span class="tut-count">${MODE_NAME[g.mode] || 'Tutorial'} · ${tut.i + 1} / ${steps.length}</span><button class="tut-skip" data-tut="skip">Skip tutorial</button></div>
+  const counter = tut.kind === 'guided' ? 'First round' : tut.kind === 'pick' ? 'Tutorial' : MODE_NAME[g.mode] || 'Tutorial';
+  const buttons = step.pick
+    ? '<button class="btn primary" data-tut="guided">▶ Play the first round with me</button><button class="btn" data-tut="tour">🗺 Tour of the screen</button>'
+    : step.wait
+      ? `${tut.i > 0 ? '<button class="btn" data-tut="back">← Back</button>' : '<span></span>'}<span class="tut-wait">waiting for you…</span>`
+      : `${tut.i > 0 ? '<button class="btn" data-tut="back">← Back</button>' : '<span></span>'}<button class="btn primary" data-tut="next">${last ? 'Let’s play!' : 'Next →'}</button>`;
+  const card = `<div class="tut-card ${step.wait ? 'doing' : ''}" role="dialog" aria-label="Tutorial">
+      <div class="tut-top"><span class="tut-count">${counter}${step.pick ? '' : ` · ${tut.i + 1} / ${steps.length}`}</span><button class="tut-skip" data-tut="skip">${step.pick ? 'Close' : 'Skip tutorial'}</button></div>
       <h3>${esc(step.title)}</h3>
-      <p>${step.text}</p>
-      <div class="tut-dots">${steps.map((_, k) => `<i class="${k === tut.i ? 'on' : ''}"></i>`).join('')}</div>
-      <div class="tut-btns">${tut.i > 0 ? '<button class="btn" data-tut="back">← Back</button>' : '<span></span>'}<button class="btn primary" data-tut="next">${last ? 'Let’s play!' : 'Next →'}</button></div>
+      ${step.pick ? '<p>Play your first round step by step, or get a quick tour of everything on the screen.</p>' : `<p>${step.text}</p>`}
+      ${step.pick ? '' : `<div class="tut-dots">${steps.map((_, k) => `<i class="${k === tut.i ? 'on' : ''}"></i>`).join('')}</div>`}
+      <div class="tut-btns ${step.pick ? 'pick' : ''}">${buttons}</div>
     </div>`;
   el.hidden = false;
-  el.innerHTML = r ? `<div class="tut-spot" style="left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px"></div>${card}` : `<div class="tut-dim"></div>${card}`;
+  // Steps that ask you to do something keep the game clickable (only the card catches clicks).
+  el.classList.toggle('doing', !!step.wait || !!step.keepMenu);
+  el.innerHTML = r ? `<div class="tut-spot ${step.wait ? 'pulse' : ''}" style="left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px"></div>${card}` : step.wait ? card : `<div class="tut-dim"></div>${card}`;
   const c = el.querySelector('.tut-card');
   const W = innerWidth;
   const H = innerHeight;
@@ -328,21 +477,23 @@ function place() {
   let top;
   if (!r) {
     left = (W - cw) / 2;
-    top = (H - ch) / 2;
-  } else if (r.bottom + 12 + ch < H) {
+    top = step.wait ? 12 : (H - ch) / 2; // "waiting" notes sit at the top, out of the way
+  } else if (r.height > H * 0.45 && r.left - 12 - cw > 0) {
+    left = r.left - 12 - cw; // beside tall things like a side panel
+    top = r.top + 20;
+  } else if (r.bottom + 12 + ch <= H - 8) {
     top = r.bottom + 12; // below the target
     left = r.left + r.width / 2 - cw / 2;
-  } else if (r.top - 12 - ch > 0) {
+  } else if (r.top - 12 - ch >= 8) {
     top = r.top - 12 - ch; // above it
     left = r.left + r.width / 2 - cw / 2;
-  } else if (r.left - 12 - cw > 0) {
-    left = r.left - 12 - cw; // to its left (tall things like a side panel)
-    top = r.top + 20;
   } else {
+    // No room above or below: the far end of the screen from the target.
     left = (W - cw) / 2;
-    top = H - ch - 12;
+    top = r.top + r.height / 2 > H / 2 ? 8 : H - ch - 8;
   }
   c.style.left = Math.max(12, Math.min(left, W - cw - 12)) + 'px';
   c.style.top = Math.max(12, Math.min(top, H - ch - 12)) + 'px';
-  el.querySelector('[data-tut="next"]').focus({ preventScroll: true });
+  const focus = el.querySelector('[data-tut="next"], [data-tut="guided"]');
+  if (focus) focus.focus({ preventScroll: true });
 }

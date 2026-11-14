@@ -209,3 +209,52 @@ test('factories: the view lists my build sites and claim targets', () => {
   assert.deepEqual(v.factories.counts, { sustainable: 1, unsustainable: 0 });
   assert.equal(engine.viewFor(newGame({ factories: true, mode: 'war' }), 0).factories, undefined);
 });
+
+// ---------------------------------------------------------------- current Base rules (after the second playtest)
+function latest(n = 4, seed = 42) {
+  let s = newGame({ n, factories: true, latest: true, seed });
+  s = structuredClone(s);
+  for (const p of s.players) p.materials = { ...rich };
+  return s;
+}
+const choose = (s, seat, action) => act(s, seat, 'choose', action === 'sustainable' ? { action, mix: s.players[seat].biome === 'mixed' ? { wood: 2 } : undefined } : { action, mix: { wood: 4 } });
+
+test('base (latest): 37-tile board, Flood starts at 3, resources even and fair', () => {
+  const d = require('../config').cloneDefaults().base;
+  assert.equal(d.startingFlood, 3);
+  assert.equal(d.factorySusMakes, d.factoryUnsMakes, 'both factories make the same');
+  const s = latest();
+  assert.equal(s.board.layout, 'base37');
+  assert.equal(s.board.tiles.length, 37);
+  assert.equal(s.flood, 3);
+  const open = s.board.tiles.filter((t) => t.kind === 'land' && t.owner == null);
+  const c = { forest: 0, quarry: 0, riverbank: 0 };
+  for (const t of open) c[t.biome]++;
+  assert.ok(Math.max(...Object.values(c)) - Math.min(...Object.values(c)) <= 1, `even: ${JSON.stringify(c)}`);
+  const dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+  for (const p of s.players) {
+    const h = tile(s, p.homeTile);
+    for (const b of Object.keys(c)) assert.ok(open.some((t) => t.biome === b && dist(t, h) <= 2), `${p.name} has ${b} nearby`);
+  }
+});
+
+test('base (latest): the Flood follows the majority of actions', () => {
+  const run = (actions) => {
+    let s = allReady(latest());
+    actions.forEach((a, seat) => (s = choose(s, seat, a)));
+    return s;
+  };
+  assert.equal(run(['sustainable', 'sustainable', 'sustainable', 'unsustainable']).flood, 2, '3 of 4 Sustainable: −1');
+  assert.equal(run(['unsustainable', 'unsustainable', 'unsustainable', 'sustainable']).flood, 4, '3 of 4 Unsustainable: +1');
+  assert.equal(run(['sustainable', 'sustainable', 'unsustainable', 'unsustainable']).flood, 3, 'a 2–2 split: no change');
+});
+
+test('base (latest): every 3 unsustainable factories raise the Flood by 1, every 3 sustainable lower it', () => {
+  let s = latest();
+  const sites = (seat) => F.buildSites(s, seat);
+  for (let i = 0; i < 3; i++) s = build(s, i, sites(i)[0], 'unsustainable');
+  for (let i = 0; i < 2; i++) s = build(s, 3, sites(3)[0], 'unsustainable');
+  assert.deepEqual(F.floodEffect(s), { up: 1, down: 0 }, '5 dirty factories: +1 (one group of 3)');
+  s = build(s, 3, sites(3)[0], 'unsustainable');
+  assert.deepEqual(F.floodEffect(s), { up: 2, down: 0 }, '6 dirty factories: +2');
+});

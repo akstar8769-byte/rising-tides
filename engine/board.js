@@ -84,11 +84,46 @@ function buildBoard(state, layoutName, withTerritories) {
     }
   });
 
+  if (L.sectors) balanceBiomes(state, tiles);
   // Every other land tile is open, with a random biome.
   for (const t of tiles) {
     if (t.kind === 'land' && t.biome === null) t.biome = SINGLE_BIOMES[randomInt(state, SINGLE_BIOMES.length)];
   }
   return { layout: layoutName, tiles, ...(L.seaLanes ? { seaLanes: true } : {}) };
+}
+
+/**
+ * Balanced, fair resources (Base board): the open tiles get an EVEN deck of forest,
+ * quarry and riverbank (equal numbers, ±1), shuffled. Shuffles are tried until every
+ * home has much the same mix nearby (within 2 tiles): each home must see all three
+ * resources, and no resource may differ by more than 1 tile between any two homes.
+ * The fairest of up to 300 shuffles is kept.
+ */
+function balanceBiomes(state, tiles) {
+  const open = tiles.filter((t) => t.kind === 'land' && t.biome === null);
+  const homes = tiles.filter((t) => t.role === 'capital');
+  const deck = open.map((_, i) => SINGLE_BIOMES[i % 3]);
+  const dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+  const near = homes.map((h) => open.map((t, i) => (dist(h, t) <= 2 ? i : -1)).filter((i) => i >= 0));
+  let best = null;
+  let bestScore = Infinity;
+  for (let attempt = 0; attempt < 300 && bestScore > 0; attempt++) {
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = randomInt(state, i + 1);
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    // Score: spread of each resource across homes, plus a big penalty for a missing one.
+    let score = 0;
+    for (const b of SINGLE_BIOMES) {
+      const counts = near.map((list) => list.filter((i) => deck[i] === b).length);
+      score += Math.max(0, Math.max(...counts) - Math.min(...counts) - 1) + 10 * counts.filter((c) => c === 0).length;
+    }
+    if (score < bestScore) {
+      bestScore = score;
+      best = deck.slice();
+    }
+  }
+  open.forEach((t, i) => (t.biome = best[i]));
 }
 
 function areAdjacent(a, b) {

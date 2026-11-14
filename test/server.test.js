@@ -36,10 +36,10 @@ test('server: create, join, start, play a full Base game, rejoin by name', async
     assert.equal(a.last.game.settings.base.rounds, 2);
 
     // New names can't join a running game; old names can rejoin their seat
-    const d = client(srv.port);
+    const d = (globalThis.__d = client(srv.port));
     assert.match((await d.call('joinRoom', { code: made.code, name: 'Dev' })).error, /already started/);
     b.disconnect();
-    const b2 = client(srv.port);
+    const b2 = (globalThis.__b2 = client(srv.port));
     assert.ok((await b2.call('joinRoom', { code: made.code, name: 'ben' })).ok);
     await tick();
     assert.equal(b2.last.you.seat, 1);
@@ -65,7 +65,8 @@ test('server: create, join, start, play a full Base game, rejoin by name', async
     }
     await tick();
     assert.equal(a.last.game.phase, 'ended');
-    assert.equal(a.last.game.flood, 7); // Base starts at Flood 5 (playtest default), +1 per Unsustainable round
+    // Base starts at Flood 3; each round 2 of 3 players chose Sustainable, so the majority lowers it by 1.
+    assert.equal(a.last.game.flood, 1);
     assert.ok(a.last.record);
     assert.match(a.last.recordCsv, /^date,mode/);
 
@@ -73,11 +74,9 @@ test('server: create, join, start, play a full Base game, rejoin by name', async
     assert.ok((await a.call('host', { op: 'backToLobby' })).ok);
     await tick();
     assert.equal(a.last.game, null);
-    d.disconnect();
-    b2.disconnect();
   } finally {
-    a.disconnect();
-    c.disconnect();
+    // Close every connection, even after a failure, so a failing test can never hang the run.
+    for (const x of [a, c, globalThis.__b2, globalThis.__d]) if (x) x.disconnect();
     await srv.close();
   }
 });

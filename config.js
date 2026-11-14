@@ -35,7 +35,11 @@ const DEFAULTS = {
 
   base: {
     rounds: 7,                   // number of rounds in a Base game
-    startingFlood: 5,            // Flood level at the start of a Base game (playtest change)
+    startingFlood: 3,            // Flood level at the start of a Base game (5 in the first playtest; lowered once the Flood could also fall)
+    boardLayout: 'base37',       // Base board: 37 tiles, resources balanced and the same round every home
+    floodByMajority: true,       // the Flood moves by majority vote: more than half Sustainable -> it falls, more than half Unsustainable -> it rises
+    majorityFloodDown: 1,
+    majorityFloodUp: 1,
     catastrophe: { 3: 8, 4: 9, 5: 10 }, // Flood level that destroys everyone, by player count
 
     startWalls: 1,               // walls each player starts with
@@ -58,13 +62,14 @@ const DEFAULTS = {
     factorySusWood: 1,           // a SUSTAINABLE factory costs this much wood...
     factorySusStone: 2,          // ...stone...
     factorySusSandbag: 1,        // ...and sandbags
-    factorySusMakes: 1,          // materials it makes every round (its tile's resource)
+    factorySusMakes: 2,          // materials it makes every round (its tile's resource)
     factoryUnsWood: 1,           // an UNSUSTAINABLE factory costs this much wood...
     factoryUnsStone: 1,          // ...stone...
     factoryUnsSandbag: 0,        // ...and sandbags
     factoryUnsMakes: 2,          // materials it makes every round
     factoryUnsMax: 3,            // most unsustainable factories one player may own
-    factoryUnsFlood: 1,          // Flood rise per unsustainable factory, every round
+    factoryUnsFlood: 1,          // Flood rise every round for every factoryUnsPer unsustainable factories on the board...
+    factoryUnsPer: 3,            // ...counted together (everyone's)
     factoryGreenPer: 3,          // every this many sustainable factories on the board (everyone's together)...
     factoryGreenDrop: 1,         // ...lower the Flood this much every round
     claimCostWood: 1,            // wood paid to try to claim someone's factory
@@ -416,6 +421,7 @@ const DECIMALS = [];
 /** Allowed values for text settings. */
 const OPTIONS = {
   'general.boardLayout': ['standard19'],
+  'base.boardLayout': ['base37', 'standard19'],
   'totalwar.boardLayout': ['oceans', 'random', 'sea37', 'standard19'],
   'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
 };
@@ -453,6 +459,12 @@ for (const [k, n] of Object.entries(FORMATION_NAMES)) {
   LABELS[`totalwar.formations.${k}.defencePct`] = `Formation ${n}: protection (%)`;
   LABELS[`totalwar.formations.${k}.speedPct`] = `Formation ${n}: speed (%)`;
 }
+LABELS['base.boardLayout'] = 'Base board (base37: 37 tiles, balanced resources; standard19: the small board)';
+LABELS['base.floodByMajority'] = 'Flood by majority vote (most Sustainable: Flood falls; most Unsustainable: it rises)';
+LABELS['base.majorityFloodDown'] = 'Majority Sustainable: Flood falls by';
+LABELS['base.majorityFloodUp'] = 'Majority Unsustainable: Flood rises by';
+LABELS['base.factoryUnsPer'] = 'Unsustainable factories: every this many on the board raise the Flood';
+LIMITS['base.factoryUnsPer'] = [1, 10];
 LABELS['totalwar.boardLayout'] = 'Board (oceans: two continents split by an ocean; random: a new map every game; sea37: smaller, with sea bays)';
 LABELS['totalwar.fishingIncome'] = 'Oceans board: income from each fishing ground you hold';
 LABELS['totalwar.blockades'] = 'Oceans board: enemy ships off your coast stop that tile income (blockade)';

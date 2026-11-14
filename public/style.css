@@ -831,3 +831,13 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .vet-line { color: var(--brass-dark); font-weight: 700; }
 
 .board .vbadge { font-size: 13px; font-weight: 800; fill: #3b2a00; text-anchor: middle; }
+/* Guided tutorial: the game stays clickable; only the card (and the dim, on explain steps) catch clicks */
+#tutorial.doing { pointer-events: none; }
+#tutorial.doing .tut-card { pointer-events: auto; }
+.tut-spot.pulse { animation: tutpulse 1.2s ease-in-out infinite; }
+@keyframes tutpulse { 50% { box-shadow: 0 0 0 9999px rgba(20, 12, 4, 0.45), 0 0 0 5px #f3c623, 0 0 30px 10px rgba(243, 198, 35, 0.8); } }
+.tut-card.doing { border-top-color: #f3c623; }
+.tut-wait { color: var(--muted); font-size: 0.85rem; font-style: italic; align-self: center; }
+.tut-btns.pick { flex-direction: column; }
+.tut-btns.pick .btn { width: 100%; }
+@media (prefers-reduced-motion: reduce) { .tut-spot.pulse { animation: none; } }

@@ -175,7 +175,8 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
       },
     })),
   };
-  state.board = buildBoard(state, mode === 'totalwar' ? settings.totalwar.boardLayout || 'standard19' : settings.general.boardLayout, mode !== 'base');
+  const layout = mode === 'totalwar' ? settings.totalwar.boardLayout || 'standard19' : mode === 'base' ? settings.base.boardLayout || settings.general.boardLayout : settings.general.boardLayout;
+  state.board = buildBoard(state, layout, mode !== 'base');
   if (mode !== 'base' && settings.war.stationedUnits) {
     // Stationed units: everyone's starting militia stands on their capital.
     for (const p of state.players) state.board.tiles.find((t) => t.id === p.homeTile).units[p.seat] = p.units;

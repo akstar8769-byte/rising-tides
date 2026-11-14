@@ -423,3 +423,14 @@ Battle experience now matters, as it did in real wars.
 - **Where ranks go:** each tile remembers how many of each unit type are veterans. When troops leave a tile (moves, attacks), the best go first. Units lost outside battle (upkeep, shelling, convoy losses, surrender of a territory) are recruits first; veterans who die in battle are gone, with their experience.
 - **Seen on screen:** gold outlines and ★ above veteran units in battle; ⚔3★ on map badges when a stack has veterans; the tile menu lists them (🎖 2★★ 1★); the log says when survivors gain experience.
 - **Bots** count veterans when judging whether an attack can win.
+
+## 🌊 Base game, second playtest round (added 14 November 2026)
+From the playtest comments:
+1. **Both factories make the same: 2 a round** (`factorySusMakes` 1 → 2). The difference is now only cost and their effect on the Flood.
+2. **Bigger board, fair resources:** the Base game uses a new **37-tile board** (`base.boardLayout: 'base37'`; the 19-tile board is still in the lobby). Open tiles are dealt from an even deck (equal forest, quarry and riverbank, ±1 — no more "too many sandbags"), shuffled every game, and the shuffle is redone until every home has all three resources within 2 tiles and no home has more than 1 extra of any resource compared with another (fairest of up to 300 shuffles).
+3. **The Flood starts at 3** (was 5): too many things pushed it up.
+4. **The Flood follows the majority** (`floodByMajority`): after the reveal, if **more than half** of the players chose Sustainable the Flood falls 1; if more than half chose Unsustainable it rises 1; otherwise (a tie or no clear majority, counting claims/raids as neither) it doesn't move. Individual Unsustainable actions no longer add +1 each.
+5. **Factories in groups of 3:** every 3 unsustainable factories on the board (everyone's together) raise the Flood 1 each round (`factoryUnsPer: 3`; was every single one), and every 3 sustainable ones lower it 1 (unchanged).
+- Everything is a lobby setting. The older tests still check the rulebook game and the first playtest (v1.1) settings; the new rules have their own tests.
+- **The printed Base Rulebook v1.1 is now out of date** on these five points.
+- **Guided first round (Base game):** the screen tour wasn't easy enough for new players, so the first time someone plays Base they now get a hands-on tutorial that plays round 1 with them, like other games: "Tap your home" → "Open Build" → "Press End turn" → "Pick Sustainable" → "Lock it in" → what happened at the reveal → "Build again" → "Finish the round". Each "do this" step highlights the thing to tap (pulsing gold), waits until you've done it and then moves on by itself; the game stays clickable while it runs. The ❓ button now offers both: **Play the first round with me** or **Tour of the screen**. Other modes still start with the screen tour.

@@ -322,11 +322,25 @@ function reveal(state) {
       addLog(state, `${p.name} collected ${describeBag(gained)}.`);
     } else if (ch.action === 'unsustainable') {
       addBag(p.materials, ch.mix);
-      rise += c.unsustainableFlood;
-      addLog(state, `${p.name} collected ${describeBag(ch.mix)} (Flood +${c.unsustainableFlood}).`);
+      if (!c.floodByMajority) rise += c.unsustainableFlood;
+      addLog(state, `${p.name} collected ${describeBag(ch.mix)}${c.floodByMajority ? '' : ` (Flood +${c.unsustainableFlood})`}.`);
     }
   }
   let drop = 0;
+  if (c.floodByMajority) {
+    // The table decides together: if more than half chose Sustainable the Flood falls,
+    // if more than half chose Unsustainable it rises; otherwise it stays.
+    const n = state.players.length;
+    const sus = state.players.filter((p) => p.choice.action === 'sustainable').length;
+    const uns = state.players.filter((p) => p.choice.action === 'unsustainable').length;
+    if (sus * 2 > n) {
+      drop += c.majorityFloodDown;
+      addLog(state, `🌿 Most players (${sus} of ${n}) chose Sustainable: Flood −${c.majorityFloodDown}.`, { kind: 'good' });
+    } else if (uns * 2 > n) {
+      rise += c.majorityFloodUp;
+      addLog(state, `🏭 Most players (${uns} of ${n}) chose Unsustainable: Flood +${c.majorityFloodUp}.`, { kind: 'flood' });
+    } else addLog(state, `No majority (${sus} Sustainable, ${uns} Unsustainable): the vote leaves the Flood alone.`);
+  }
   if (factories.factoriesOn(state)) {
     factories.produce(state);
     const e = factories.floodEffect(state);
@@ -334,7 +348,7 @@ function reveal(state) {
     if (e.up) addLog(state, `${n.unsustainable} unsustainable factor${n.unsustainable === 1 ? 'y pollutes' : 'ies pollute'}: Flood +${e.up}.`);
     if (e.down) addLog(state, `${n.sustainable} sustainable factories working together: Flood −${e.down}.`, { kind: 'good' });
     rise += e.up;
-    drop = e.down;
+    drop += e.down;
   }
   const net = Math.max(-state.flood, rise - drop); // the Flood never goes below 0
   if (net > 0) {
@@ -344,7 +358,7 @@ function reveal(state) {
     state.flood += net;
     addLog(state, `The Flood falls by ${-net} to ${state.flood}!`, { kind: 'good' });
   } else if (rise > 0) {
-    addLog(state, `The Flood stays at ${state.flood}: green factories cancel out the pollution.`, { kind: 'good' });
+    addLog(state, `The Flood stays at ${state.flood}: the good and the bad cancel out.`, { kind: 'good' });
   }
   if (checkCatastrophe(state)) return;
 

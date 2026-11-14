@@ -305,7 +305,8 @@ function floodTrack(g, me) {
       ${g.war && !g.war.noAccord ? `<span><i class="k accord"></i>Accord line ${g.war.accordLine}</span>` : ''}
     </div>
     ${accordCard(g)}
-    ${g.factories ? `<p class="small">Factories each round: 🏭 Flood +${g.factories.effect.up}, 🌿 Flood −${g.factories.effect.down} (every ${g.settings.base.factoryGreenPer} sustainable factories on the board, everyone's together).</p>` : ''}
+    ${g.factories ? `<p class="small">Factories each round: 🏭 Flood +${g.factories.effect.up}, 🌿 Flood −${g.factories.effect.down} (every ${g.settings.base.factoryUnsPer ?? 1} unsustainable / ${g.settings.base.factoryGreenPer} sustainable factories on the board, everyone's together).</p>` : ''}
+    ${g.mode === 'base' && g.settings.base.floodByMajority ? `<p class="small">🗳 <b>The table votes with its actions:</b> if more than half choose Sustainable the Flood falls ${g.settings.base.majorityFloodDown}; if more than half choose Unsustainable it rises ${g.settings.base.majorityFloodUp}; otherwise it stays.</p>` : ''}
     <p class="${safe ? 'ok' : 'warn'} small">${safe ? `✔ Your home is safe at Flood ${g.flood}.` : `✖ Your home would flood at Flood ${g.flood}. You need ${g.flood - me.protection} more protection.`}
     Seawall: ${g.seawall} donated${capped ? ' (bonus maxed)' : `, ${toNext} more for +1`}.</p>`;
 }
@@ -422,8 +423,8 @@ function choosePanel(store) {
     <p class="hint">Nobody can see your choice until everyone has chosen.</p>
     ${limitsNote(g)}
     <div class="action-cards">
-      ${card('sustainable', 'Sustainable', susDesc, 'No Flood change')}
-      ${card('unsustainable', 'Unsustainable', `Collect any ${b.unsustainableCollect}`, `Flood +${b.unsustainableFlood}`, !!L.noUnsustainable, L.noUnsustainable ? '📜 Treaty forbids' : '')}
+      ${card('sustainable', 'Sustainable', susDesc, b.floodByMajority ? `Flood −${b.majorityFloodDown} if most players pick it` : 'No Flood change')}
+      ${card('unsustainable', 'Unsustainable', `Collect any ${b.unsustainableCollect}`, b.floodByMajority ? `Flood +${b.majorityFloodUp} if most players pick it` : `Flood +${b.unsustainableFlood}`, !!L.noUnsustainable, L.noUnsustainable ? '📜 Treaty forbids' : '')}
       ${
         g.factories
           ? card('claim', 'Claim a factory', "Roll for another player's factory", 'No Flood change', me.materials.wood < b.claimCostWood || !!L.noAttacks || !g.factories.claimTargets.length, L.noAttacks ? '📜 Treaty forbids' : me.materials.wood < b.claimCostWood ? `Needs ${b.claimCostWood} wood` : !g.factories.claimTargets.length ? 'No factories to claim' : '')
@@ -541,7 +542,7 @@ function factoryPanel(store, canBuild) {
     const off = !sus && (unsFull || L.noUnsustainable);
     return `<button class="action-card ${sus ? 'sustainable' : 'unsustainable'} ${f.kind === k ? 'selected' : ''}" data-act="set" data-path="factory.kind" data-value="${k}" aria-pressed="${f.kind === k}" ${off ? 'disabled' : ''}>
       <b>${sus ? '🌿 Sustainable' : '🏭 Unsustainable'}</b><span>${bagText(cost(k))} · makes ${sus ? b.factorySusMakes : b.factoryUnsMakes}/round</span>
-      <em>${sus ? `Every ${b.factoryGreenPer} on the board: Flood −${b.factoryGreenDrop}/round` : `Flood +${b.factoryUnsFlood} every round`}</em>
+      <em>${sus ? `Every ${b.factoryGreenPer} on the board: Flood −${b.factoryGreenDrop}/round` : (b.factoryUnsPer ?? 1) > 1 ? `Every ${b.factoryUnsPer} on the board: Flood +${b.factoryUnsFlood}/round` : `Flood +${b.factoryUnsFlood} every round`}</em>
       ${off ? `<small>${L.noUnsustainable ? '📜 Treaty forbids' : `You have ${F.unsMax} (max)`}</small>` : sus ? '' : `<small>${myUns}/${F.unsMax} used</small>`}</button>`;
   };
   const tileOk = f.tile && F.sites.includes(f.tile);

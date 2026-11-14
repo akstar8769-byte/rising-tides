@@ -88,6 +88,17 @@ function sea37Tiles() {
   }
   return tiles;
 }
+/**
+ * base37 (Base game): the same 37-hex shape as sea37, all land. Six identical
+ * SECTORS of 6 tiles round the Village (sector k = Ik, Mk, Nk, Ck, Ek, Sk).
+ * Homes are on the outer corners (Ck). Resources are dealt per sector (see
+ * buildBoard): every sector gets the same shuffled mix, so each home has exactly
+ * the same surroundings, and wood, stone and sandbags are equally common.
+ */
+function base37Tiles() {
+  return sea37Tiles().map((t) => ({ id: t.id, q: t.q, r: t.r, sector: Number(t.id.slice(1)), role: t.id[0] }));
+}
+
 const sea37 = {
   description: '37 hexes with six sea bays between the players (Total War)',
   village: 'V',
@@ -158,4 +169,17 @@ const oceans = {
   },
 };
 
-module.exports = { standard19, sea37, oceans };
+const base37 = {
+  description: '37 hexes in six identical sectors, resources balanced and shuffled (Base game)',
+  village: 'V',
+  sectors: true,
+  tiles: base37Tiles().map((t) => (t.id === 'V' ? { id: 'V', q: 0, r: 0 } : t)),
+  wedges: [0, 1, 2, 3, 4, 5].map((k) => ({ capital: 'C' + k, provinces: ['M' + k, 'E' + k] })),
+  seatsToWedges: {
+    3: [0, 2, 4],
+    4: [0, 1, 3, 4],
+    5: [0, 1, 2, 3, 4],
+  },
+};
+
+module.exports = { standard19, sea37, oceans, base37 };
