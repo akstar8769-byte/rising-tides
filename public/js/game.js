@@ -158,7 +158,7 @@ function rivals(store) {
       const safe = p.protection >= g.flood;
       return `<button class="rival ${p.seat === g.you ? 'me' : ''} ${open === p.seat ? 'open' : ''}" style="--pc:${PLAYER_STYLE[p.seat].color}" data-act="set" data-path="rival" data-json="${open === p.seat ? 'null' : p.seat}" aria-expanded="${open === p.seat}">
         ${swatch(p.seat, 20)}<span class="rname">${esc(p.name)}${p.seat === g.you ? ' <small>(you)</small>' : ''}</span>${status}
-        <span class="rline">${p.nation ? `<b class="nation">${p.side === 'axis' ? '🟫' : '🟥'} ${esc(p.nation)}</b> ` : ''}${g.war ? `⚔${p.units} ` : ''}${g.scenario ? `⬢${g.board.tiles.filter((t) => t.kind === 'land' && t.controller === p.seat).length}` : `🧱${p.walls}`}${safe || g.scenario ? '' : ' <b class="warn" title="Home at risk">⚠</b>'}${member && member.bot ? ' 🤖' : ''}${member && !member.connected ? ' <span class="warn">offline</span>' : ''}${p.sanctioned ? ' ⛔' : ''}${p.damaged ? ' 🩹' : ''}</span>
+        <span class="rline">${p.nation ? `<b class="nation">${(g.scenario && (g.scenario.sides.find((x) => x.id === p.side) || {}).icon) || ''} ${esc(p.nation)}</b> ` : ''}${g.war ? `⚔${p.units} ` : ''}${g.scenario ? `⬢${g.board.tiles.filter((t) => t.kind === 'land' && t.controller === p.seat).length}` : `🧱${p.walls}`}${safe || g.scenario ? '' : ' <b class="warn" title="Home at risk">⚠</b>'}${member && member.bot ? ' 🤖' : ''}${member && !member.connected ? ' <span class="warn">offline</span>' : ''}${p.sanctioned ? ' ⛔' : ''}${p.damaged ? ' 🩹' : ''}</span>
       </button>`;
     })
     .join('');
@@ -192,7 +192,7 @@ function tileMenu(store) {
   const top = Math.max(8, Math.min(m.y + 6, (typeof innerHeight === 'number' ? innerHeight : 800) - 300));
   return `<div class="tile-menu" style="left:${left}px;top:${top}px;width:${w}px" role="dialog" aria-label="${esc(tileLabel(g, t.id))}">
     <div class="tm-head"><b>${esc(tileLabel(g, t.id))}</b><button class="icon-btn" data-act="closeTileMenu" aria-label="Close">✕</button></div>
-    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}${g.mode === 'totalwar' && TERRAIN[t.terrain] ? `<br>${TERRAIN[t.terrain].glyph} <b>${TERRAIN[t.terrain].label}</b> — ${TERRAIN[t.terrain].note}` : ''}${t.name ? `<br>🏙 <b>${esc(t.name)}</b>${t.industry ? ' — ⚙ industrial city: +3 materials a round' : ' — city: +1 material a round'}${t.victory ? ' · ★ victory city' : ''}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
+    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}${g.mode === 'totalwar' && TERRAIN[t.terrain] ? `<br>${TERRAIN[t.terrain].glyph} <b>${TERRAIN[t.terrain].label}</b> — ${TERRAIN[t.terrain].note}` : ''}${t.fort ? `<br>🛡 <b>Fortified</b> — defenders here take only ${(g.scenario && g.scenario.fortPct) || 50}% of the damage` : ''}${t.name ? `<br>🏙 <b>${esc(t.name)}</b>${t.industry ? ' — ⚙ industrial city: +3 materials a round' : ' — city: +1 material a round'}${t.victory ? ' · ★ victory city' : ''}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
     ${units ? `<ul class="plain tm-units">${units}</ul>` : g.stationed && t.kind !== 'village' ? '<p class="small muted">No units here.</p>' : ''}
     ${generalLines(g, t)}
     ${acts.length ? `<div class="tm-actions">${acts.join('')}</div>` : `<p class="hint">${tileIdleHint(g)}</p>`}
@@ -365,9 +365,10 @@ function scenarioCard(g) {
   return `<details class="scen-card" ${g.round === 1 ? 'open' : ''}>
     <summary><b>⚔ ${esc(sc.name)}</b> <span class="muted small">(${esc(sc.styleLabel)}) — you fight for ${esc(mine ? mine.name : '?')}</span></summary>
     <ul class="plain goals">${sc.sides
-      .map((x) => `<li>${x.id === 'axis' ? '🟫' : '🟥'} <b>${esc(x.name)}</b>: ${x.seats.map((s) => esc(g.players[s].name)).join(', ')} — ${esc(x.goal)}</li>`)
+      .map((x) => `<li>${x.icon} <b>${esc(x.name)}</b>: ${x.seats.map((s) => esc(g.players[s].name)).join(', ')} — ${esc(x.goal)}</li>`)
       .join('')}</ul>
     <p class="small">★ Victory cities held: ${sc.sides.map((x) => `${esc(x.name)} ${sc.held[x.id]}`).join(' · ')} (of ${sc.victoryCities.length}: ${sc.victoryCities.map(esc).join(', ')}). ⚙ industrial cities give +3 a round, other cities +1. You may launch up to <b>${sc.attacksPerRound}</b> attack${sc.attacksPerRound === 1 ? '' : 's'} a round, and attacking doesn't cost you your income.</p>
+    ${sc.fortPct ? `<p class="small">🛡 Fortified line (the Maginot Line): defenders there take only ${sc.fortPct}% of the damage — attack it head-on, or go round.</p>` : ''}
     ${sc.winterRounds ? `<p class="small">${sc.winter ? '❄ <b>Winter now</b>' : '❄ Winter'}: rounds ${sc.winterRounds[0]}–${sc.winterRounds[1]} — tanks slow down and attacks are weaker.</p>` : ''}
     ${next.length ? `<p class="small">📯 Coming soon: ${next.map((e) => `round ${e.round}: ${esc(e.text)} (${esc(sc.sides.find((x) => x.id === e.side).name)})`).join('; ')}.</p>` : ''}
   </details>`;

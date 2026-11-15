@@ -23,7 +23,7 @@ export function renderLobby(store) {
   // Historical scenarios (Total War) need only 2 players: one per side.
   const scen = lobby.mode === 'totalwar' && lobby.settings.totalwar.scenario && lobby.settings.totalwar.scenario !== 'none' ? lobby.settings.totalwar.scenario : null;
   const minPlayers = scen ? 2 : meta.minPlayers;
-  const SIDE_NAMES = { eastFront41: ['🟫 Germany', '🟥 USSR'] };
+  const SIDE_NAMES = { eastFront41: ['🟫 Germany', '🟥 USSR'], france40: ['🟫 Germany', '🟦 Allies'] };
   const canStart = n >= minPlayers && n <= meta.maxPlayers;
   const link = `${location.origin}/?room=${d.code}`;
 
@@ -111,14 +111,14 @@ export function renderLobby(store) {
                   .join('')}</select>
               </label>
               <label class="toggle">Scenario:
-                <select data-setting="totalwar.scenario" aria-label="Historical scenario">${[['none', 'None (normal game)'], ['eastFront41', '⚔ Eastern Front, 1941']]
+                <select data-setting="totalwar.scenario" aria-label="Historical scenario">${[['none', 'None (normal game)'], ['eastFront41', '⚔ Eastern Front, 1941'], ['france40', '⚔ France, 1940']]
                   .map(([v, l]) => `<option value="${v}" ${lobby.settings.totalwar.scenario === v ? 'selected' : ''}>${l}</option>`)
                   .join('')}</select>
               </label>
               ${
                 scen
                   ? `<label class="toggle">Style:
-                <select data-setting="totalwar.scenarioStyle" aria-label="Scenario style">${[['balanced', 'Balanced (either side can win)'], ['historical', 'Historical (as in 1941)']]
+                <select data-setting="totalwar.scenarioStyle" aria-label="Scenario style">${[['balanced', 'Balanced (either side can win)'], ['historical', 'Historical (as it happened)']]
                   .map(([v, l]) => `<option value="${v}" ${lobby.settings.totalwar.scenarioStyle === v ? 'selected' : ''}>${l}</option>`)
                   .join('')}</select>
               </label>`

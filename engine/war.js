@@ -1965,7 +1965,7 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
   const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
   const knows = (seat, id) => ((s.players[seat].research && s.players[seat].research.done) || []).includes(id);
   const tech = { A: { bazooka: knows(attacker, 'bazookas') }, D: { bazooka: knows(defender, 'bazookas') } };
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s) };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s), fort: fortPct(s, T) };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -1986,6 +1986,12 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
 }
 
 /** The land battle. `sup` = side with air superiority; its bombers fly over the battle, other planes wait. */
+/** Scenario fortifications: % of damage defenders on this tile take (or null). */
+function fortPct(s, T) {
+  const sc = SCEN.scenarioOf(s);
+  return T && T.fort && sc && sc.fortPct ? sc.fortPct : null;
+}
+
 /** Scenario winter, as battles need it (or null). */
 function weatherNow(s) {
   const w = SCEN.winterNow(s);
@@ -2100,7 +2106,7 @@ function finishAirTW(s, b) {
   const win = b.winner === 'A' ? A : D;
   addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
   const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
-  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s), fort: fortPct(s, T) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
   addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
 }
 

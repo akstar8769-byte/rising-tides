@@ -69,12 +69,13 @@ const EAST_FRONT_41 = {
       id: 'axis',
       name: 'Germany',
       short: 'Axis',
+      icon: '🟫',
       // Which hexes the side starts with.
       owns: (c, r) => c <= 4 || (r >= 8 && c <= 5),
       // Regions for a side with several players: HQ city, which hexes, and a name.
       regions: {
         north: { hq: 'Königsberg', name: 'Germany (North)', test: (c, r) => r <= 2 },
-        centre: { hq: 'Berlin', name: 'Germany', test: (c, r) => r >= 3 && r <= 5 },
+        centre: { hq: 'Berlin', name: 'Germany', main: true, test: (c, r) => r >= 3 && r <= 5 },
         south: { hq: 'Bucharest', name: 'Germany (South) & Romania', test: (c, r) => r >= 6 },
       },
       capital: 'Berlin',
@@ -83,10 +84,11 @@ const EAST_FRONT_41 = {
       id: 'soviet',
       name: 'USSR',
       short: 'Soviet',
+      icon: '🟥',
       owns: (c, r) => !(c <= 4 || (r >= 8 && c <= 5)),
       regions: {
         north: { hq: 'Leningrad', name: 'USSR (North)', test: (c, r) => r <= 2 },
-        centre: { hq: 'Moscow', name: 'USSR', test: (c, r) => r >= 3 && r <= 5 },
+        centre: { hq: 'Moscow', name: 'USSR', main: true, test: (c, r) => r >= 3 && r <= 5 },
         south: { hq: 'Kiev', name: 'USSR (South)', test: (c, r) => r >= 6 },
       },
       capital: 'Moscow',
@@ -177,7 +179,158 @@ const EAST_FRONT_41 = {
   economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
 };
 
-const SCENARIOS = { eastFront41: EAST_FRONT_41 };
+// ---------------------------------------------------------------- France, 1940
+
+const FRANCE_MAP = [
+  'pp.....f..ppp', // 0  Scotland · North Sea · Hamburg
+  'php...ppppppp', // 1  Britain · Amsterdam · Berlin
+  'ppp.f.pprpppp', // 2  the Rhine delta
+  'ppp...ppwhppp', // 3  London · Antwerp · Cologne (the Ruhr)
+  '..f.pppwwpppp', // 4  the Channel · Calais (Dunkirk) · Lille · Brussels · the Ardennes
+  'ppppppphhhppp', // 5  Sedan · Luxembourg · the Saar
+  'pppppppphhrpp', // 6  Brest · Paris · Reims · Metz (Maginot Line) · the Rhine
+  'pppppppphhrpp', // 7  Strasbourg (Maginot Line)
+  ' ppppphhhhrph', // 8  Lyon · the Jura and Alps · Munich
+];
+const FRANCE_CITIES = [
+  [2, 3, 'London', { ind: true }],
+  [4, 4, 'Calais', { vic: true }],
+  [5, 4, 'Lille', { ind: true }],
+  [6, 4, 'Brussels', { vic: true }],
+  [6, 3, 'Antwerp', {}],
+  [6, 1, 'Amsterdam', {}],
+  [7, 5, 'Sedan', {}],
+  [4, 6, 'Paris', { ind: true, vic: true }],
+  [6, 6, 'Reims', {}],
+  [8, 6, 'Metz', {}],
+  [9, 7, 'Strasbourg', {}],
+  [5, 8, 'Lyon', { ind: true }],
+  [0, 6, 'Brest', {}],
+  [10, 0, 'Hamburg', {}],
+  [12, 1, 'Berlin', { ind: true }],
+  [10, 3, 'Cologne', { ind: true }],
+  [11, 5, 'Frankfurt', {}],
+  [12, 8, 'Munich', {}],
+];
+const FR_AXIS = (c, r) => (r <= 3 && c >= 8) || (r >= 4 && r <= 5 && c >= 9) || (r >= 6 && c >= 10);
+const FRANCE_40 = {
+  id: 'france40',
+  name: 'France, 1940',
+  map: FRANCE_MAP,
+  cities: FRANCE_CITIES,
+  rounds: 12,
+  // The Maginot Line: defenders here take only part of the damage (fortPct).
+  forts: [[8, 6], [9, 6], [9, 7], [9, 8]],
+  fortPct: 50,
+  sides: [
+    {
+      id: 'axis',
+      name: 'Germany',
+      short: 'Axis',
+      icon: '🟫',
+      owns: FR_AXIS,
+      regions: {
+        north: { hq: 'Berlin', name: 'Germany', main: true, test: (c, r) => r <= 2 },
+        centre: { hq: 'Cologne', name: 'Germany (Army Group A)', test: (c, r) => r >= 3 && r <= 5 },
+        south: { hq: 'Munich', name: 'Germany (Army Group C)', test: (c, r) => r >= 6 },
+      },
+      capital: 'Berlin',
+      splits: { 1: [['north', 'centre', 'south']], 2: [['north', 'centre'], ['south']], 3: [['north'], ['centre'], ['south']] },
+    },
+    {
+      id: 'allies',
+      name: 'Allies',
+      short: 'Allies',
+      icon: '🟦',
+      owns: (c, r) => !FR_AXIS(c, r),
+      regions: {
+        france: { hq: 'Paris', name: 'France', main: true, test: (c, r) => r >= 5 && !(c === 8 && r === 5) },
+        britain: { hq: 'London', name: 'Britain', test: (c, r) => (c <= 2 && r <= 3) || (r === 4 && c <= 5) },
+        lowlands: { hq: 'Brussels', name: 'Belgium & the Netherlands', test: (c, r) => (c >= 6 && c <= 8 && r <= 4) || (c === 8 && r === 5) },
+      },
+      capital: 'Paris',
+      splits: { 1: [['france', 'britain', 'lowlands']], 2: [['france'], ['britain', 'lowlands']], 3: [['france'], ['britain'], ['lowlands']] },
+    },
+  ],
+  victory: {
+    cities: ['Paris', 'Brussels', 'Calais'],
+    text: {
+      axis: 'Germany wins by taking Paris, or by holding 2 of the 3 victory cities (Paris, Brussels, Calais) at the end.',
+      allies: 'The Allies win by taking Cologne (the Ruhr), or by holding all 3 victory cities at the end.',
+    },
+    atEnd: (held) => (held.axis >= 2 ? 'axis' : held.allies >= 3 ? 'allies' : null),
+    capture: { Paris: 'axis', Cologne: 'allies' },
+  },
+  styles: {
+    historical: {
+      label: 'Historical',
+      income: { axis: [[1, 140]], allies: [[1, 90]] },
+      materials: { axis: 12, allies: 10 },
+      research: {
+        axis: ['motorised', 'artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'infantryL2', 'mediumTankL2'],
+        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'shipyards', 'motorised'],
+      },
+      winter: null,
+      armies: {
+        axis: [
+          [8, 1, 'infantry:3 motorised:1'],
+          [8, 2, 'infantry:3 lightTank:2 artillery:1'],
+          [8, 3, 'infantry:3 mediumTank:2 motorised:1 artillery:1'],
+          [9, 4, 'mediumTank:4 lightTank:3 motorised:3 artillery:1'],
+          [9, 5, 'infantry:3 motorised:2 mediumTank:1'],
+          [10, 6, 'infantry:3 artillery:2'],
+          [10, 7, 'infantry:3 artillery:1'],
+          [10, 3, 'infantry:2 bomber:2 interceptor:2'],
+          [12, 1, 'infantry:3'],
+        ],
+        allies: [
+          [8, 6, 'infantry:3 artillery:2'],
+          [9, 6, 'infantry:3 artillery:1'],
+          [9, 7, 'infantry:3 artillery:1'],
+          [9, 8, 'infantry:2 militia:1'],
+          [7, 5, 'militia:2 infantry:1'],
+          [8, 5, 'militia:1'],
+          [8, 4, 'militia:2'],
+          [7, 3, 'infantry:2 militia:2 antitank:1'],
+          [6, 4, 'infantry:2 artillery:1'],
+          [7, 1, 'infantry:1 militia:2'],
+          [7, 2, 'infantry:1 militia:2'],
+          [5, 4, 'infantry:3 lightTank:2 artillery:1'],
+          [4, 4, 'infantry:2'],
+          [6, 6, 'mediumTank:2 lightTank:2 infantry:2'],
+          [4, 6, 'infantry:3 artillery:1 mediumTank:1'],
+          [2, 3, 'infantry:2 interceptor:2'],
+        ],
+      },
+      reinforcements: [
+        { round: 3, side: 'allies', at: 'Paris', troops: 'infantry:3 artillery:1', text: 'French reserves move up' },
+        { round: 4, side: 'axis', at: 'Cologne', troops: 'mediumTank:2 motorised:2', text: 'Fresh panzer divisions reach the front' },
+        { round: 5, side: 'allies', at: 'Calais', troops: 'infantry:3', text: 'More British divisions cross the Channel' },
+        { round: 7, side: 'allies', at: 'Paris', troops: 'mediumTank:1 infantry:3', text: 'The last French reserves' },
+      ],
+    },
+    balanced: {
+      label: 'Balanced',
+      income: { axis: [[1, 120]], allies: [[1, 105]] },
+      materials: { axis: 12, allies: 12 },
+      research: {
+        axis: ['motorised', 'artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'infantryL2', 'mediumTankL2'],
+        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'shipyards', 'motorised', 'infantryL2'],
+      },
+      winter: null,
+      armies: null, // same as historical
+      reinforcements: [
+        { round: 3, side: 'allies', at: 'Paris', troops: 'infantry:3 artillery:2', text: 'French reserves move up' },
+        { round: 4, side: 'axis', at: 'Cologne', troops: 'mediumTank:2 motorised:2', text: 'Fresh panzer divisions reach the front' },
+        { round: 5, side: 'allies', at: 'Calais', troops: 'infantry:3 lightTank:1', text: 'More British divisions cross the Channel' },
+        { round: 7, side: 'allies', at: 'Paris', troops: 'mediumTank:2 infantry:3', text: 'The last French reserves' },
+      ],
+    },
+  },
+  economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
+};
+
+const SCENARIOS = { eastFront41: EAST_FRONT_41, france40: FRANCE_40 };
 
 // ---------------------------------------------------------------- helpers
 
@@ -274,18 +427,20 @@ function setupScenario(state, id, style) {
   });
   const at = (c, r) => tiles.find((t) => t.c === c && t.r === r);
   for (const [c, r, name, flags] of sc.cities) Object.assign(at(c, r), { name, ...(flags.ind ? { industry: true } : {}), ...(flags.vic ? { victory: true } : {}) });
+  for (const [c, r] of sc.forts || []) at(c, r).fort = true; // fortified line
 
   // Players: side, nation and region.
   sc.sides.forEach((side, idx) => {
     const seats = state.players.filter((p) => sideIndex(p.seat) === idx).map((p) => p.seat);
-    const split = sc.splits[Math.min(3, seats.length)] || sc.splits[1];
+    const splits = side.splits || sc.splits;
+    const split = splits[Math.min(3, seats.length)] || splits[1];
     seats.forEach((seat, k) => {
       const regions = split[k] || [];
       const p = state.players[seat];
-      const main = regions.includes('centre') || seats.length === 1;
+      const main = regions.some((reg) => side.regions[reg].main) || seats.length === 1;
       const hqName = main ? side.capital : side.regions[regions[0]].hq;
       p.side = side.id;
-      p.nation = seats.length === 1 ? side.name : main ? side.name : side.regions[regions[0]].name;
+      p.nation = seats.length === 1 ? side.name : side.regions[regions.find((reg) => side.regions[reg].main) || regions[0]].name;
       p.biome = 'mixed';
       p.homeTile = tiles.find((t) => t.name === hqName).id;
       for (const t of tiles) {
@@ -443,7 +598,8 @@ function view(s, seat) {
     name: sc.name,
     style: s.scenario.style,
     styleLabel: st.label,
-    sides: sc.sides.map((x) => ({ id: x.id, name: x.name, seats: sideSeats(s, x.id), goal: sc.victory.text[x.id] })),
+    sides: sc.sides.map((x) => ({ id: x.id, name: x.name, icon: x.icon || '⬛', seats: sideSeats(s, x.id), goal: sc.victory.text[x.id] })),
+    fortPct: sc.fortPct || null,
     victoryCities: sc.victory.cities,
     held: victoryHeld(s),
     winter: w ? { ...w } : null,

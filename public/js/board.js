@@ -136,6 +136,7 @@ export function renderBoard(game, opts = {}) {
         ${marks ? `<text x="${x + 30}" y="${y - 26}" class="marks">${marks}</text>` : ''}`;
     }
     if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
+    if (t.fort) inner += `<g class="fort-mark"><title>Fortified line: defenders take less damage</title><text x="${x - 30}" y="${y + 29}">🛡</text></g>`;
     // Scenario cities: name label, ⚙ industry, ★ victory city.
     if (t.name) inner += `<g class="city-label"><title>${esc(t.name)}${t.industry ? ' — industrial city (+3 a round)' : ''}${t.victory ? ' — victory city' : ''}</title><rect x="${x - 40}" y="${y - 46}" width="80" height="19" rx="9"/><text x="${x}" y="${y - 32}">${t.victory ? '★ ' : ''}${t.industry ? '⚙ ' : ''}${esc(t.name)}</text></g>`;
     const ter = game.mode === 'totalwar' && TERRAIN[t.terrain];

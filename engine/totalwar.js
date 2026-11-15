@@ -262,7 +262,7 @@ function defenceFactor(ch, cfg) {
  * `rand` is the game's seeded random number function, so battles replay exactly.
  * bombard: { A, D } shore-bombardment damage per second from ships offshore.
  */
-function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null, tech = null, generals = null, weather = null }) {
+function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null, tech = null, generals = null, weather = null, fort = null }) {
   const dpu = Math.max(1, Math.min(SLOTS.length, cfg.dotsPerUnit || 1));
   const b = {
     id,
@@ -273,6 +273,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     defender,
     terrain: makeTerrain(BOARD.terrainOf(tile), BOARD.terrainOf(from), rand, kind),
     ...(weather && kind === 'land' ? { weather } : {}), // scenario winter: { tankSpeedPct, attackPct }
+    ...(fort && kind === 'land' ? { fort } : {}), // scenario fortifications: % of damage the defenders take
     obj: { x: 47, y: 20, r: 5 },
     dpu,
     initial: { A: { ...zero(), ...aTroops }, D: { ...zero(), ...dTroops } },
@@ -752,6 +753,7 @@ function stepBattle(b, dt, cfg) {
     }
     if (b.time < b.shakenUntil[d.side]) m *= 1 - (cfg.generalShakePct ?? 10) / 100; // their general just fell
     if (b.weather && d.side === 'A') m *= b.weather.attackPct / 100; // winter: attacking is hard
+    if (b.fort && target.side === 'D') m *= b.fort / 100; // defenders in a fortified line
     let dmg = ((cfg[d.type].attack * lvl(b, d, cfg.levelAttackPct) * rankBoost(d.rk, cfg.rankBonusPct)) / dpu) * m * base * bonus[d.side].att * dt;
     if (d.cut) dmg *= 0.75; // cut-off troops are low on supplies
     if (dmg > 0) damage.set(target, (damage.get(target) || 0) + dmg);

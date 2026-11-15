@@ -861,3 +861,4 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .planned-attacks li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
 .scen-card .goals li { margin: 4px 0; }
 @media (max-width: 700px) { .scen-pill { display: none; } }
+.board .fort-mark text { font-size: 16px; text-anchor: middle; pointer-events: none; }

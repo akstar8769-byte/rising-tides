@@ -161,3 +161,70 @@ test('at the end: victory cities, else points per side', () => {
   o = war.scoreTotalWar(s, 'rounds');
   assert.match(o.scenario.why, /points/);
 });
+
+// ---------------------------------------------------------------- France, 1940
+const france = (n = 2, style = 'balanced') =>
+  newGame({ mode: 'totalwar', n, oceans: true, biomes: Array(n).fill('forest'), settings: (c) => ((c.totalwar.scenario = 'france40'), (c.totalwar.scenarioStyle = style)) });
+
+test('France 1940: Germany vs the Allies, Britain across the Channel, the Maginot Line fortified', () => {
+  const s = france(2);
+  assert.equal(s.players[0].nation, 'Germany');
+  assert.equal(s.players[1].nation, 'Allies');
+  assert.equal(city(s, 'Paris').controller, 1);
+  assert.equal(city(s, 'Berlin').controller, 0);
+  assert.deepEqual(s.board.tiles.filter((t) => t.fort).map((t) => s.players[t.controller].side), ['allies', 'allies', 'allies', 'allies']);
+  // Britain is an island: no land route from London to Paris.
+  const { areAdjacent } = require('../engine/board');
+  const land = s.board.tiles.filter((t) => t.kind === 'land');
+  const seen = new Set([city(s, 'London').id]);
+  const todo = [city(s, 'London')];
+  while (todo.length) {
+    const t = todo.pop();
+    for (const o of land) if (!seen.has(o.id) && areAdjacent(t, o)) (seen.add(o.id), todo.push(o));
+  }
+  assert.ok(!seen.has(city(s, 'Paris').id));
+  assert.equal(engine.viewFor(s, 0).scenario.sides[1].icon, '🟦');
+});
+
+test('France 1940: allied splits — France / Britain & the Low Countries / Germany north+centre and south', () => {
+  const s = france(4);
+  assert.equal(s.players[1].nation, 'France');
+  assert.equal(s.players[3].nation, 'Britain');
+  assert.equal(city(s, 'Brussels').owner, 3);
+  assert.equal(city(s, 'Munich').owner, 2);
+  assert.equal(city(s, 'Cologne').owner, 0);
+});
+
+test('fortified tiles: defenders take only part of the damage', () => {
+  const tw = require('../engine/totalwar');
+  const s = france(2);
+  const T = city(s, 'Metz');
+  const run = (fort) => {
+    const b = tw.createBattle({ id: 1, tile: T, from: T, attacker: 0, defender: 1, aTroops: { infantry: 1 }, dTroops: { infantry: 1 }, cfg: { ...s.settings.totalwar, dotsPerUnit: 1 }, rand: () => 0.5, fort });
+    const [a, d] = [b.dots.find((x) => x.side === 'A'), b.dots.find((x) => x.side === 'D')];
+    Object.assign(a, { x: 46, y: 20, tx: 46, ty: 20 });
+    Object.assign(d, { x: 47, y: 20, tx: 47, ty: 20 });
+    tw.stepBattle(b, 1, { ...s.settings.totalwar, dotsPerUnit: 1 });
+    return d.max - d.hp;
+  };
+  const open = run(null);
+  assert.ok(open > 0);
+  assert.ok(Math.abs(run(50) - open * 0.5) < 1e-9);
+});
+
+test('France 1940: taking Paris wins for Germany', () => {
+  let s = france(2);
+  const paris = city(s, 'Paris');
+  const { areAdjacent } = require('../engine/board');
+  const next = s.board.tiles.find((t) => t.kind === 'land' && t.owner === 1 && t !== paris && areAdjacent(t, paris));
+  next.controller = 0;
+  next.troops = { 0: { infantry: 3 } };
+  next.units = { 0: 3 };
+  paris.troops = {};
+  paris.units = {};
+  s = allReady(s);
+  s = act(s, 0, 'choose', { action: 'attack', target: paris.id, from: next.id, troops: { infantry: 3 } });
+  s = act(s, 1, 'choose', { action: 'sustainable', mix: { wood: 0, stone: 0, sandbag: 0 } });
+  assert.equal(s.phase, 'ended');
+  assert.equal(s.outcome.scenario.side, 'axis');
+});

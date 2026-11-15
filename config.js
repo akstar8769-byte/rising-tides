@@ -134,7 +134,7 @@ const DEFAULTS = {
     startMilitia: 2,             // militia each player starts with, on their capital
     capitalOpensAfter: 1,        // provinces that must fall before a capital can be attacked
     truceRounds: 2,              // opening truce: no attacks on other players in the first this-many rounds (empty land is fine)
-    scenario: 'none',            // historical scenario: 'none' = the normal game; 'eastFront41' = Eastern Front 1941 (2-5 players on two sides)
+    scenario: 'none',            // historical scenario: 'none' = the normal game; 'eastFront41' = Eastern Front 1941; 'france40' = France 1940 (2-5 players on two sides)
     scenarioStyle: 'balanced',   // scenario style: 'historical' (forces and timings as in the real campaign) or 'balanced' (either side can win)
     scenarioAttacks: 4,          // scenarios: attacks each SIDE may launch per round, shared between its players (the first player gets any remainder)
     boardLayout: 'oceans',       // Total War board: 'oceans' = two continents split by an ocean (sea lanes); 'sea37' = the smaller board with sea bays
@@ -449,7 +449,7 @@ const OPTIONS = {
   'base.boardLayout': ['base37', 'standard19'],
   'totalwar.boardLayout': ['oceans', 'continent', 'random', 'sea37', 'standard19'],
   'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
-  'totalwar.scenario': ['none', 'eastFront41'],
+  'totalwar.scenario': ['none', 'eastFront41', 'france40'],
   'totalwar.scenarioStyle': ['balanced', 'historical'],
 };
 
@@ -505,7 +505,7 @@ LABELS['totalwar.transportRange'] = 'Transport: how far ships carry troops (sea 
 LIMITS['totalwar.transportPerShip'] = [1, 20];
 LIMITS['totalwar.transportRange'] = [1, 20];
 LABELS['totalwar.convoyIntercept'] = 'Oceans board: enemy warships fire on troops crossing the sea';
-LABELS['totalwar.scenario'] = 'Historical scenario (none = the normal game; eastFront41 = Eastern Front 1941: Germany vs USSR, 2-5 players on two sides — replaces the board)';
+LABELS['totalwar.scenario'] = 'Historical scenario (none = the normal game; eastFront41 = Eastern Front 1941: Germany vs USSR; france40 = France 1940: Germany vs the Allies; 2-5 players on two sides — replaces the board)';
 LABELS['totalwar.scenarioStyle'] = 'Scenario style (historical = forces and timings as in the real campaign; balanced = either side can win)';
 LABELS['totalwar.scenarioAttacks'] = 'Scenarios: attacks per side per round (shared between the side\'s players)';
 LIMITS['totalwar.scenarioAttacks'] = [1, 12];

@@ -512,6 +512,7 @@ export function targetNote(g, id) {
   }
   if (!g.war.accordBroken && !exempt && !g.tw) notes.push('⛔ you will be sanctioned');
   if (t.name) notes.push(`${t.victory ? '★ victory city' : t.industry ? '⚙ industrial city' : 'city'}`);
+  if (t.fort) notes.push('🛡 fortified');
   if (TERRAIN_NOTE[t.terrain]) notes.push(TERRAIN_NOTE[t.terrain]);
   if (t.controller != null && myPactWith(g, t.controller)) notes.push(`⚠ breaks your pact with ${g.players[t.controller].name}`);
   if (t.controller != null && g.limits && g.limits.protectedSeats[t.controller]) notes.push('📜 forbidden by your treaty');

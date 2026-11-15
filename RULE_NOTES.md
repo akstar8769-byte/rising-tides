@@ -491,3 +491,14 @@ Total War lobby → **Scenario: Eastern Front, 1941**, and **Style: Balanced / H
   - *Balanced:* the same armies; Germany 165% income, the USSR 80% then 100% from round 7; a milder, shorter winter and smaller reinforcements.
 - **Bots** play either side: several attacks a round aimed at victory, industrial and other cities; they keep a garrison in their capital (8 units when the enemy is within 2 hexes, else 4) and leave a unit behind on front-line tiles they attack from.
 - **Bot-vs-bot results** (8 games each): Balanced — 1v1 4–4, 2v1 3–5 (Germany–USSR), 2v2 6–2, 3v2 2–6; Historical — 1v1 5–3, 2v1 6–2, 2v2 7–1. Historical favours Germany, as planned; Balanced is roughly even.
+
+## ⚔ Historical scenario: France, 1940 (added 15 November 2026)
+Total War lobby → **Scenario: France, 1940** (Balanced or Historical). Same scenario rules as the Eastern Front (two sides, Hold or Attack, 4 attacks per side per round, cities and ⚙ industry, capital-capture victory, no Flood, no pacts), with:
+- **Sides:** 🟫 Germany (seats 1, 3, 5) vs 🟦 the Allies (seats 2, 4). Splits — Germany: 1 player all; 2 players Germany (Berlin, north + Army Group A) and Army Group C (Munich); 3 players Germany (Berlin), Army Group A (Cologne), Army Group C (Munich). Allies: 1 player all; 2 players France (Paris) and Britain & the Low Countries (London); 3 players France, Britain (London, plus the BEF at Calais and Lille), Belgium & the Netherlands (Brussels).
+- **Map:** 13 × 9 hexes. Britain is an island across the Channel (troops need transport ships); the North Sea; the Netherlands and Belgium; France; western Germany. 18 named cities. ⚙ industry: London, Lille, Paris, Lyon; Berlin, Cologne (the Ruhr).
+- **The Maginot Line** (Metz, Strasbourg and two more hexes on the Franco-German border) is **fortified**: defenders there take only **50%** of the damage. The Ardennes (woods and hills through Belgium and Luxembourg to Sedan) is the way round — lightly held at the start.
+- **Victory:** taking **Paris** wins for Germany; taking **Cologne** (the Ruhr) wins for the Allies. Otherwise, after round 12, Germany wins with 2 of the 3 ★ victory cities (Paris, Brussels, Calais); the Allies with all 3; else points.
+- **No winter.** Reinforcements: French reserves at Paris (round 3), German panzers at Cologne (4), British divisions at Calais (5), the last French reserves (7).
+- **Historical:** Germany 140% income, a strong panzer group in front of the Ardennes, levelled tanks and infantry; Allies 90% income, many units but spread thin, a weak Sedan. **Balanced:** Germany 120%, Allies 105% with level-2 infantry and stronger reserves.
+- **Bot-vs-bot results:** Balanced — 1v1 3–5 (Germany–Allies), 2v1 3–5, 2v2 4–4, 3v2 11–5 (16 games); Historical — 1v1 6–2, 2v2 7–1.
+- Scenario engine changes: sides have their own icon and their own region splits; the region marked `main` holds the side's capital; split-side players are named after their region (e.g. France, Britain).
