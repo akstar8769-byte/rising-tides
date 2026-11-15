@@ -564,7 +564,10 @@ function attachRooms(io) {
       requireHost(room, member);
       if (room.state) throw friendly('The game has already started.');
       const n = room.members.length;
-      if (n < MIN_PLAYERS || n > MAX_PLAYERS) throw friendly(`You need ${MIN_PLAYERS} to ${MAX_PLAYERS} players to start (you have ${n}).`);
+      // Historical scenarios are fought by two sides, so 2 players is enough.
+      const scenario = room.mode === 'totalwar' && room.settings.totalwar.scenario && room.settings.totalwar.scenario !== 'none';
+      const min = scenario ? 2 : MIN_PLAYERS;
+      if (n < min || n > MAX_PLAYERS) throw friendly(`You need ${min} to ${MAX_PLAYERS} players to start (you have ${n}).`);
       let biomes;
       if (room.biomeMode === 'manual') {
         biomes = room.members.map((m) => room.manualBiomes[m.id]);

@@ -21,6 +21,7 @@
 const { fail, MATERIALS, emptyBag, cleanBag, bagTotal, hasBag, addBag, subBag, describeBag, rollDie, addLog } = require('./util');
 const { BIOMES, areAdjacent } = require('./board');
 const base = require('./base');
+const SCEN = require('./scenarios');
 const diplomacy = require('./diplomacy');
 const battles = require('./totalwar');
 const ARS = require('./arsenal');
@@ -189,6 +190,10 @@ function aidEligible(s, p) {
 }
 
 function tileName(s, t) {
+  if (t.name && t.kind === 'land') {
+    const held = t.controller != null ? ` (${s.players[t.controller].name})` : '';
+    return `${t.name} ${t.id}${held}`;
+  }
   if (t.kind === 'sea') return `the sea bay ${t.id}${t.controller != null ? ' held by ' + s.players[t.controller].name : ''}`;
   const biome = BIOMES[t.biome].label;
   const held = t.controller != null && t.controller !== t.owner ? ` held by ${s.players[t.controller].name}` : '';
@@ -248,6 +253,14 @@ function production(s, seat) {
     passive[res] += w.passivePerTile;
     if (TW(s) && t.owner !== seat) passive[res] += TWS(s).occupiedBonus; // plunder
   }
+  if (s.scenario) {
+    // Scenarios: land, cities and industry, plus fishing (no plunder, no Sustainable / Unsustainable bonus).
+    const own = tiles.filter((x) => !blocked.includes(x));
+    const least = (bag) => MATERIALS.reduce((best, m) => (p.materials[m] + bag[m] < p.materials[best] + bag[best] ? m : best), MATERIALS[0]);
+    const total = SCEN.income(s, seat, own, least);
+    for (let i = 0; i < fishing.length * (TWS(s).fishingIncome ?? 1); i++) total[least(total)] += 1;
+    return { passive: total, tiles: tiles.length, unsustainable: 0, fishing: fishing.length, blockaded: blocked.map((t) => t.id), fixed: emptyBag(), free: 0, allowed: [], access: false, industry: own.filter((t) => t.industry).length, cities: own.filter((t) => t.name).length };
+  }
   const homeRes = BIOMES[p.biome].resource;
   const base = { passive, tiles: tiles.length, unsustainable: w.unsustainableBonus, fishing: fishing.length, blockaded: blocked.map((t) => t.id) };
   const puppets = puppetsOf(s, seat);
@@ -269,7 +282,7 @@ function production(s, seat) {
 /** Tiles this player may attack with their own action. */
 function attackTargets(s, seat) {
   const p = s.players[seat];
-  const forbidden = new Set([seat, ...puppetsOf(s, seat)]);
+  const forbidden = new Set([seat, ...puppetsOf(s, seat), ...SCEN.alliesOf(s, seat)]);
   if (p.puppetOf != null) {
     forbidden.add(p.puppetOf);
     puppetsOf(s, p.puppetOf).forEach((x) => forbidden.add(x));
@@ -511,6 +524,10 @@ function botBonus(s) {
 function upkeep(s) {
   const w = W(s);
   if (TW(s)) {
+    if (s.scenario) {
+      SCEN.roundStart(s, addTroops);
+      syncUnits(s);
+    }
     finishResearch(s);
     botBonus(s);
   }
@@ -662,7 +679,7 @@ const ACTION_LABEL = { sustainable: 'Sustainable', unsustainable: 'Unsustainable
  * { action: 'attack', target: tileId }
  * { action: 'revolt' }                    puppets only: attack your overlord's capital
  */
-function choose(s, actor, { action, mix, target, aid, from, count, troops } = {}) {
+function choose(s, actor, { action, mix, target, aid, from, count, troops, extra } = {}) {
   if (s.phase !== 'choose') fail('It is not time to choose an action.');
   const p = me(s, actor);
   const ch = { action };
@@ -678,6 +695,7 @@ function choose(s, actor, { action, mix, target, aid, from, count, troops } = {}
     if (bagTotal(ch.mix) !== prod.free) fail(`Pick exactly ${prod.free} materials.`);
     if (MATERIALS.some((m) => ch.mix[m] > 0 && !prod.allowed.includes(m))) fail('You can only pick materials your tiles produce.');
   } else if (action === 'unsustainable') {
+    if (s.scenario) fail('There is no Unsustainable in a scenario: hold, or attack.');
     diplomacy.checkMove(s, actor, 'unsustainable');
     const n = production(s, actor).unsustainable;
     ch.mix = cleanBag(mix, 'mix');
@@ -722,6 +740,37 @@ function choose(s, actor, { action, mix, target, aid, from, count, troops } = {}
   } else {
     fail('Choose Sustainable, Unsustainable or Attack.');
   }
+  // Scenarios: more attacks this round, each from its own tile with its own troops.
+  if (extra != null) {
+    if (!s.scenario || action !== 'attack') fail('Only scenario attacks can launch several attacks.');
+    if (!Array.isArray(extra) || extra.length > SCEN.attacksFor(s, actor) - 1) fail(`You can launch at most ${SCEN.attacksFor(s, actor)} attack${SCEN.attacksFor(s, actor) === 1 ? '' : 's'} a round.`);
+    const used = {}; // troops already sent from each tile
+    const use = (tile, tr) => {
+      used[tile] = used[tile] || zeroTroops();
+      for (const k of battles.TYPES) used[tile][k] += tr[k] || 0;
+    };
+    use(ch.from, ch.troops || troopsAt(s.board.tiles.find((x) => x.id === ch.from), actor));
+    const targets = new Set([ch.target]);
+    ch.extra = [];
+    for (const x of extra) {
+      if (!x || typeof x !== 'object') fail('Invalid attack.');
+      if (targets.has(x.target)) fail('Each attack needs a different target.');
+      if (!attackTargets(s, actor).includes(x.target)) fail("You can't attack that tile.");
+      const T = getAnyTile(s, x.target);
+      const src = s.board.tiles.find((t) => t.id === x.from);
+      if (!src || src.controller !== actor || !attackSources(s, actor, x.target).some((y) => y.tile === x.from)) fail('Attack from one of your tiles next to the target.');
+      const tr = cleanTroops(x.troops || {});
+      const have = troopsAt(src, actor);
+      const already = used[x.from] || zeroTroops();
+      if (battles.sum(tr) < 1) fail('Send at least one unit in every attack.');
+      if (battles.TYPES.some((k) => tr[k] > 0 && (domainOf(k) === 'sea') !== (T.kind === 'sea'))) fail(T.kind === 'sea' ? 'Only ships can fight at sea.' : "Ships can't go ashore.");
+      if (battles.TYPES.some((k) => tr[k] + already[k] > have[k])) fail(`You don't have that many troops on ${x.from} for all your attacks.`);
+      use(x.from, tr);
+      targets.add(x.target);
+      ch.extra.push({ target: x.target, from: x.from, count: battles.sum(tr), troops: tr });
+    }
+    if (!ch.extra.length) delete ch.extra;
+  }
   if ((action === 'sustainable' || action === 'unsustainable') && aidEligible(s, p)) {
     ch.aid = MATERIALS.includes(aid) ? aid : leastHeld(p);
   }
@@ -761,7 +810,7 @@ function defaultChoice(s, p) {
 function choiceText(s, p) {
   const ch = p.choice;
   const ordered = p.puppetOf != null && ch.action !== 'revolt' ? ' (as commanded)' : '';
-  if (ch.action === 'attack') return `Attack on ${tileName(s, getAnyTile(s, ch.target))}${ordered}`;
+  if (ch.action === 'attack') return `Attack on ${[ch.target, ...(ch.extra || []).map((x) => x.target)].map((id) => tileName(s, getAnyTile(s, id))).join(', ')}${ordered}`;
   if (ch.action === 'revolt') return `REVOLT against ${s.players[p.puppetOf].name}`;
   return ACTION_LABEL[ch.action] + ordered;
 }
@@ -782,7 +831,7 @@ function reveal(s) {
     if (ch.action === 'sustainable') addBag(addBag(bag, prod.fixed), ch.mix);
     if (ch.action === 'unsustainable') addBag(bag, ch.mix);
     const notes = [];
-    if (fight) {
+    if (fight && !s.scenario) {
       rise += w.attackFlood;
       notes.push(`${ch.action === 'revolt' ? 'revolting' : 'attacking'}: tile income only`);
     }
@@ -825,7 +874,10 @@ function reveal(s) {
   if (TW(s)) {
     const twEntries = order
       .filter((i) => s.players[i].choice.action === 'attack')
-      .map((i) => ({ seat: i, tile: s.players[i].choice.target, from: s.players[i].choice.from, count: s.players[i].choice.count, troops: s.players[i].choice.troops || null }));
+      .flatMap((i) => [
+        { seat: i, tile: s.players[i].choice.target, from: s.players[i].choice.from, count: s.players[i].choice.count, troops: s.players[i].choice.troops || null },
+        ...(s.players[i].choice.extra || []).map((x) => ({ seat: i, tile: x.target, from: x.from, count: x.count, troops: x.troops })),
+      ]);
     startBattles(s, twEntries);
     return;
   }
@@ -1107,6 +1159,7 @@ function resolveClash(s, { a, b }) {
 
 function decorateView(v, s, seat) {
   const w = W(s);
+  if (s.scenario) v.scenario = SCEN.view(s, seat);
   v.war = {
     accordBroken: s.accordBroken,
     accordBrokeRound: s.accordBrokeRound,
@@ -1847,6 +1900,7 @@ function nextWave(s) {
         addLog(s, `${A.name} marches into ${name} — nobody was there to defend it.`);
         generalsLost(s, T, D);
         conquerTW(s, e.seat, D, T, sent);
+        if (s.phase === 'ended') return; // that capture won the war
       }
       continue;
     }
@@ -1857,7 +1911,7 @@ function nextWave(s) {
     busy.add(src.id);
     fighting.add(e.seat);
     fighting.add(D);
-    rise += TWS(s).battleFlood;
+    if (!s.scenario) rise += TWS(s).battleFlood;
     // Generals: the attacker's from the tile the attack starts on, the defender's on the tile itself (land only).
     const genA = T.kind === 'land' && src.kind === 'land' ? leadGeneral(s, src.id, e.seat) : null;
     const genD = T.kind === 'land' ? leadGeneral(s, T.id, D) : null;
@@ -1911,7 +1965,7 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
   const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
   const knows = (seat, id) => ((s.players[seat].research && s.players[seat].research.done) || []).includes(id);
   const tech = { A: { bazooka: knows(attacker, 'bazookas') }, D: { bazooka: knows(defender, 'bazookas') } };
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s) };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -1932,6 +1986,12 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
 }
 
 /** The land battle. `sup` = side with air superiority; its bombers fly over the battle, other planes wait. */
+/** Scenario winter, as battles need it (or null). */
+function weatherNow(s) {
+  const w = SCEN.winterNow(s);
+  return w ? { tankSpeedPct: w.tankSpeedPct, attackPct: w.attackPct } : null;
+}
+
 function startLandBattle(s, common, g, sup, planes) {
   const [bombers, otherPlanes] = splitTroops(planes, (k) => k === 'bomber');
   const reserve = { A: zeroTroops(), D: zeroTroops() };
@@ -2010,6 +2070,15 @@ function conquerTW(s, taker, D, T, troops) {
     syncUnits(s);
     if (rest.length) addLog(s, `🏳 With their capital gone, ${Dp.name}'s whole territory surrenders to ${A.name}: ${rest.map((t) => t.id).join(', ')}${lost ? ` (${lost} unit${lost === 1 ? '' : 's'} lay down their arms)` : ''}.`, { kind: 'bad' });
   }
+  // Scenarios: taking the enemy capital wins the war.
+  const wins = SCEN.captureWins(s, T, taker);
+  if (wins) {
+    s.scenario.winner = wins;
+    s.scenario.why = `${A.name} takes ${T.name}: the war is won!`;
+    addLog(s, `🏆 ${s.scenario.why}`, { kind: 'good' });
+    base.finishGame(s, 'victory');
+    return;
+  }
   // Holding every capital ends the war at once.
   const capitals = s.board.tiles.filter((t) => t.role === 'capital');
   if (capitals.every((t) => t.controller === taker)) {
@@ -2031,7 +2100,7 @@ function finishAirTW(s, b) {
   const win = b.winner === 'A' ? A : D;
   addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
   const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
-  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
   addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
 }
 
@@ -2135,7 +2204,7 @@ function stepBattles(s, dt) {
       if (s.phase === 'ended') return true;
     }
   }
-  if (ended) {
+  if (ended && s.phase !== 'ended') {
     // Start any waiting battle whose players are free again (others keep fighting).
     if (s.battleQueueTW.length) nextWave(s);
     else if (!s.battles.some((b) => b.status === 'live')) {
@@ -2212,6 +2281,11 @@ function scoreTotalWar(s, reason) {
     const score = catastrophe ? 0 : tiles.length * cfg.scoreTile + capitals * cfg.scoreCapital + Math.floor(spare / cfg.scoreMaterialsPer) + (homeSafe ? cfg.scoreHome : 0);
     return { seat: p.seat, name: p.name, walls: p.walls, protection: prot, survived: homeSafe, spare, seawallPoints: 0, tiles: tiles.length, capitals, score };
   });
+  if (s.scenario) {
+    const d = SCEN.decide(s, reason, results);
+    const winners = d.side ? s.players.filter((p) => p.side === d.side).map((p) => p.seat) : [];
+    return { reason, catastrophe: false, finalFlood: s.flood, threshold: base.threshold(s), results, winners, scenario: { side: d.side, why: d.why, held: SCEN.victoryHeld(s) } };
+  }
   const best = catastrophe ? null : Math.max(...results.map((r) => r.score));
   const winners = catastrophe ? [] : results.filter((r) => r.score === best).map((r) => r.seat);
   return { reason, catastrophe, finalFlood: s.flood, threshold: base.threshold(s), results, winners };
@@ -2338,7 +2412,7 @@ function interceptConvoy(s, seat, src, T, sent, what = 'convoy') {
   const lost = [];
   const shooters = new Set();
   for (const sea of s.board.tiles) {
-    if (sea.kind !== 'sea' || sea.controller == null || sea.controller === seat || chain.has(sea)) continue;
+    if (sea.kind !== 'sea' || sea.controller == null || sea.controller === seat || chain.has(sea) || SCEN.alliesOf(s, seat).includes(sea.controller)) continue;
     if (![...chain].some((c) => areAdjacent(c, sea))) continue;
     const owner = sea.controller;
     const p = shotChance(s, sea, owner);
@@ -2410,7 +2484,7 @@ function bombardTargets(s, seat) {
   if (!TW(s) || inTruce(s)) return out;
   for (const S of seasHeld(s, seat)) {
     if (!gunShots(s, S, seat) || S.bombardedRound === s.round) continue;
-    const list = s.board.tiles.filter((t) => t.kind === 'land' && t.controller != null && t.controller !== seat && areAdjacent(S, t) && !puppetsOf(s, seat).includes(t.controller) && !diplomacy.blockedBy(s, seat, 'attack', t.controller)).map((t) => t.id);
+    const list = s.board.tiles.filter((t) => t.kind === 'land' && t.controller != null && t.controller !== seat && areAdjacent(S, t) && !puppetsOf(s, seat).includes(t.controller) && !SCEN.alliesOf(s, seat).includes(t.controller) && !diplomacy.blockedBy(s, seat, 'attack', t.controller)).map((t) => t.id);
     if (list.length) out[S.id] = list;
   }
   return out;

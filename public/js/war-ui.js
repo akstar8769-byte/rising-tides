@@ -12,6 +12,9 @@ export function tileLabel(g, id) {
   if (!t) return id;
   const b = BIOME[t.biome].label;
   const held = t.controller != null && t.controller !== t.owner ? ` — held by ${g.players[t.controller].name}` : '';
+  // Scenario cities go by their names.
+  if (t.name && t.kind === 'land') return `${t.industry ? '⚙ ' : ''}${t.victory ? '★ ' : ''}${t.name} (${t.id})${t.controller != null ? ` — ${g.players[t.controller].name}` : ''}`;
+  if (g.scenario && t.kind === 'land' && t.controller != null) return `${b} ${t.id} — ${g.players[t.controller].name}${t.controller !== t.owner ? ' (captured)' : ''}`;
   if (t.kind === 'sea') return `Sea bay ${t.id}${t.controller != null ? ' — ' + g.players[t.controller].name + "'s fleet" : ''}`;
   if (t.factory && t.owner == null) return `${b} tile ${t.id} (${g.players[t.factory.owner].name}'s factory)`;
   if (t.owner == null) return `Open ${b} tile (${t.id})${held}`;
@@ -267,7 +270,7 @@ function sourcePicker(store, sources) {
   const max = sources.find((x) => x.tile === c.from).units;
   c.count = Math.min(Math.max(1, c.count || max), max);
   if (g.tw) {
-    const have = troopsOn(g, c.from);
+    const have = sendable(g, c.from, c.target, c); // minus troops planned for other attacks
     if (!c.troops || c.troopsFrom !== c.from) {
       c.troops = { ...have }; // default: send everyone
       c.troopsFrom = c.from;
@@ -282,7 +285,7 @@ function sourcePicker(store, sources) {
         `<button class="target ${c.from === x.tile ? 'selected' : ''}" data-act="set" data-path="choice.from" data-value="${x.tile}" aria-pressed="${c.from === x.tile}"><span>${esc(tileLabel(g, x.tile))}</span><small>⚔ ${x.units} there${x.amphibious ? ` · 🚢 by sea${x.capacity ? ` — your ships carry ${x.capacity}` : ''}` : ''}</small></button>`,
     )
     .join('')}</div>
-    ${g.tw ? `<h3>Send</h3>${troopSteppers('choice.troops', c.troops, sendable(g, c.from, c.target))}` : ''}
+    ${g.tw ? `<h3>Send</h3>${troopSteppers('choice.troops', c.troops, sendable(g, c.from, c.target, c))}` : ''}
     <div class="row wrap" ${g.tw ? 'hidden' : ''}>${stepper('choice.count', c.count, { min: 1, max, label: 'Units to send' })}<span class="small">unit${c.count === 1 ? '' : 's'} sent (${Math.min(c.count, g.settings.war.maxAttackDice)} di${Math.min(c.count, g.settings.war.maxAttackDice) === 1 ? "e" : "ce"}) — ${max - c.count} stay${max - c.count === 1 ? 's' : ''} behind</span></div>
     <p class="hint">If you win, the surviving attackers move into the captured province. If you lose, survivors come back.</p>`;
   return { html, ok: g.tw ? troopCount(c.troops) > 0 : true };
@@ -303,8 +306,16 @@ export function troopsOn(g, tileId) {
 }
 const troopCount = (c) => (c ? Object.values(c).reduce((a, n) => a + (n || 0), 0) : 0);
 /** Troops on a tile that can join an attack on `target` (ships only at sea; no ships ashore). */
-function sendable(g, from, target) {
+/** Scenarios: troops already planned for other attacks this round, by source tile. */
+function plannedFrom(c, from) {
+  const used = {};
+  for (const x of (c && c.extra) || []) if (x.from === from) for (const [k, n] of Object.entries(x.troops || {})) used[k] = (used[k] || 0) + n;
+  return used;
+}
+function sendable(g, from, target, c = null) {
   const have = troopsOn(g, from);
+  const used = plannedFrom(c, from);
+  for (const k of Object.keys(have)) have[k] = Math.max(0, have[k] - (used[k] || 0));
   const T = g.board.tiles.find((x) => x.id === target);
   const sea = T && T.kind === 'sea';
   for (const k of Object.keys(have)) if ((unitOf(g, k).domain === 'sea') !== sea) have[k] = 0;
@@ -485,6 +496,7 @@ function upgradePanel(store, canBuild) {
 }
 
 // ------------------------------------------------------------------ choose panel
+const TERRAIN_NOTE = { plains: '🌾 plains', woods: '🌳 woods', hills: '🏔 hills', river: '〰 river' };
 export function targetNote(g, id) {
   const t = g.board.tiles.find((x) => x.id === id);
   const notes = [];
@@ -498,7 +510,9 @@ export function targetNote(g, id) {
     const d = Object.values(t.units || {}).reduce((a, b) => a + b, 0);
     notes.push(d ? `defended by ${d}` : 'undefended!');
   }
-  if (!g.war.accordBroken && !exempt) notes.push('⛔ you will be sanctioned');
+  if (!g.war.accordBroken && !exempt && !g.tw) notes.push('⛔ you will be sanctioned');
+  if (t.name) notes.push(`${t.victory ? '★ victory city' : t.industry ? '⚙ industrial city' : 'city'}`);
+  if (TERRAIN_NOTE[t.terrain]) notes.push(TERRAIN_NOTE[t.terrain]);
   if (t.controller != null && myPactWith(g, t.controller)) notes.push(`⚠ breaks your pact with ${g.players[t.controller].name}`);
   if (t.controller != null && g.limits && g.limits.protectedSeats[t.controller]) notes.push('📜 forbidden by your treaty');
   return notes.join(' · ');
@@ -514,10 +528,11 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
   const puppet = me.puppetOf != null;
   const cmd = puppet ? me.effectiveCommand : null;
 
+  const scen = g.scenario;
   if (me.choice && !c.editing) {
     const ch = me.choice;
     let detail = '';
-    if (ch.action === 'attack') detail = `on ${esc(tileLabel(g, ch.target))}${ch.from ? ` from ${ch.from} with ${ch.count}` : ''}`;
+    if (ch.action === 'attack') detail = [ch, ...(ch.extra || [])].map((x) => `on ${esc(tileLabel(g, x.target))}${x.from ? ` from ${x.from} with ${x.count}` : ''}`).join('; ');
     else if (ch.action === 'revolt') detail = `against ${esc(g.players[me.puppetOf].name)}`;
     else if (ch.mix && bagTotal(ch.mix)) detail = `(${bagText(ch.mix)}${ch.action === 'sustainable' && bagTotal(prod.fixed) ? ' + ' + bagText(prod.fixed) : ''})`;
     else if (ch.action === 'sustainable') detail = `(${bagText(prod.fixed)})`;
@@ -536,12 +551,14 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
       ? `Tiles + ${prod.free} of your choice`
       : `Tiles + ${bagText(prod.fixed)}`;
   const cards = [];
-  if (!puppet || cmd.action === 'sustainable') cards.push(actionCard('sustainable', 'Sustainable', susDesc, 'No Flood change'));
+  if (scen) cards.push(actionCard('sustainable', 'Hold', 'Collect your income, no attacks', 'Dig in'));
+  else if (!puppet || cmd.action === 'sustainable') cards.push(actionCard('sustainable', 'Sustainable', susDesc, 'No Flood change'));
   const L = g.limits || { protectedSeats: {} };
-  if (!puppet || cmd.action === 'unsustainable') cards.push(actionCard('unsustainable', 'Unsustainable', `Tiles + any ${prod.unsustainable}`, `Flood +${g.settings.base.unsustainableFlood}`, !!L.noUnsustainable, L.noUnsustainable ? '📜 Treaty forbids' : ''));
+  if (!scen && (!puppet || cmd.action === 'unsustainable')) cards.push(actionCard('unsustainable', 'Unsustainable', `Tiles + any ${prod.unsustainable}`, `Flood +${g.settings.base.unsustainableFlood}`, !!L.noUnsustainable, L.noUnsustainable ? '📜 Treaty forbids' : ''));
   if (!puppet) {
     const why = L.noAttacks ? '📜 Treaty forbids' : pool < 1 ? 'Needs 1 unit' : !g.attackTargets.length ? (g.tw && g.tw.truce ? `🕊 Truce until round ${g.tw.truce + 1}` : 'No targets') : g.stationed && !g.attackTargets.some((id) => (g.attackSources[id] || []).length) ? 'No units at the front' : '';
-    cards.push(actionCard('attack', 'Attack', 'Tile income only', `Flood +${w.attackFlood}`, !!why, why));
+    if (scen) cards.push(actionCard('attack', 'Attack', `Up to ${scen.attacksPerRound} attack${scen.attacksPerRound === 1 ? '' : 's'}, full income`, 'Advance!', !!why, why));
+    else cards.push(actionCard('attack', 'Attack', 'Tile income only', `Flood +${w.attackFlood}`, !!why, why));
   } else if (cmd.action === 'attack') {
     cards.push(actionCard('attack', 'Attack (ordered)', esc(tileLabel(g, cmd.target)), `Flood +${w.attackFlood}`));
   }
@@ -565,7 +582,15 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
     extra = `${tileIncome}<h3>Plus pick ${prod.unsustainable} materials (${bagTotal(c.mix)}/${prod.unsustainable})</h3>${bagEditor('choice.mix', c.mix, capped(c.mix, prod.unsustainable))}`;
     canLock = bagTotal(c.mix) === prod.unsustainable;
   } else if (c.action === 'attack' && !puppet) {
-    extra = `${tileIncome}<h3>Attack which tile?</h3><div class="target-list">${g.attackTargets
+    // Scenarios: attacks already planned this round, each from its own tile.
+    const planned = scen ? c.extra || [] : [];
+    const plannedHtml = planned.length
+      ? `<h3>Planned attacks (${planned.length + 1} of ${scen.attacksPerRound} with the one below)</h3><ul class="plain planned-attacks">${planned
+          .map((x, i) => `<li>⚔ ${esc(tileLabel(g, x.target))} <small>from ${esc(x.from)} with ${Object.values(x.troops).reduce((a, n) => a + n, 0)}</small> <button class="btn small" data-act="unplanAttack" data-id="${i}">Remove</button></li>`)
+          .join('')}</ul>`
+      : '';
+    extra = `${tileIncome}${plannedHtml}<h3>${planned.length ? 'Next attack: which tile?' : 'Attack which tile?'}</h3><div class="target-list">${g.attackTargets
+      .filter((id) => !planned.some((x) => x.target === id))
       .map(
         (id) =>
           `<button class="target ${c.target === id ? 'selected' : ''}" data-act="set" data-path="choice.target" data-value="${id}" aria-pressed="${c.target === id}">
@@ -579,6 +604,7 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
       extra += sp.html;
       canLock = sp.ok;
     }
+    if (scen && canLock && planned.length < scen.attacksPerRound - 1) extra += `<button class="btn" data-act="planAttack">＋ Add this attack and plan another (${planned.length + 1}/${scen.attacksPerRound})</button>`;
   } else if (c.action === 'attack' && puppet) {
     extra = `<p>Your overlord ordered this attack. If you win, the tile and spoils go to ${esc(g.players[me.puppetOf].name)}.</p>`;
     canLock = true;
@@ -611,7 +637,7 @@ export function warChoosePanel(store, { choiceLabel, capped, actionCard }) {
     ${puppet ? `<p class="puppet-box">⛓ ${esc(g.players[me.puppetOf].name)} commands: <b>${esc(commandText(g, cmd))}</b>. Play it — or revolt.</p>` : '<p class="hint">Nobody can see your choice until everyone has chosen.</p>'}
     <div class="action-cards">${cards.join('')}</div>
     ${extra}
-    ${c.action ? `<button class="btn primary big" data-act="lockIn" ${canLock ? '' : 'disabled'}>Lock in ${c.action}</button>` : ''}
+    ${c.action ? `<button class="btn primary big" data-act="lockIn" ${canLock ? '' : 'disabled'}>Lock in ${scen && c.action === 'sustainable' ? 'hold' : c.action}${scen && c.action === 'attack' && (c.extra || []).length ? ` (${(c.extra || []).length + 1} attacks)` : ''}</button>` : ''}
     ${me.choice ? `<button class="btn link" data-act="set" data-path="choice.editing" data-json="false">Keep my current choice</button>` : ''}
   </div>`;
 }

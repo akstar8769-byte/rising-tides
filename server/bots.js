@@ -471,7 +471,7 @@ function buildStep(g, me, P, mem, fresh) {
     return { key, action: { type: fair ? 'acceptTrade' : 'rejectTrade', id: t.id } };
   }
   // 1b. Diplomacy: answer pact offers and treaty invitations.
-  const d = diplomacyStep(g, me, P, mem, fresh);
+  const d = g.scenario ? null : diplomacyStep(g, me, P, mem, fresh);
   if (d) return d;
   if (me.ready) return null; // already done building this phase
 
@@ -505,7 +505,7 @@ function buildStep(g, me, P, mem, fresh) {
     const w = g.settings.war;
     // 3. Recruit up to the personality's army size — but walls come first unless warlike,
     //    and cautious/balanced bots stay under the army-emissions limit.
-    let target = g.tw ? Math.round((P.army * 2 + 6 + g.round * 0.8) * grit(g)) : P.army;
+    let target = g.scenario ? Infinity : g.tw ? Math.round((P.army * 2 + 6 + g.round * 0.8) * grit(g)) : P.army;
     // Big armies pollute (army emissions). Careful bots always stay under that size;
     // warlike bots too once the Flood is getting high or their own home is at risk.
     const armyPollutes = w.armyFloodPerUnits > 0 && (P !== PERSONALITIES.warlike || g.threshold - g.flood <= 8 || floodDanger(g, me));
@@ -529,6 +529,8 @@ function buildStep(g, me, P, mem, fresh) {
       const action = { type: 'recruit', count: 1, materials: payFromLargest(me, unitCost) };
       if (g.tw) action.unit = unit;
       if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land') || me.homeTile;
+      // Scenarios: losing the capital loses the war — keep a real garrison there first.
+      if (g.scenario && capitalShort(g, me)) action.tile = me.homeTile;
       return { key: `recruit-${me.units}`, action };
     }
     // 4. Stationed units: put units where they're useful.
@@ -559,7 +561,7 @@ function buildStep(g, me, P, mem, fresh) {
   }
 
   // 6b. Offer a trade to someone who has what we need.
-  const offer = tradeOffer(g, me, fresh);
+  const offer = g.scenario ? null : tradeOffer(g, me, fresh);
   if (offer) return offer;
 
   // 7. When the Flood is getting close, careful bots chip in to the seawall.
@@ -599,6 +601,28 @@ function frontier(g) {
     .map((x) => x.t.id);
 }
 
+/** Scenarios: how many units to keep in our capital (more when the enemy is close). */
+function garrisonWanted(g, me) {
+  const cap = g.board.tiles.find((t) => t.id === me.homeTile);
+  const enemyNear = g.board.tiles.some((t) => t.kind === 'land' && t.controller != null && !sideSeats(g).has(t.controller) && Math.max(Math.abs(t.q - cap.q), Math.abs(t.r - cap.r), Math.abs(t.q + t.r - cap.q - cap.r)) <= 2);
+  return enemyNear ? 8 : 4;
+}
+function capitalShort(g, me) {
+  const cap = g.board.tiles.find((t) => t.id === me.homeTile);
+  return cap && cap.controller === g.you && unitsOn(cap, g.you) < garrisonWanted(g, me);
+}
+/** Our side's seats (scenarios), or just us. */
+function sideSeats(g) {
+  return new Set(g.scenario ? g.scenario.sides.find((x) => x.seats.includes(g.you)).seats : [g.you]);
+}
+
+/** Is this tile of ours next to land held by someone we could be attacked by? */
+function exposed(g, id) {
+  const t = g.board.tiles.find((x) => x.id === id);
+  const allies = new Set(g.scenario ? g.scenario.sides.find((x) => x.seats.includes(g.you)).seats : [g.you]);
+  return HEX_DIRS.some(([dq, dr]) => g.board.tiles.some((n) => n.q === t.q + dq && n.r === t.r + dr && n.kind === 'land' && n.controller != null && !allies.has(n.controller)));
+}
+
 /** Our tiles that units on tile `id` can walk to over our own land (no sea crossing). */
 const HEX_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 function walkable(g, id) {
@@ -626,7 +650,7 @@ function moveIdea(g, me, P) {
   if (!withUnits.length) return null;
   const big = withUnits[0];
   // Cautious and balanced bots make sure no frontier tile is empty.
-  if (P !== PERSONALITIES.warlike) {
+  if (P !== PERSONALITIES.warlike && !g.scenario) {
     const near = walkable(g, big.id);
     const emptyFront = front.find((id) => near.has(id) && unitsOn(g.board.tiles.find((t) => t.id === id), g.you) === 0);
     if (emptyFront && unitsOn(big, g.you) >= 2) return { key: `move-${big.id}-${emptyFront}`, action: { type: 'moveUnits', from: big.id, to: emptyFront, count: 1 } };
@@ -635,7 +659,7 @@ function moveIdea(g, me, P) {
   const cap = g.board.tiles.find((t) => t.id === me.homeTile);
   const fromCap = walkable(g, cap.id);
   const dest = front.find((id) => id !== cap.id && fromCap.has(id));
-  const spare = unitsOn(cap, g.you) - (P === PERSONALITIES.warlike ? 0 : 1);
+  const spare = unitsOn(cap, g.you) - (g.scenario ? garrisonWanted(g, me) : P === PERSONALITIES.warlike ? 0 : 1);
   if (dest && spare > 0) return { key: `move-${cap.id}-${dest}`, action: { type: 'moveUnits', from: cap.id, to: dest, count: spare } };
   return null;
 }
@@ -699,6 +723,27 @@ function warIdeas(g, me, P, danger) {
     return ideas;
   }
 
+  // Scenarios: several attacks a round, no Flood to worry about, no Unsustainable.
+  if (g.scenario) {
+    const max = g.scenario.attacksPerRound || 1;
+    const used = { targets: new Set(), from: new Set() };
+    const list = [];
+    for (let i = 0; i < max; i++) {
+      const idea = pickTarget(g, me, P, used);
+      if (!idea) break;
+      used.targets.add(idea.action.target);
+      if (idea.action.from) used.from.add(idea.action.from);
+      list.push(idea.action);
+    }
+    if (list.length) {
+      const [first, ...rest] = list;
+      const action = { ...first, ...(rest.length ? { extra: rest.map((a) => ({ target: a.target, from: a.from, troops: a.troops })) } : {}) };
+      ideas.push({ key: `attack-${list.map((a) => a.target).join('-')}`, action });
+      if (rest.length) ideas.push({ key: `attack1-${first.target}`, action: first }); // fallback: just the best one
+    }
+    ideas.push({ key: 'hold', action: { type: 'choose', action: 'sustainable', mix: { wood: 0, stone: 0, sandbag: 0 } } });
+    return ideas;
+  }
   // Free players: attack a good target if feeling brave and the planet can take it.
   if (danger > (P === PERSONALITIES.warlike ? 2 : 4) && chance(P.attack) && !g.limits.noAttacks) {
     const target = pickTarget(g, me, P);
@@ -727,17 +772,18 @@ function terrainFit(troops, terrain) {
   return 1;
 }
 
-function pickTarget(g, me, P) {
+function pickTarget(g, me, P, used = null) {
   let bestIdea = null;
   let bestScore = 0;
   for (const id of g.attackTargets) {
+    if (used && used.targets.has(id)) continue;
     const t = g.board.tiles.find((x) => x.id === id);
     let sent;
     let from = null;
     let defenders;
     let cap = null;
     if (g.stationed) {
-      const srcs = g.attackSources[id] || [];
+      const srcs = (g.attackSources[id] || []).filter((x) => !used || !used.from.has(x.tile));
       if (!srcs.length) continue;
       const usable = (x) => Math.min(x.units, x.capacity || Infinity);
       const s = srcs.reduce((a, x) => (usable(x) > usable(a) ? x : a));
@@ -753,6 +799,24 @@ function pickTarget(g, me, P) {
     if (t.controller != null && (g.limits.protectedSeats[t.controller] || !willHit(g, t.controller, P))) continue;
     // The troops we'd send (Total War), trimmed to what the ships carry when crossing by sea.
     let troops = g.tw && from ? { ...((g.board.tiles.find((x) => x.id === from).troops || {})[g.you] || {}) } : null;
+    // Scenarios: the capital keeps its garrison (send only what's above it).
+    if (troops && g.scenario && from === me.homeTile) {
+      let keep = garrisonWanted(g, me);
+      const order = Object.keys(troops).filter((k) => troops[k] > 0).sort((a, b) => ((g.tw.units.find((u) => u.type === a) || {}).cost || 0) - ((g.tw.units.find((u) => u.type === b) || {}).cost || 0));
+      for (const k of order) {
+        const n = Math.min(troops[k], keep);
+        troops[k] -= n;
+        keep -= n;
+        sent -= n;
+      }
+      if (sent < 1) continue;
+    }
+    // Scenarios: on the front line, leave the cheapest unit behind so the tile isn't simply walked into.
+    else if (troops && g.scenario && sent > 2 && exposed(g, from)) {
+      const cheap = Object.keys(troops).filter((k) => troops[k] > 0).sort((a, b) => ((g.tw.units.find((u) => u.type === a) || {}).cost || 0) - ((g.tw.units.find((u) => u.type === b) || {}).cost || 0))[0];
+      troops[cheap] -= 1;
+      sent -= 1;
+    }
     if (troops && cap) {
       let room = cap;
       const order = Object.keys(troops).sort((a, b) => ((g.tw.units.find((u) => u.type === b) || {}).cost || 0) - ((g.tw.units.find((u) => u.type === a) || {}).cost || 0));
@@ -780,6 +844,8 @@ function pickTarget(g, me, P) {
     if (score && t.controller != null) score += grudge(g, t.controller); // pay back those who hit us
     if (score && t.controller != null && allianceEnemies(g).includes(t.controller)) score += 2; // our alliance's target
     if (score && troops) score += terrainFit(troops, t.terrain) - 1; // tanks hunt for open country
+    // Scenarios: go for the cities that win the war and feed the enemy's army.
+    if (score && g.scenario) score += (t.victory ? 3 : 0) + (t.industry ? 2 : 0) + (t.name ? 1 : 0) + (t.role === 'capital' ? 2 : 0);
     if (score > bestScore) {
       bestScore = score;
       if (troops && !Object.keys(troops).length) troops = null;

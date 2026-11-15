@@ -848,3 +848,16 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 /* Battlefield terrain marker on War map tiles */
 .board .terrain-mark circle { fill: #ffffffd9; stroke: #0005; stroke-width: 1.5; }
 .board .terrain-mark text { font-size: 16px; text-anchor: middle; pointer-events: none; }
+
+/* Historical scenarios */
+.board .city-label rect { fill: #1d1a16e6; stroke: #f3c623; stroke-width: 1.5; }
+.board .city-label text { fill: #fff; font-size: 12px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.scen-pill, .winter-pill, .vic-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.scen-pill { background: #3b2f22; color: #f6e7c8; }
+.winter-pill { background: #d8ecff; color: #123a5c; }
+.vic-pill { background: #f3c623; color: #3b2a00; }
+.rival .nation { font-weight: 700; }
+.lobby-player .side-tag { font-weight: 700; }
+.planned-attacks li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+.scen-card .goals li { margin: 4px 0; }
+@media (max-width: 700px) { .scen-pill { display: none; } }

@@ -59,7 +59,7 @@ export function renderGame(store) {
   }
   ${tileMenu(store)}
   <nav class="dock" aria-label="Panels">
-    <div class="dock-btns">${DRAWERS.map(
+    <div class="dock-btns">${DRAWERS.filter((x) => !(g.scenario && x.id === 'flood')).map(
       (x) => `<button class="dock-btn ${drawer === x.id ? 'active' : ''}" data-act="drawer" data-id="${x.id}" aria-pressed="${drawer === x.id}">
         <span aria-hidden="true">${x.icon}</span><small>${x.label}</small>${badges[x.id] ? `<span class="badge">${badges[x.id]}</span>` : ''}</button>`,
     ).join('')}</div>
@@ -103,8 +103,12 @@ function hud(store) {
       <b class="hud-phase-name">${PHASE_LABEL[g.phase] || g.phase}</b>
     </div>
     <div class="hud-pills">
-      <button class="flood-pill ${dangerClass(g)}" data-act="drawer" data-id="flood" title="Flood / catastrophe threshold">🌊 ${g.flood}/${g.threshold}</button>
-      ${g.tw && g.tw.truce ? `<span class="truce-pill" title="Nobody can attack another player yet">🕊 Truce to rd ${g.tw.truce}</span>` : accordPill(g)}
+      ${
+        g.scenario
+          ? `<span class="scen-pill" title="${esc(g.scenario.sides.map((x) => x.goal).join(' '))}">⚔ ${esc(g.scenario.name)} · ${esc(g.scenario.styleLabel)}</span>${g.scenario.winter ? `<span class="winter-pill" title="Tanks move at ${g.scenario.winter.tankSpeedPct}% speed; attackers fight at ${g.scenario.winter.attackPct}%">❄ Winter</span>` : ''}<span class="vic-pill" title="Victory cities held: ${esc(g.scenario.sides.map((x) => `${x.name} ${g.scenario.held[x.id]}`).join(', '))}">★ ${g.scenario.sides.map((x) => `${esc(x.name)} ${g.scenario.held[x.id]}`).join(' · ')}</span>`
+          : `<button class="flood-pill ${dangerClass(g)}" data-act="drawer" data-id="flood" title="Flood / catastrophe threshold">🌊 ${g.flood}/${g.threshold}</button>`
+      }
+      ${g.scenario ? '' : g.tw && g.tw.truce ? `<span class="truce-pill" title="Nobody can attack another player yet">🕊 Truce to rd ${g.tw.truce}</span>` : accordPill(g)}
     </div>
     <div class="hud-res" aria-label="Your stock">
       ${MATS.map((m) => `<span class="res" title="${MAT_LABEL[m]}">${matIcon(m, 22)}<b>${me.materials[m]}</b></span>`).join('')}
@@ -154,7 +158,7 @@ function rivals(store) {
       const safe = p.protection >= g.flood;
       return `<button class="rival ${p.seat === g.you ? 'me' : ''} ${open === p.seat ? 'open' : ''}" style="--pc:${PLAYER_STYLE[p.seat].color}" data-act="set" data-path="rival" data-json="${open === p.seat ? 'null' : p.seat}" aria-expanded="${open === p.seat}">
         ${swatch(p.seat, 20)}<span class="rname">${esc(p.name)}${p.seat === g.you ? ' <small>(you)</small>' : ''}</span>${status}
-        <span class="rline">${g.war ? `⚔${p.units} ` : ''}🧱${p.walls}${safe ? '' : ' <b class="warn" title="Home at risk">⚠</b>'}${member && member.bot ? ' 🤖' : ''}${member && !member.connected ? ' <span class="warn">offline</span>' : ''}${p.sanctioned ? ' ⛔' : ''}${p.damaged ? ' 🩹' : ''}</span>
+        <span class="rline">${p.nation ? `<b class="nation">${p.side === 'axis' ? '🟫' : '🟥'} ${esc(p.nation)}</b> ` : ''}${g.war ? `⚔${p.units} ` : ''}${g.scenario ? `⬢${g.board.tiles.filter((t) => t.kind === 'land' && t.controller === p.seat).length}` : `🧱${p.walls}`}${safe || g.scenario ? '' : ' <b class="warn" title="Home at risk">⚠</b>'}${member && member.bot ? ' 🤖' : ''}${member && !member.connected ? ' <span class="warn">offline</span>' : ''}${p.sanctioned ? ' ⛔' : ''}${p.damaged ? ' 🩹' : ''}</span>
       </button>`;
     })
     .join('');
@@ -188,7 +192,7 @@ function tileMenu(store) {
   const top = Math.max(8, Math.min(m.y + 6, (typeof innerHeight === 'number' ? innerHeight : 800) - 300));
   return `<div class="tile-menu" style="left:${left}px;top:${top}px;width:${w}px" role="dialog" aria-label="${esc(tileLabel(g, t.id))}">
     <div class="tm-head"><b>${esc(tileLabel(g, t.id))}</b><button class="icon-btn" data-act="closeTileMenu" aria-label="Close">✕</button></div>
-    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}${g.mode === 'totalwar' && TERRAIN[t.terrain] ? `<br>${TERRAIN[t.terrain].glyph} <b>${TERRAIN[t.terrain].label}</b> — ${TERRAIN[t.terrain].note}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
+    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}${g.mode === 'totalwar' && TERRAIN[t.terrain] ? `<br>${TERRAIN[t.terrain].glyph} <b>${TERRAIN[t.terrain].label}</b> — ${TERRAIN[t.terrain].note}` : ''}${t.name ? `<br>🏙 <b>${esc(t.name)}</b>${t.industry ? ' — ⚙ industrial city: +3 materials a round' : ' — city: +1 material a round'}${t.victory ? ' · ★ victory city' : ''}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
     ${units ? `<ul class="plain tm-units">${units}</ul>` : g.stationed && t.kind !== 'village' ? '<p class="small muted">No units here.</p>' : ''}
     ${generalLines(g, t)}
     ${acts.length ? `<div class="tm-actions">${acts.join('')}</div>` : `<p class="hint">${tileIdleHint(g)}</p>`}
@@ -344,12 +348,29 @@ function phasePanel(store) {
       <p class="hint">Trade, give, build walls${g.factories ? ' and factories' : ''}, use the market, donate to the seawall${g.tw ? ', research, recruit and upgrade troops' : g.war ? ', recruit militia' : ''}${g.mode === 'empire' ? ', command your puppets' : ''}. ${next}</p>
       <p class="small">${me.ready ? '✔ You are Ready — tap the green button below to undo.' : 'When you are done, press <b>End turn</b> at the bottom right.'}</p>
       ${lastReveal(g)}
+      ${g.scenario ? scenarioCard(g) : ''}
     </div>`;
   }
   if (g.phase === 'choose') return g.war ? warChoosePanel(store, { choiceLabel, capped, actionCard: makeCard(store.ui.choice) }) : choosePanel(store);
   if (g.phase === 'loot') return lootPanel(store);
   if (g.phase === 'battle') return battlePanel(store);
   return '';
+}
+
+/** Historical scenario briefing: sides, goals, victory cities, winter and what's coming. */
+function scenarioCard(g) {
+  const sc = g.scenario;
+  const mine = sc.sides.find((x) => x.seats.includes(g.you));
+  const next = sc.next.filter((e) => e.round <= g.round + 3);
+  return `<details class="scen-card" ${g.round === 1 ? 'open' : ''}>
+    <summary><b>⚔ ${esc(sc.name)}</b> <span class="muted small">(${esc(sc.styleLabel)}) — you fight for ${esc(mine ? mine.name : '?')}</span></summary>
+    <ul class="plain goals">${sc.sides
+      .map((x) => `<li>${x.id === 'axis' ? '🟫' : '🟥'} <b>${esc(x.name)}</b>: ${x.seats.map((s) => esc(g.players[s].name)).join(', ')} — ${esc(x.goal)}</li>`)
+      .join('')}</ul>
+    <p class="small">★ Victory cities held: ${sc.sides.map((x) => `${esc(x.name)} ${sc.held[x.id]}`).join(' · ')} (of ${sc.victoryCities.length}: ${sc.victoryCities.map(esc).join(', ')}). ⚙ industrial cities give +3 a round, other cities +1. You may launch up to <b>${sc.attacksPerRound}</b> attack${sc.attacksPerRound === 1 ? '' : 's'} a round, and attacking doesn't cost you your income.</p>
+    ${sc.winterRounds ? `<p class="small">${sc.winter ? '❄ <b>Winter now</b>' : '❄ Winter'}: rounds ${sc.winterRounds[0]}–${sc.winterRounds[1]} — tanks slow down and attacks are weaker.</p>` : ''}
+    ${next.length ? `<p class="small">📯 Coming soon: ${next.map((e) => `round ${e.round}: ${esc(e.text)} (${esc(sc.sides.find((x) => x.id === e.side).name)})`).join('; ')}.</p>` : ''}
+  </details>`;
 }
 
 function lastReveal(g) {

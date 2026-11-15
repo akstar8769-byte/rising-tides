@@ -262,7 +262,7 @@ function defenceFactor(ch, cfg) {
  * `rand` is the game's seeded random number function, so battles replay exactly.
  * bombard: { A, D } shore-bombardment damage per second from ships offshore.
  */
-function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null, tech = null, generals = null }) {
+function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null, tech = null, generals = null, weather = null }) {
   const dpu = Math.max(1, Math.min(SLOTS.length, cfg.dotsPerUnit || 1));
   const b = {
     id,
@@ -272,6 +272,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     attacker,
     defender,
     terrain: makeTerrain(BOARD.terrainOf(tile), BOARD.terrainOf(from), rand, kind),
+    ...(weather && kind === 'land' ? { weather } : {}), // scenario winter: { tankSpeedPct, attackPct }
     obj: { x: 47, y: 20, r: 5 },
     dpu,
     initial: { A: { ...zero(), ...aTroops }, D: { ...zero(), ...dTroops } },
@@ -703,7 +704,7 @@ function stepBattle(b, dt, cfg) {
     const togo = Math.hypot(d.tx - d.x, d.ty - d.y);
     if (togo < 0.15) continue;
     const slowed = !isAir(d) && contact.get(d).length;
-    const sp = cfg[d.type].speed * lvl(b, d, cfg.levelSpeedPct) * (d.rk >= 2 ? 1 + (cfg.rankSpeedPct ?? 5) / 100 : 1) * bonus[d.side].spd * speedFactor(terrainAt(b, d.x, d.y), d.type, cfg) * (slowed ? 0.3 : 1) * dt;
+    const sp = cfg[d.type].speed * lvl(b, d, cfg.levelSpeedPct) * (d.rk >= 2 ? 1 + (cfg.rankSpeedPct ?? 5) / 100 : 1) * bonus[d.side].spd * speedFactor(terrainAt(b, d.x, d.y), d.type, cfg) * (slowed ? 0.3 : 1) * (b.weather && ARS.TRACKED.includes(d.type) ? b.weather.tankSpeedPct / 100 : 1) * dt;
     const k = Math.min(1, sp / togo);
     d.x += (d.tx - d.x) * k;
     d.y += (d.ty - d.y) * k;
@@ -750,6 +751,7 @@ function stepBattle(b, dt, cfg) {
       if (aura[d.side].trait === 'tank' && ARS.UNITS[d.type].cls === 'armor') m *= 1 + (cfg.traitBonusPct ?? 20) / 100;
     }
     if (b.time < b.shakenUntil[d.side]) m *= 1 - (cfg.generalShakePct ?? 10) / 100; // their general just fell
+    if (b.weather && d.side === 'A') m *= b.weather.attackPct / 100; // winter: attacking is hard
     let dmg = ((cfg[d.type].attack * lvl(b, d, cfg.levelAttackPct) * rankBoost(d.rk, cfg.rankBonusPct)) / dpu) * m * base * bonus[d.side].att * dt;
     if (d.cut) dmg *= 0.75; // cut-off troops are low on supplies
     if (dmg > 0) damage.set(target, (damage.get(target) || 0) + dmg);

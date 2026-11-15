@@ -53,6 +53,7 @@ function clockwise(state) {
 
 /** Current catastrophe threshold, including the seawall bonus. */
 function threshold(state) {
+  if (state.scenario) return 999; // scenarios: the Flood is off
   const c = cfg(state);
   const table = state.mode === 'base' ? c.catastrophe : state.settings.war.catastrophe;
   return table[state.players.length] + seawallBonus(state);

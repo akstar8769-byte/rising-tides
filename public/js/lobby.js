@@ -20,13 +20,18 @@ export function renderLobby(store) {
   const isHost = d.you.isHost;
   const lobby = d.lobby;
   const n = d.members.length;
-  const canStart = n >= meta.minPlayers && n <= meta.maxPlayers;
+  // Historical scenarios (Total War) need only 2 players: one per side.
+  const scen = lobby.mode === 'totalwar' && lobby.settings.totalwar.scenario && lobby.settings.totalwar.scenario !== 'none' ? lobby.settings.totalwar.scenario : null;
+  const minPlayers = scen ? 2 : meta.minPlayers;
+  const SIDE_NAMES = { eastFront41: ['🟫 Germany', '🟥 USSR'] };
+  const canStart = n >= minPlayers && n <= meta.maxPlayers;
   const link = `${location.origin}/?room=${d.code}`;
 
   const players = d.members
     .map((m, i) => {
-      const biomePick =
-        lobby.biomeMode === 'manual'
+      const biomePick = scen
+        ? `<span class="tag side-tag" title="Seats 1, 3, 5 play the first side; seats 2 and 4 the second. Move players up or down to change sides.">${(SIDE_NAMES[scen] || ['Side 1', 'Side 2'])[i % 2]}</span>`
+        : lobby.biomeMode === 'manual'
           ? isHost
             ? `<select data-biome-seat="${i}" aria-label="Biome for ${esc(m.name)}"><option value="">Biome…</option>${Object.entries(BIOME)
                 .map(([k, b]) => `<option value="${k}" ${lobby.manualBiomes[i] === k ? 'selected' : ''}>${b.glyph} ${b.label}</option>`)
@@ -87,7 +92,7 @@ export function renderLobby(store) {
     </header>
 
     <section class="card">
-      <h2>Players <span class="muted">(${n} of ${meta.maxPlayers}, need ${meta.minPlayers}+)</span></h2>
+      <h2>Players <span class="muted">(${n} of ${meta.maxPlayers}, need ${minPlayers}+)</span></h2>${scen ? '<p class="hint">Scenario: seats 1, 3 and 5 play the first side, seats 2 and 4 the second. Use ▲ ▼ to change sides; empty seats can be bots.</p>' : ''}
       <ol class="lobby-players">${players}</ol>
       ${
         isHost
@@ -104,7 +109,21 @@ export function renderLobby(store) {
                     return `<option value="${o}" ${t.botDifficulty === o ? 'selected' : ''}>${o[0].toUpperCase() + o.slice(1)}${extra ? ` (+${extra} materials a round)` : ''}</option>`;
                   })
                   .join('')}</select>
+              </label>
+              <label class="toggle">Scenario:
+                <select data-setting="totalwar.scenario" aria-label="Historical scenario">${[['none', 'None (normal game)'], ['eastFront41', '⚔ Eastern Front, 1941']]
+                  .map(([v, l]) => `<option value="${v}" ${lobby.settings.totalwar.scenario === v ? 'selected' : ''}>${l}</option>`)
+                  .join('')}</select>
+              </label>
+              ${
+                scen
+                  ? `<label class="toggle">Style:
+                <select data-setting="totalwar.scenarioStyle" aria-label="Scenario style">${[['balanced', 'Balanced (either side can win)'], ['historical', 'Historical (as in 1941)']]
+                  .map(([v, l]) => `<option value="${v}" ${lobby.settings.totalwar.scenarioStyle === v ? 'selected' : ''}>${l}</option>`)
+                  .join('')}</select>
               </label>`
+                  : ''
+              }`
                   : ''
               }
               <span class="grow"></span>
@@ -141,7 +160,7 @@ export function renderLobby(store) {
       <button class="btn" data-act="leave">Leave</button>
       ${
         isHost
-          ? `<button class="btn primary big" data-act="start" ${canStart ? '' : 'disabled'}>${canStart ? 'Start game' : `Waiting for players (${n}/${meta.minPlayers})`}</button>`
+          ? `<button class="btn primary big" data-act="start" ${canStart ? '' : 'disabled'}>${canStart ? 'Start game' : `Waiting for players (${n}/${minPlayers})`}</button>`
           : `<p class="waiting">Waiting for the host to start…</p>`
       }
     </div>

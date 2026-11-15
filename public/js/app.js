@@ -507,6 +507,26 @@ const actions = {
     c.from = null;
     c.count = null;
     c.mix = emptyBag();
+    c.extra = [];
+    render();
+  },
+  // Scenarios: keep this attack and set up another one this round.
+  planAttack: () => {
+    const c = store.ui.choice;
+    if (!c.target || !c.from) return;
+    c.extra = [...(c.extra || []), { target: c.target, from: c.from, troops: { ...(c.troops || {}) } }];
+    c.target = null;
+    c.from = null;
+    c.count = null;
+    c.troops = null;
+    c.troopsFrom = null;
+    render();
+  },
+  unplanAttack: (ds) => {
+    const c = store.ui.choice;
+    c.extra = (c.extra || []).filter((_, i) => i !== +ds.id);
+    c.troops = null;
+    c.troopsFrom = null;
     render();
   },
   lockIn: () => {
@@ -516,6 +536,8 @@ const actions = {
     else if (c.action !== 'revolt' && c.action !== 'claim') msg.mix = c.mix;
     if (store.data.game.stationed && (c.action === 'attack' || c.action === 'revolt')) Object.assign(msg, { from: c.from, count: c.count });
     if (store.data.game.tw && c.action === 'attack' && c.troops) msg.troops = c.troops;
+    if (store.data.game.scenario && c.action === 'attack' && c.extra && c.extra.length) msg.extra = c.extra;
+    if (store.data.game.scenario && c.action === 'sustainable') msg.mix = emptyBag();
     if (c.aid) msg.aid = c.aid;
     act(msg).then((r) => {
       if (r.ok) {

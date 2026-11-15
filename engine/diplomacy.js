@@ -52,6 +52,7 @@ function pactName(s, p) {
 
 /** { to, kind: 'peace' | 'alliance', rounds, enemy } */
 function proposePact(s, actor, { to, kind = 'peace', rounds = 2, enemy = null } = {}) {
+  if (s.scenario) fail('No pacts in a scenario: the two sides are at war.');
   requireBuild(s);
   if (!G(s).pactsEnabled) fail('Pacts are switched off in this game.');
   const p = me(s, actor);
@@ -135,6 +136,7 @@ function complies(s, seat, clauses) {
  * rounds = 0 means "until the end of the game".
  */
 function proposeTreaty(s, actor, { name, note = '', clauses = {}, rounds = 0, invite = [] } = {}) {
+  if (s.scenario) fail('No treaties in a scenario: the two sides are at war.');
   requireBuild(s);
   if (!G(s).treatiesEnabled) fail('Treaties are switched off in this game (the host can turn them on in the lobby).');
   const p = me(s, actor);

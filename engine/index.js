@@ -19,6 +19,7 @@ const war = require('./war');
 const diplomacy = require('./diplomacy');
 const factories = require('./factories');
 const { playtestRecord, recordToCsv } = require('./record');
+const SCEN = require('./scenarios');
 
 const MODES = ['base', 'war', 'empire', 'totalwar'];
 const BUILT_MODES = ['base', 'war', 'empire', 'totalwar'];
@@ -71,9 +72,18 @@ function totalWarSettings(settings) {
  */
 function createGame({ mode = 'base', settings, players, seed = 1 }) {
   if (!MODES.includes(mode)) fail(`Unknown mode "${mode}".`);
-  if (!Array.isArray(players) || players.length < 3 || players.length > 5) fail('Rising Tides needs 3 to 5 players.');
+  const scenario = mode === 'totalwar' && settings.totalwar && settings.totalwar.scenario && settings.totalwar.scenario !== 'none' ? settings.totalwar.scenario : null;
+  const minPlayers = scenario ? 2 : 3;
+  if (!Array.isArray(players) || players.length < minPlayers || players.length > 5) fail(scenario ? 'A scenario needs 2 to 5 players.' : 'Rising Tides needs 3 to 5 players.');
+  if (scenario && !SCEN.SCENARIOS[scenario]) fail(`Unknown scenario "${scenario}".`);
   for (const p of players) if (!BIOMES[p.biome]) fail(`Unknown biome "${p.biome}".`);
   if (mode === 'totalwar') settings = totalWarSettings(JSON.parse(JSON.stringify(settings)));
+  if (scenario) {
+    // Scenarios: the war starts at once, runs the scenario's rounds, and the Flood is off.
+    settings.totalwar.truceRounds = 0;
+    settings.totalwar.rounds = SCEN.SCENARIOS[scenario].rounds;
+    settings.war.rounds = SCEN.SCENARIOS[scenario].rounds;
+  }
   const b = settings.base;
 
   const state = {
@@ -176,14 +186,22 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
     })),
   };
   const layout = mode === 'totalwar' ? settings.totalwar.boardLayout || 'standard19' : mode === 'base' ? settings.base.boardLayout || settings.general.boardLayout : settings.general.boardLayout;
-  state.board = buildBoard(state, layout, mode !== 'base');
-  if (mode !== 'base' && settings.war.stationedUnits) {
+  if (scenario) SCEN.setupScenario(state, scenario, settings.totalwar.scenarioStyle);
+  else state.board = buildBoard(state, layout, mode !== 'base');
+  if (mode !== 'base' && settings.war.stationedUnits && !scenario) {
     // Stationed units: everyone's starting militia stands on their capital.
     for (const p of state.players) state.board.tiles.find((t) => t.id === p.homeTile).units[p.seat] = p.units;
   }
   // Total War: everyone starts with one general on their capital.
   if (mode === 'totalwar') for (const p of state.players) war.newGeneral(state, p.seat, p.homeTile);
   const modeName = { base: 'Base', war: 'War', empire: 'War + Empire', totalwar: 'Total War' }[mode];
+  if (scenario) {
+    const sc = SCEN.SCENARIOS[scenario];
+    addLog(state, `Scenario: ${sc.name} (${sc.styles[state.scenario.style].label}). ${sc.sides.map((side) => `${side.name}: ${state.players.filter((p) => p.side === side.id).map((p) => `${p.name} (${p.nation})`).join(', ')}`).join(' vs ')}.`, { kind: 'round' });
+    for (const side of sc.sides) addLog(state, `🎯 ${sc.victory.text[side.id]}`, { kind: 'round' });
+    addLog(state, `Round 1 begins. ${state.players[0].name} moves first. Talk & build, then press Ready.`, { kind: 'round' });
+    return state;
+  }
   addLog(state, `Game started: ${players.length} players, ${modeName} mode. Flood starts at ${state.flood}; catastrophe at ${base.threshold(state)}${mode === 'base' ? '' : `; the Climate Accord breaks at ${settings.war.accordLine}`}.`, { kind: 'round' });
   addLog(state, `Round 1 begins. Starting player: ${state.players[0].name}. Talk & build, then press Ready.`, { kind: 'round' });
   return state;

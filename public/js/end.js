@@ -10,13 +10,20 @@ export function renderEnd(store) {
   const rec = d.record;
 
   let headline;
-  if (o.catastrophe) headline = `<h1 class="bad">🌊 Catastrophe!</h1><p>The Flood reached ${o.finalFlood}. The whole village was lost — everyone loses.</p>`;
+  if (o.scenario) {
+    // Historical scenario: a side wins.
+    const sideName = o.scenario.side ? (g.scenario && g.scenario.sides.find((x) => x.id === o.scenario.side) || { name: o.scenario.side }).name : null;
+    const names = o.winners.map((s) => esc(g.players[s].name)).join(' and ');
+    headline = sideName
+      ? `<h1 class="good">🏆 ${esc(sideName)} wins the war!</h1><p>${esc(o.scenario.why)}${names ? ` Victory for ${names}.` : ''}</p>`
+      : `<h1>No victory</h1><p>${esc(o.scenario.why)}</p>`;
+  } else if (o.catastrophe) headline = `<h1 class="bad">🌊 Catastrophe!</h1><p>The Flood reached ${o.finalFlood}. The whole village was lost — everyone loses.</p>`;
   else if (!o.winners.length) headline = `<h1 class="bad">No home survived</h1><p>Final Flood ${o.finalFlood}. Nobody wins.</p>`;
   else {
     const names = o.winners.map((s) => esc(g.players[s].name)).join(' and ');
     headline = `<h1 class="good">🏆 ${names} ${o.winners.length > 1 ? 'share the win' : 'wins'}!</h1><p>Final Flood ${o.finalFlood}.</p>`;
   }
-  const reason = { rounds: 'All rounds played.', storm: 'The storm ended the game.', catastrophe: 'The catastrophe threshold was reached.', host: 'The host ended the game.', conquest: 'One player holds every capital.' }[o.reason];
+  const reason = { rounds: 'All rounds played.', storm: 'The storm ended the game.', catastrophe: 'The catastrophe threshold was reached.', host: 'The host ended the game.', conquest: 'One player holds every capital.', victory: 'An enemy capital fell.' }[o.reason];
 
   const tw = g.mode === 'totalwar';
   const rows = [...o.results]
