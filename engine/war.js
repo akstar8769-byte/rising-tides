@@ -2070,6 +2070,24 @@ function seaRetreat(s, from, seat, ships, home = false) {
 }
 
 /** Winning a tile in Total War: move in, take loot and war spoils. */
+/** Hand every land tile held by `seats` (except T) to `taker`; their troops there lay down their arms. */
+function surrenderLand(s, seats, taker, T, what) {
+  const rest = s.board.tiles.filter((t) => t.kind === 'land' && t !== T && seats.includes(t.controller));
+  let lost = 0;
+  for (const t of rest) {
+    const D = t.controller;
+    const n = unitsAt(t, D);
+    lost += n;
+    s.players[D].stats.unitsLost += n;
+    setTroops(t, D, zeroTroops());
+    generalsLost(s, t, D);
+    t.controller = taker;
+    clearTile(s, t, 'home'); // anyone else's troops there go home
+  }
+  syncUnits(s);
+  if (rest.length) addLog(s, `🏳 ${what} surrenders to ${s.players[taker].name}: ${rest.length} tile${rest.length === 1 ? '' : 's'}${lost ? ` (${lost} unit${lost === 1 ? '' : 's'} lay down their arms)` : ''}.`, { kind: 'bad' });
+}
+
 function conquerTW(s, taker, D, T, troops) {
   const cfg = TWS(s);
   const name = tileName(s, T);
@@ -2090,23 +2108,13 @@ function conquerTW(s, taker, D, T, troops) {
   addLog(s, `🏴 ${A.name} takes ${name}${T.role === 'capital' ? ' — A CAPITAL!' : '.'} Loot: ${describeBag(loot)}; war spoils: ${cfg.warSpoils} ${res}.`, { kind: 'good' });
   // A player's own capital falls: the rest of their land surrenders with it.
   // (Scenarios: only a side's main capital counts — and taking it wins the war; a regional HQ falling doesn't surrender the region.)
-  if (T.role === 'capital' && T.owner === D && cfg.capitalTakesAll !== false && !s.scenario) {
-    const rest = s.board.tiles.filter((t) => t.kind === 'land' && t !== T && t.controller === D);
-    let lost = 0;
-    for (const t of rest) {
-      lost += unitsAt(t, D);
-      setTroops(t, D, zeroTroops());
-      generalsLost(s, t, D);
-      t.controller = taker;
-      clearTile(s, t, 'home'); // anyone else's troops there go home
-    }
-    Dp.stats.unitsLost += lost;
-    syncUnits(s);
-    if (rest.length) addLog(s, `🏳 With their capital gone, ${Dp.name}'s whole territory surrenders to ${A.name}: ${rest.map((t) => t.id).join(', ')}${lost ? ` (${lost} unit${lost === 1 ? '' : 's'} lay down their arms)` : ''}.`, { kind: 'bad' });
-  }
-  // Scenarios: taking the enemy capital wins the war.
+  if (T.role === 'capital' && T.owner === D && cfg.capitalTakesAll !== false && !s.scenario) surrenderLand(s, [D], taker, T, `With their capital gone, ${Dp.name}'s whole territory`);
+  // Scenarios: taking the enemy's main capital (Paris, Cairo, Moscow…) wins the war —
+  // and the whole losing side's land surrenders with it.
   const wins = SCEN.captureWins(s, T, taker);
   if (wins) {
+    const losers = s.players.filter((p) => p.side !== wins).map((p) => p.seat);
+    surrenderLand(s, losers, taker, T, `With ${T.name} gone, the whole ${SCEN.scenarioOf(s).sides.find((x) => x.id !== wins).name} front`);
     s.scenario.winner = wins;
     s.scenario.why = `${A.name} takes ${T.name}: the war is won!`;
     addLog(s, `🏆 ${s.scenario.why}`, { kind: 'good' });

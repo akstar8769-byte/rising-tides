@@ -425,3 +425,46 @@ test('Normandy 1944: taking Paris wins for the Allies; Germany wins by holding 2
   city(s, 'Caen').controller = 1;
   assert.equal(war.scoreTotalWar(s, 'rounds').scenario.side, 'allies');
 });
+
+// ---------------------------------------------------------------- main capitals and defending them
+test("taking the enemy's main capital also hands over the whole losing side's land", () => {
+  let s = france(4);
+  const paris = city(s, 'Paris');
+  const { areAdjacent } = require('../engine/board');
+  const next = s.board.tiles.find((t) => t.kind === 'land' && t.owner === 1 && t !== paris && areAdjacent(t, paris));
+  Object.assign(next, { controller: 0, troops: { 0: { infantry: 3 } }, units: { 0: 3 } });
+  paris.troops = {};
+  paris.units = {};
+  s = allReady(s);
+  s = act(s, 0, 'choose', { action: 'attack', target: paris.id, from: next.id, troops: { infantry: 3 } });
+  for (const seat of [1, 2, 3]) s = act(s, seat, 'choose', { action: 'sustainable', mix: { wood: 0, stone: 0, sandbag: 0 } });
+  assert.equal(s.phase, 'ended');
+  // France AND Britain (both Allies) have no land left.
+  assert.equal(s.board.tiles.filter((t) => t.kind === 'land' && (t.controller === 1 || t.controller === 3)).length, 0);
+  assert.ok(s.log.some((l) => /surrenders/.test(l.text)));
+});
+
+test('bots pull their armies back when their capital is threatened', () => {
+  const bots = require('../server/bots');
+  const s = france(2);
+  const paris = city(s, 'Paris');
+  const { areAdjacent } = require('../engine/board');
+  // A German army appears next to Paris; Paris itself is thinly held.
+  const next = s.board.tiles.find((t) => t.kind === 'land' && t.controller === 1 && t !== paris && areAdjacent(t, paris) && !t.name);
+  Object.assign(next, { controller: 0, troops: { 0: { mediumTank: 6, infantry: 6 } }, units: { 0: 12 } });
+  paris.troops = { 1: { infantry: 1 } };
+  paris.units = { 1: 1 };
+  const mem = { personality: 'warlike', tried: new Set(), phaseKey: null, failures: 0 };
+  const moves = [];
+  let g = s;
+  for (let i = 0; i < 40 && moves.length < 3; i++) {
+    const idea = bots.decide(engine.viewFor(g, 1), mem);
+    if (!idea) break;
+    mem.tried.add(idea.key);
+    if (idea.action.type === 'moveUnits') moves.push(idea.action);
+    try { g = engine.applyAction(g, 1, idea.action); } catch (e) { /* skip ideas that fail */ }
+  }
+  assert.ok(moves.some((m) => m.to === paris.id), `troops marched to Paris: ${JSON.stringify(moves)}`);
+  const held = Object.values(city(g, 'Paris').troops[1]).reduce((a, n) => a + n, 0);
+  assert.ok(held >= 8, `Paris now has ${held} defenders`);
+});

@@ -570,3 +570,8 @@ Britain's navy is why Germany could never cross the Channel — so every scenari
 - France 1v1: 7–5 (Germany's Balanced income raised to 140%, the Allies 115%).
 - North Africa 1v1: **13–3 to the Allies** even with a bigger Axis economy (170%/90%) and an Italian fleet — the Royal Navy controls a coast where almost every hex is coastal. Without the Allied fleet the same setup was 5–3. Open question for the designers: keep the full Royal Navy in Balanced North Africa, or make it smaller there.
 - Historical: France 10–0 Germany (unchanged); North Africa 10–0 Allies, Tripoli falling ~round 12 (the real campaign ended with Tripoli in January 1943).
+
+## 🏳 Main capitals, and bots that defend them (added 16 November 2026)
+- **Scenarios: taking the enemy's main capital** (Paris, Cairo, Moscow, Berlin, Tripoli, London) still wins the war at once — and now **the whole losing side's land surrenders with it**, every player on that side (their troops there lay down their arms). Regional HQs still don't surrender their region.
+- **Bots pull back to defend** (every Total War game): when enemy units within 2 hexes of their capital — or, in a scenario, a city whose loss ends the war — outnumber its garrison, they march armies back to it (biggest stack first), and keep enough there to match the threat (threat + 2, at least 8). Other moves no longer pull those troops away again.
+- Effect in bot-vs-bot games: in Historical France, Paris now falls in 2 of 8 games (was 15 of 16) — Germany still wins all 8, mostly on Brussels + Calais or points. Balanced (8 games each): Eastern Front 6–2 Germany, France 6–2 Germany, North Africa 3–5, Normandy 6–2 Allies.

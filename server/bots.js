@@ -641,6 +641,10 @@ function keyTile(g, me, t) {
 /** Scenarios: how many units to keep in our capital (more when the enemy is close). */
 function garrisonWanted(g, me, tile = null) {
   const cap = tile || g.board.tiles.find((t) => t.id === me.homeTile);
+  if (g.tw && cap) {
+    const threat = threatNear(g, cap);
+    if (threat) return Math.max(threat + 2, 8);
+  }
   // Enemy land units nearby, or enemy ships offshore that could land troops.
   const enemyNear = g.board.tiles.some((t) => t.controller != null && !sideSeats(g).has(t.controller) && (t.kind === 'land' || Object.values((t.troops || {})[t.controller] || {}).some((n) => n > 0)) && Math.max(Math.abs(t.q - cap.q), Math.abs(t.r - cap.r), Math.abs(t.q + t.r - cap.q - cap.r)) <= 2);
   return enemyNear ? 8 : 4;
@@ -683,6 +687,40 @@ function walkable(g, id) {
   return seen;
 }
 
+
+/**
+ * Total War: when enemy units gather within 2 hexes of our capital (or, in a scenario,
+ * a city whose loss ends the war) and outnumber its garrison, march armies back to it
+ * from wherever they can walk to it — biggest stack first.
+ */
+/** Enemy units on land within 2 hexes of tile t. */
+function threatNear(g, t) {
+  const allies = sideSeats(g);
+  return g.board.tiles
+    .filter((o) => o.kind === 'land' && o.controller != null && !allies.has(o.controller) && hexDist(o, t) <= 2)
+    .reduce((a, o) => a + unitsOn(o, o.controller), 0);
+}
+
+function defendIdea(g, me, withUnits) {
+  if (!g.tw) return null;
+  const keys = g.board.tiles.filter((t) => t.kind === 'land' && t.controller === g.you && keyTile(g, me, t));
+  for (const key of keys) {
+    const threat = threatNear(g, key);
+    const here = unitsOn(key, g.you);
+    const need = threat + 2 - here;
+    if (threat === 0 || need <= 0) continue;
+    const reach = walkable(g, key.id);
+    for (const t of withUnits) {
+      if (t.id === key.id || !reach.has(t.id)) continue;
+      const keep = keyTile(g, me, t) ? garrisonWanted(g, me, t) : t.fort || t.bunker ? 2 : 0;
+      const n = Math.min(unitsOn(t, g.you) - keep, need);
+      if (n < 1) continue;
+      return { key: `defend-${g.round}-${t.id}-${key.id}`, action: { type: 'moveUnits', from: t.id, to: key.id, count: n } };
+    }
+  }
+  return null;
+}
+
 /** Move one batch of units: fill empty frontier tiles, then push spare units forward. */
 function moveIdea(g, me, P) {
   const stand = new Set(g.standTiles || []);
@@ -691,17 +729,21 @@ function moveIdea(g, me, P) {
   const withUnits = mine.filter((t) => unitsOn(t, g.you) > 0).sort((a, b) => unitsOn(b, g.you) - unitsOn(a, g.you));
   if (!withUnits.length) return null;
   const big = withUnits[0];
+  // A threatened capital (or war-deciding city) comes first: pull armies back to it.
+  const back = defendIdea(g, me, withUnits);
+  if (back) return back;
   // Cautious and balanced bots make sure no frontier tile is empty.
   if (P !== PERSONALITIES.warlike && !g.scenario) {
     const near = walkable(g, big.id);
     const emptyFront = front.find((id) => near.has(id) && unitsOn(g.board.tiles.find((t) => t.id === id), g.you) === 0);
-    if (emptyFront && unitsOn(big, g.you) >= 2) return { key: `move-${big.id}-${emptyFront}`, action: { type: 'moveUnits', from: big.id, to: emptyFront, count: 1 } };
+    // (never from below the garrison a threatened capital needs)
+    if (emptyFront && unitsOn(big, g.you) - (keyTile(g, me, big) && threatNear(g, big) ? garrisonWanted(g, me, big) : 0) >= 2) return { key: `move-${big.id}-${emptyFront}`, action: { type: 'moveUnits', from: big.id, to: emptyFront, count: 1 } };
   }
   // Push spare units from the capital to the most exposed frontier tile.
   const cap = g.board.tiles.find((t) => t.id === me.homeTile);
   const fromCap = walkable(g, cap.id);
   const dest = front.find((id) => id !== cap.id && fromCap.has(id));
-  const spare = unitsOn(cap, g.you) - (g.scenario ? garrisonWanted(g, me) : P === PERSONALITIES.warlike ? 0 : 1);
+  const spare = unitsOn(cap, g.you) - (g.scenario || threatNear(g, cap) ? garrisonWanted(g, me) : P === PERSONALITIES.warlike ? 0 : 1);
   if (dest && spare > 0) return { key: `move-${cap.id}-${dest}`, action: { type: 'moveUnits', from: cap.id, to: dest, count: spare } };
   // Scenarios: march armies sitting in the rear (reinforcements, a front that has moved
   // on) up to the front line, ideally next to an enemy city.
