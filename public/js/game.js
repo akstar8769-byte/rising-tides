@@ -373,7 +373,7 @@ function scenarioCard(g) {
     <ul class="plain goals">${sc.sides
       .map((x) => `<li>${x.icon} <b>${esc(x.name)}</b>: ${x.seats.map((s) => esc(g.players[s].name)).join(', ')} — ${esc(x.goal)}</li>`)
       .join('')}</ul>
-    <p class="small">★ Victory cities held: ${sc.sides.map((x) => `${esc(x.name)} ${sc.held[x.id]}`).join(' · ')} (of ${sc.victoryCities.length}: ${sc.victoryCities.map(esc).join(', ')}). ⚙ industrial cities give +3 a round, other cities +1. You may launch up to <b>${sc.attacksPerRound}</b> attack${sc.attacksPerRound === 1 ? '' : 's'} a round, and attacking doesn't cost you your income.</p>
+    <p class="small">★ Victory cities held: ${sc.sides.map((x) => `${esc(x.name)} ${sc.held[x.id]}`).join(' · ')} (of ${sc.victoryCities.length}: ${sc.victoryCities.map(esc).join(', ')}). ⚙ industrial cities give +3 a round, other cities +1. You may launch up to <b>${sc.attacksPerRound}</b> attack${sc.attacksPerRound === 1 ? '' : 's'} this round, and attacking doesn't cost you your income.${sc.initiative ? ` ⚡ Initiative this round: ${sc.sides.map((x) => `${esc(x.name)} ${sc.initiative[x.id]} attacks`).join(' · ')}.` : ''}</p>
     ${sc.fortPct ? `<p class="small">🛡 Fortified line (the Maginot Line): defenders there take only ${sc.fortPct}% of the damage — attack it head-on, or go round.</p>` : ''}
     ${sc.winterRounds ? `<p class="small">${sc.winter ? '❄ <b>Winter now</b>' : '❄ Winter'}: rounds ${sc.winterRounds[0]}–${sc.winterRounds[1]} — tanks slow down and attacks are weaker.</p>` : ''}
     ${next.length ? `<p class="small">📯 Coming soon: ${next.map((e) => `round ${e.round}: ${esc(e.text)} (${esc(sc.sides.find((x) => x.id === e.side).name)})`).join('; ')}.</p>` : ''}

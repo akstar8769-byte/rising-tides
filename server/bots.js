@@ -84,7 +84,8 @@ function pickFrom(g, me, from, n) {
  */
 function reserve(g, me, extraUnits = 0) {
   if (!g.war) return 0;
-  const upkeep = Math.floor((me.units + extraUnits) / g.settings.war.upkeepUnitsPerMaterial);
+  // Total War: at least the upkeep actually due next round (tanks cost more than militia).
+  const upkeep = Math.max(Math.floor((me.units + extraUnits) / g.settings.war.upkeepUnitsPerMaterial), g.tw && me.upkeepDue != null ? me.upkeepDue : 0);
   return upkeep + (me.garrisonDue || 0);
 }
 
@@ -532,7 +533,7 @@ function buildStep(g, me, P, mem, fresh) {
       if (g.tw) action.unit = unit;
       if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land') || me.homeTile;
       // Scenarios: losing the capital loses the war — keep a real garrison there first.
-      if (g.scenario && capitalShort(g, me)) action.tile = me.homeTile;
+      if (g.scenario && shortKeyTile(g, me)) action.tile = shortKeyTile(g, me).id;
       return { key: `recruit-${me.units}`, action };
     }
     // 4. Stationed units: put units where they're useful.
@@ -628,15 +629,29 @@ function bunkerIdea(g, me, P, mem) {
   return { key: `bunker-${g.round}-${best.id}-${best.bunker || 0}`, action: { type: 'buildBunker', tile: best.id, materials: payFromLargest(me, cost(best)) } };
 }
 
+/** Scenarios: our tiles whose loss would lose the war (our capital, and any city the enemy wins by taking). */
+function keyTile(g, me, t) {
+  if (t.id === me.homeTile) return true;
+  if (!g.scenario || !t.name || !g.scenario.decisive) return false;
+  const winner = g.scenario.decisive[t.name];
+  const mySide = g.scenario.sides.find((x) => x.seats.includes(g.you));
+  return !!winner && mySide && winner !== mySide.id && t.controller === g.you;
+}
+
 /** Scenarios: how many units to keep in our capital (more when the enemy is close). */
-function garrisonWanted(g, me) {
-  const cap = g.board.tiles.find((t) => t.id === me.homeTile);
-  const enemyNear = g.board.tiles.some((t) => t.kind === 'land' && t.controller != null && !sideSeats(g).has(t.controller) && Math.max(Math.abs(t.q - cap.q), Math.abs(t.r - cap.r), Math.abs(t.q + t.r - cap.q - cap.r)) <= 2);
+function garrisonWanted(g, me, tile = null) {
+  const cap = tile || g.board.tiles.find((t) => t.id === me.homeTile);
+  // Enemy land units nearby, or enemy ships offshore that could land troops.
+  const enemyNear = g.board.tiles.some((t) => t.controller != null && !sideSeats(g).has(t.controller) && (t.kind === 'land' || Object.values((t.troops || {})[t.controller] || {}).some((n) => n > 0)) && Math.max(Math.abs(t.q - cap.q), Math.abs(t.r - cap.r), Math.abs(t.q + t.r - cap.q - cap.r)) <= 2);
   return enemyNear ? 8 : 4;
 }
 function capitalShort(g, me) {
   const cap = g.board.tiles.find((t) => t.id === me.homeTile);
   return cap && cap.controller === g.you && unitsOn(cap, g.you) < garrisonWanted(g, me);
+}
+/** Scenarios: a key tile of ours (capital or war-deciding city) without its garrison, or null. */
+function shortKeyTile(g, me) {
+  return g.board.tiles.find((t) => t.kind === 'land' && t.controller === g.you && keyTile(g, me, t) && unitsOn(t, g.you) < garrisonWanted(g, me, t)) || null;
 }
 /** Our side's seats (scenarios), or just us. */
 function sideSeats(g) {
@@ -688,6 +703,24 @@ function moveIdea(g, me, P) {
   const dest = front.find((id) => id !== cap.id && fromCap.has(id));
   const spare = unitsOn(cap, g.you) - (g.scenario ? garrisonWanted(g, me) : P === PERSONALITIES.warlike ? 0 : 1);
   if (dest && spare > 0) return { key: `move-${cap.id}-${dest}`, action: { type: 'moveUnits', from: cap.id, to: dest, count: spare } };
+  // Scenarios: march armies sitting in the rear (reinforcements, a front that has moved
+  // on) up to the front line, ideally next to an enemy city.
+  if (g.scenario) {
+    const enemyNext = (t) => g.board.tiles.filter((o) => o.kind === 'land' && o.controller != null && !sideSeats(g).has(o.controller) && adjacent(o, t));
+    for (const t of withUnits) {
+      if (exposed(g, t.id)) continue;
+      const keep = keyTile(g, me, t) ? garrisonWanted(g, me, t) : t.fort || t.bunker ? 4 : 0;
+      const n = unitsOn(t, g.you) - keep;
+      if (n < 2) continue;
+      const reach = walkable(g, t.id);
+      const value = (id) => {
+        const f = g.board.tiles.find((x) => x.id === id);
+        return enemyNext(f).reduce((a, o) => a + (o.victory ? 3 : 0) + (o.industry ? 2 : 0) + (o.name ? 1 : 0), 0) + unitsOn(f, g.you) / 5;
+      };
+      const to = [...reach].filter((id) => id !== t.id && exposed(g, id)).sort((a, b) => value(b) - value(a))[0];
+      if (to) return { key: `march-${g.round}-${t.id}-${to}`, action: { type: 'moveUnits', from: t.id, to, count: n } };
+    }
+  }
   return null;
 }
 
@@ -789,6 +822,12 @@ function warIdeas(g, me, P, danger) {
  * forces do better on Plains and worse in Woods or Hills; a River slows any attack.
  */
 const TRACKED_UNITS = ['lightTank', 'mediumTank', 'heavyTank', 'tankDestroyer', 'spArtillery'];
+/** % of the damage this tile's defenders would take (bunkers, a scenario's fortified line). */
+function defencePct(g, t) {
+  let pct = t.fort && g.scenario && g.scenario.fortPct ? g.scenario.fortPct : 100;
+  if (t.bunker) pct = (pct * Math.max(10, 100 - (g.settings.totalwar.bunkerPct ?? 15) * t.bunker)) / 100;
+  return Math.max(10, pct);
+}
 function terrainFit(troops, terrain) {
   const all = Object.values(troops || {}).reduce((a, n) => a + n, 0);
   if (!all) return 1;
@@ -826,9 +865,10 @@ function pickTarget(g, me, P, used = null) {
     if (t.controller != null && (g.limits.protectedSeats[t.controller] || !willHit(g, t.controller, P))) continue;
     // The troops we'd send (Total War), trimmed to what the ships carry when crossing by sea.
     let troops = g.tw && from ? { ...((g.board.tiles.find((x) => x.id === from).troops || {})[g.you] || {}) } : null;
-    // Scenarios: the capital keeps its garrison (send only what's above it).
-    if (troops && g.scenario && from === me.homeTile) {
-      let keep = garrisonWanted(g, me);
+    // Scenarios: the capital and fortified / bunkered tiles keep their garrison (send only what's above it).
+    const srcTile = from && g.board.tiles.find((x) => x.id === from);
+    if (troops && g.scenario && srcTile && (keyTile(g, me, srcTile) || srcTile.fort || srcTile.bunker)) {
+      let keep = keyTile(g, me, srcTile) ? garrisonWanted(g, me, srcTile) : 4;
       const order = Object.keys(troops).filter((k) => troops[k] > 0).sort((a, b) => ((g.tw.units.find((u) => u.type === a) || {}).cost || 0) - ((g.tw.units.find((u) => u.type === b) || {}).cost || 0));
       for (const k of order) {
         const n = Math.min(troops[k], keep);
@@ -861,10 +901,11 @@ function pickTarget(g, me, P, used = null) {
       const ours = strength(g, troops, g.you, src.vet && src.vet[g.you]);
       const theirs = strength(g, (t.troops || {})[t.controller], t.controller, t.vet && t.vet[t.controller]);
       const need = (P === PERSONALITIES.warlike ? 1.0 : P === PERSONALITIES.cautious ? 1.6 : 1.25) / Math.sqrt(grit(g));
-      winnable = ours * terrainFit(troops, t.terrain) >= theirs * need;
+      // Bunkers and fortified lines make the defenders that much tougher to beat.
+      winnable = ours * terrainFit(troops, t.terrain) >= (theirs * need * 100) / defencePct(g, t);
     }
     let score;
-    if (t.controller == null) score = 2; // open tile: free claim
+    if (t.controller == null) score = g.scenario && t.kind === 'sea' ? 0.5 : 2; // open tile: free claim (empty sea is worth little in a scenario)
     else if (t.owner === g.you) score = winnable || sent >= defenders ? 5 : 0; // take back our land
     else if (winnable) score = 3 + (t.role === 'capital' ? 2 : 0);
     else score = P === PERSONALITIES.warlike && sent === defenders && !g.tw ? 1 : 0;

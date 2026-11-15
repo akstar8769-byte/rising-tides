@@ -121,6 +121,9 @@ const EAST_FRONT_41 = {
         soviet: ['artillery', 'lightTanks', 'antiTank'],
       },
       winter: { from: 6, to: 9, tankSpeedPct: 50, attackPct: 80 },
+      // Initiative: Barbarossa (Germany 6 attacks), the winter counter-offensive (USSR 5), Case Blue in 1942 (Germany again), then the Soviets.
+      attacks: { axis: [[1, 6], [6, 3], [10, 5], [15, 3]], soviet: [[1, 2], [6, 4], [10, 3], [15, 4]] },
+      bunkers: [[11, 3, 2], [9, 0, 3], [1, 3, 2]], // Moscow fortified; Leningrad held through the siege; Berlin has its flak towers
       armies: {
         axis: [
           [4, 1, 'infantry:3 lightTank:2 artillery:1'],
@@ -131,7 +134,7 @@ const EAST_FRONT_41 = {
           [4, 6, 'infantry:3 lightTank:2 mediumTank:1 artillery:1'],
           [4, 7, 'infantry:2 motorised:1'],
           [5, 8, 'infantry:3 militia:2'],
-          [1, 3, 'infantry:1 bomber:2 interceptor:2'],
+          [1, 3, 'infantry:5 artillery:1 bomber:2 interceptor:2'],
         ],
         soviet: [
           [7, 1, 'infantry:2 militia:2'],
@@ -145,12 +148,12 @@ const EAST_FRONT_41 = {
           [6, 4, 'infantry:2 lightTank:1 artillery:1'],
           [7, 7, 'infantry:3 artillery:1 lightTank:1'],
           [11, 3, 'infantry:3 artillery:2 militia:2'],
-          [9, 0, 'infantry:3 militia:2 artillery:1'],
+          [9, 0, 'infantry:6 militia:2 artillery:2 antitank:1'],
         ],
       },
       reinforcements: [
         { round: 4, side: 'axis', at: 'Berlin', troops: 'mediumTank:2 infantry:2', text: 'Fresh panzer divisions reach the front' },
-        { round: 6, side: 'soviet', at: 'Moscow', troops: 'infantry:5 artillery:2', text: 'The Siberian divisions arrive at Moscow' },
+        { round: 6, side: 'soviet', at: 'Moscow', troops: 'infantry:8 artillery:3 antitank:2', text: 'The Siberian divisions arrive at Moscow' },
         { round: 7, side: 'soviet', research: ['mediumTanks'], text: 'The T-34 enters mass production' },
         { round: 9, side: 'soviet', at: 'Urals', troops: 'mediumTank:4 infantry:3', text: 'Tank armies roll out of the Ural factories' },
         { round: 10, side: 'axis', at: 'Berlin', research: ['heavyTanks'], troops: 'heavyTank:2', text: 'The first heavy tanks reach the front' },
@@ -220,7 +223,7 @@ const FRANCE_40 = {
   cities: FRANCE_CITIES,
   rounds: 12,
   // The Maginot Line: defenders here take only part of the damage (fortPct).
-  forts: [[8, 6], [9, 6], [9, 7], [9, 8]],
+  forts: [[8, 6], [9, 6], [9, 7], [9, 8], [9, 5], [10, 6], [10, 7]], // the Maginot Line, and Germany's Westwall facing it
   fortPct: 50,
   sides: [
     {
@@ -256,10 +259,10 @@ const FRANCE_40 = {
     cities: ['Paris', 'Brussels', 'Calais'],
     text: {
       axis: 'Germany wins by taking Paris, or by holding 2 of the 3 victory cities (Paris, Brussels, Calais) at the end.',
-      allies: 'The Allies win by taking Cologne (the Ruhr), or by holding all 3 victory cities at the end.',
+      allies: 'The Allies win by taking Berlin, or by holding all 3 victory cities at the end.',
     },
     atEnd: (held) => (held.axis >= 2 ? 'axis' : held.allies >= 3 ? 'allies' : null),
-    capture: { Paris: 'axis', Cologne: 'allies' },
+    capture: { Paris: 'axis', Berlin: 'allies' },
   },
   styles: {
     historical: {
@@ -268,9 +271,12 @@ const FRANCE_40 = {
       materials: { axis: 12, allies: 10 },
       research: {
         axis: ['motorised', 'artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'infantryL2', 'mediumTankL2'],
-        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'shipyards', 'motorised'],
+        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'shipyards', 'cruisers', 'battleships', 'motorised'],
       },
       winter: null,
+      fortPct: 35, // the Maginot Line was never broken head-on
+      bunkers: [[10, 3, 2]], // Cologne and the Ruhr were well defended
+      attacks: { axis: [[1, 5]], allies: [[1, 2], [6, 3]] },
       armies: {
         axis: [
           [8, 1, 'infantry:3 motorised:1'],
@@ -302,6 +308,16 @@ const FRANCE_40 = {
           [2, 3, 'infantry:2 interceptor:2'],
         ],
       },
+      // The Royal Navy rules the Channel and the North Sea; the French fleet guards Brest.
+      fleets: {
+        allies: [
+          [3, 4, 'battleship:2 cruiser:2 destroyer:3', 'britain'],
+          [4, 3, 'cruiser:2 destroyer:3', 'britain'],
+          [3, 1, 'battleship:1 cruiser:1 destroyer:2', 'britain'],
+          [1, 4, 'cruiser:1 destroyer:2', 'france'],
+        ],
+        axis: [[8, 0, 'destroyer:2', 'north']],
+      },
       reinforcements: [
         { round: 3, side: 'allies', at: 'Paris', troops: 'infantry:3 artillery:1', text: 'French reserves move up' },
         { round: 4, side: 'axis', at: 'Cologne', troops: 'mediumTank:2 motorised:2', text: 'Fresh panzer divisions reach the front' },
@@ -311,11 +327,11 @@ const FRANCE_40 = {
     },
     balanced: {
       label: 'Balanced',
-      income: { axis: [[1, 115]], allies: [[1, 130]] },
+      income: { axis: [[1, 140]], allies: [[1, 115]] },
       materials: { axis: 12, allies: 12 },
       research: {
         axis: ['motorised', 'artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'infantryL2', 'mediumTankL2'],
-        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'shipyards', 'motorised', 'infantryL2'],
+        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'shipyards', 'cruisers', 'battleships', 'motorised', 'infantryL2'],
       },
       winter: null,
       armies: null, // same as historical
@@ -359,15 +375,15 @@ const AFRICA_CITIES = [
   [15, 2, 'Suez', { ind: true }],
   [8, 4, 'Siwa', {}],
 ];
-const NA_AXIS = (c) => c <= 6;
+const NA_AXIS = (c) => c <= 4; // early 1941: the Allies hold Cyrenaica; Rommel starts from El Agheila
 const AFRICA_41 = {
   id: 'northAfrica41',
   name: 'North Africa, 1941',
   map: AFRICA_MAP,
   cities: AFRICA_CITIES,
-  rounds: 14,
+  rounds: 16,
   // Starting bunkers [col, row, level]: the fortress of Tobruk, and the line at El Alamein.
-  bunkers: [[7, 1, 2], [13, 1, 1]],
+  bunkers: [[7, 1, 2], [13, 1, 1], [0, 1, 2]], // Tobruk, El Alamein, and Tripoli's harbour defences
   sides: [
     {
       id: 'axis',
@@ -376,9 +392,9 @@ const AFRICA_41 = {
       icon: '🟫',
       owns: (c) => NA_AXIS(c),
       regions: {
-        west: { hq: 'Tripoli', name: 'Italy (Libya)', main: true, test: (c) => c <= 3 },
-        east: { hq: 'Benghazi', name: 'Afrika Korps', test: (c, r) => c >= 4 && r <= 2 },
-        south: { hq: 'Jalo', name: 'Axis (Desert)', test: (c, r) => c >= 4 && r >= 3 },
+        west: { hq: 'Tripoli', name: 'Italy (Libya)', main: true, test: (c) => c <= 1 },
+        east: { hq: 'El Agheila', name: 'Afrika Korps', test: (c, r) => c >= 2 && r <= 2 },
+        south: { hq: 'Jalo', name: 'Axis (Desert)', test: (c, r) => c >= 2 && r >= 3 },
       },
       capital: 'Tripoli',
       splits: { 1: [['west', 'east', 'south']], 2: [['west'], ['east', 'south']], 3: [['west'], ['east'], ['south']] },
@@ -410,11 +426,15 @@ const AFRICA_41 = {
   styles: {
     historical: {
       label: 'Historical',
-      income: { axis: [[1, 110]], allies: [[1, 100], [9, 120]] }, // American supplies reach Egypt later in the war
+      // Axis supplies across the Mediterranean collapse in late 1942; American supplies pour into Egypt.
+      income: { axis: [[1, 115], [9, 75]], allies: [[1, 95], [9, 135]] },
+      // Initiative: Rommel attacks first; from round 9 (late 1942) the Eighth Army does.
+      attacks: { axis: [[1, 4], [9, 2]], allies: [[1, 2], [9, 5]] },
+      bunkers: [[7, 1, 3], [13, 1, 2], [0, 1, 2]], // Tobruk held out for months; El Alamein was a prepared line; Tripoli's defences
       materials: { axis: 12, allies: 12 },
       research: {
         axis: ['motorised', 'artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'mediumTankL2', 'fortifications'],
-        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'motorised', 'aircraft', 'shipyards', 'fortifications'],
+        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'motorised', 'aircraft', 'shipyards', 'cruisers', 'battleships', 'fortifications'],
       },
       winter: null,
       armies: {
@@ -423,15 +443,16 @@ const AFRICA_41 = {
           [1, 1, 'infantry:1 bomber:1 interceptor:1'],
           [1, 2, 'infantry:3 artillery:1 antitank:1'], // Italian divisions guarding Tripolitania
           [2, 3, 'infantry:2 militia:2'],
-          [4, 1, 'infantry:3 lightTank:2 mediumTank:3 motorised:2 artillery:1'],
-          [5, 1, 'infantry:3 artillery:1'],
-          [6, 1, 'infantry:2 lightTank:1 motorised:1'],
-          [5, 2, 'infantry:2 militia:2'],
-          [6, 2, 'infantry:2 lightTank:1'],
+          [4, 1, 'infantry:3 lightTank:2 mediumTank:4 motorised:3 artillery:2'],
+          [4, 2, 'infantry:2 lightTank:1'],
+          [3, 2, 'infantry:2 militia:1'],
           [4, 4, 'militia:2'],
         ],
         allies: [
-          [7, 1, 'infantry:4 artillery:2 antitank:1'],
+          [5, 1, 'infantry:2 lightTank:1'], // Benghazi: thinly held after Operation Compass
+          [6, 1, 'infantry:2'],
+          [5, 2, 'militia:2'],
+          [7, 1, 'infantry:5 artillery:2 antitank:2'],
           [7, 2, 'infantry:2 lightTank:1'],
           [8, 1, 'infantry:2 mediumTank:2 lightTank:1'],
           [8, 2, 'motorised:2 lightTank:1'],
@@ -442,22 +463,42 @@ const AFRICA_41 = {
           [8, 4, 'militia:1 motorised:1'],
         ],
       },
+      // The Royal Navy's Mediterranean Fleet at Alexandria, and the ships that kept Tobruk supplied.
+      fleets: {
+        allies: [
+          [14, 0, 'battleship:2 cruiser:2 destroyer:3', 'egypt'],
+          [8, 0, 'cruiser:1 destroyer:3', 'front'],
+          [11, 0, 'cruiser:1 destroyer:2', 'egypt'],
+        ],
+        axis: [[1, 0, 'cruiser:1 destroyer:2', 'west']],
+      },
       reinforcements: [
         { round: 3, side: 'allies', at: 'Alexandria', troops: 'infantry:3 artillery:1', text: 'Commonwealth divisions land at Alexandria' },
         { round: 4, side: 'axis', at: 'Tripoli', troops: 'mediumTank:2 motorised:1', text: 'Another panzer division lands at Tripoli' },
         { round: 6, side: 'allies', at: 'Cairo', troops: 'mediumTank:3', text: 'New British tanks reach Egypt' },
         { round: 8, side: 'axis', at: 'Tripoli', troops: 'mediumTank:2 infantry:2 artillery:1', text: 'Convoys get through to Tripoli' },
-        { round: 9, side: 'allies', at: 'Cairo', research: ['heavyTanks'], troops: 'mediumTank:3 heavyTank:1', text: 'American tanks arrive in Egypt' },
-        { round: 11, side: 'allies', at: 'Alexandria', troops: 'infantry:3 artillery:2', text: 'The Eighth Army is reinforced' },
+        { round: 9, side: 'allies', at: 'El Alamein', research: ['heavyTanks'], troops: 'mediumTank:6 heavyTank:2 artillery:3 infantry:3', text: 'American tanks reach the Eighth Army at El Alamein' },
+        { round: 11, side: 'allies', at: 'El Alamein', troops: 'infantry:4 artillery:2 mediumTank:3', text: 'The Eighth Army is reinforced' },
+        { round: 12, side: 'allies', at: 'Tobruk', troops: 'infantry:3 mediumTank:3', text: 'More Eighth Army reserves move up' },
       ],
     },
     balanced: {
       label: 'Balanced',
-      income: { axis: [[1, 115]], allies: [[1, 100]] },
+      income: { axis: [[1, 170]], allies: [[1, 90]] },
+      supply: { axis: 15 },
       materials: { axis: 12, allies: 12 },
       research: null, // same as historical
       winter: null,
       armies: null, // same as historical
+      // Still the strongest fleet on the sea, a little smaller; the Italian fleet comes out to contest it (paid for by supply from Italy).
+      fleets: {
+        allies: [
+          [14, 0, 'battleship:1 cruiser:2 destroyer:3', 'egypt'],
+          [8, 0, 'cruiser:1 destroyer:3', 'front'],
+          [11, 0, 'cruiser:1 destroyer:2', 'egypt'],
+        ],
+        axis: [[1, 0, 'battleship:2 cruiser:2 destroyer:3', 'west'], [4, 0, 'cruiser:2 destroyer:2', 'east']],
+      },
       reinforcements: [
         { round: 3, side: 'allies', at: 'Alexandria', troops: 'infantry:3 artillery:1', text: 'Commonwealth divisions land at Alexandria' },
         { round: 4, side: 'axis', at: 'Tripoli', troops: 'mediumTank:2 motorised:1', text: 'Another panzer division lands at Tripoli' },
@@ -470,7 +511,172 @@ const AFRICA_41 = {
   economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
 };
 
-const SCENARIOS = { eastFront41: EAST_FRONT_41, france40: FRANCE_40, northAfrica41: AFRICA_41 };
+// ---------------------------------------------------------------- Normandy, 1944
+
+const NORMANDY_MAP = [
+  'ppppppp......', // 0  England · London · the North Sea
+  'phppppppf....', // 1  Plymouth · Portsmouth · Dover
+  '.............', // 2  the English Channel
+  '..f......pppp', // 3  the Channel · Calais · Dunkirk · Antwerp
+  'pp.pppppppppp', // 4  Brest · Cherbourg · the beaches (Utah, Omaha, Gold, Sword) · Le Havre · the Pas-de-Calais
+  'pppwwwwpppppp', // 5  Rennes · the bocage (hedgerows) · Caen · Rouen
+  'pppwwwpprpppp', // 6  Saint-Lô · Falaise · the Seine
+  'ppppppppprppp', // 7  Le Mans · Paris
+  ' pppppppprpp ', // 8  Orléans
+];
+const NORMANDY_CITIES = [
+  [6, 0, 'London', { ind: true }],
+  [1, 1, 'Plymouth', {}],
+  [4, 1, 'Portsmouth', { ind: true }],
+  [7, 1, 'Dover', {}],
+  [9, 3, 'Calais', {}],
+  [12, 3, 'Antwerp', { ind: true }],
+  [0, 4, 'Brest', {}],
+  [3, 4, 'Cherbourg', { vic: true }],
+  [4, 4, 'Utah', {}],
+  [5, 4, 'Omaha', {}],
+  [6, 4, 'Gold', {}],
+  [7, 4, 'Sword', {}],
+  [8, 4, 'Le Havre', {}],
+  [11, 4, 'Brussels', {}],
+  [1, 5, 'Rennes', {}],
+  [6, 5, 'Caen', { vic: true }],
+  [8, 5, 'Rouen', {}],
+  [4, 6, 'Saint-Lô', {}],
+  [6, 6, 'Falaise', {}],
+  [3, 7, 'Le Mans', {}],
+  [9, 7, 'Paris', { ind: true, vic: true }],
+  [6, 8, 'Orléans', {}],
+];
+const NM_ALLIED = (c, r) => r <= 1; // England
+const NORMANDY_44 = {
+  id: 'normandy44',
+  name: 'Normandy, 1944',
+  map: NORMANDY_MAP,
+  cities: NORMANDY_CITIES,
+  rounds: 12,
+  // The Atlantic Wall: bunkers on the coast, heaviest at the Pas-de-Calais where Germany expected the landing.
+  bunkers: [[3, 4, 2], [4, 4, 1], [5, 4, 2], [6, 4, 1], [7, 4, 1], [8, 4, 2], [9, 3, 3], [10, 3, 2], [0, 4, 2]],
+  sides: [
+    {
+      id: 'axis',
+      name: 'Germany',
+      short: 'Axis',
+      icon: '🟫',
+      owns: (c, r) => !NM_ALLIED(c, r),
+      regions: {
+        paris: { hq: 'Paris', name: 'Germany (OB West)', main: true, test: (c, r) => r >= 6 || (c >= 7 && c <= 8 && r >= 4) },
+        normandy: { hq: 'Saint-Lô', name: '7th Army (Normandy)', test: (c, r) => c <= 6 && r >= 4 && r <= 5 },
+        calais: { hq: 'Calais', name: '15th Army (Pas-de-Calais)', test: (c, r) => c >= 9 && r <= 5 },
+      },
+      capital: 'Paris',
+      splits: { 1: [['paris', 'normandy', 'calais']], 2: [['paris', 'calais'], ['normandy']], 3: [['paris'], ['normandy'], ['calais']] },
+    },
+    {
+      id: 'allies',
+      name: 'Allies',
+      short: 'Allies',
+      icon: '🟦',
+      owns: NM_ALLIED,
+      regions: {
+        britain: { hq: 'London', name: 'Britain & Canada', main: true, test: (c) => c >= 3 },
+        usa: { hq: 'Plymouth', name: 'United States', test: (c) => c <= 2 },
+      },
+      capital: 'London',
+      splits: { 1: [['britain', 'usa']], 2: [['britain'], ['usa']], 3: [['britain'], ['usa']] },
+    },
+  ],
+  victory: {
+    cities: ['Cherbourg', 'Caen', 'Paris'],
+    text: {
+      axis: 'Germany wins by holding 2 of the 3 victory cities (Cherbourg, Caen, Paris) at the end — throw the invasion back into the sea.',
+      allies: 'The Allies win by taking Paris, or by holding 2 of the 3 victory cities at the end.',
+    },
+    atEnd: (held) => (held.allies >= 2 ? 'allies' : held.axis >= 2 ? 'axis' : null),
+    capture: { Paris: 'allies', London: 'axis' },
+  },
+  styles: {
+    historical: {
+      label: 'Historical',
+      // Allied bombing wrecks German supply and industry; American production pours in.
+      income: { axis: [[1, 75]], allies: [[1, 150]] },
+      supply: { allies: 30 }, // shipped in from America every round
+      // Cherbourg's harbour forts held out for three weeks; Caen was Germany's hinge for six.
+      bunkers: [[3, 4, 3], [4, 4, 1], [5, 4, 2], [6, 4, 1], [7, 4, 1], [8, 4, 2], [9, 3, 3], [10, 3, 2], [0, 4, 2], [6, 5, 2]],
+      // Initiative: the Allies attack; Germany counter-attacks with what it can scrape together.
+      attacks: { axis: [[1, 2], [4, 3]], allies: [[1, 5]] },
+      materials: { axis: 10, allies: 16 },
+      research: {
+        axis: ['motorised', 'artillery', 'lightTanks', 'mediumTanks', 'heavyTanks', 'antiTank', 'aircraft', 'fortifications', 'mediumTankL2', 'infantryL2'],
+        allies: ['motorised', 'mechanised', 'artillery', 'selfPropelled', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'shipyards', 'cruisers', 'battleships', 'fortifications', 'mediumTankL2', 'infantryL2'],
+      },
+      winter: null,
+      armies: {
+        axis: [
+          [3, 4, 'infantry:3 artillery:2'],
+          [4, 4, 'infantry:2 artillery:1'],
+          [5, 4, 'infantry:3 artillery:1 antitank:1'],
+          [6, 4, 'infantry:2 artillery:1'],
+          [7, 4, 'infantry:2 artillery:1'],
+          [8, 4, 'infantry:2 artillery:1'],
+          [6, 5, 'mediumTank:3 infantry:2'],
+          [4, 6, 'infantry:3'],
+          [0, 4, 'infantry:2'],
+          [9, 3, 'infantry:4 artillery:2 antitank:1'],
+          [10, 3, 'infantry:3 artillery:1'],
+          [11, 4, 'infantry:2 mediumTank:2'],
+          [8, 5, 'mediumTank:2 heavyTank:1 infantry:2'],
+          [9, 7, 'infantry:3 mediumTank:2 interceptor:2'],
+        ],
+        allies: [
+          [4, 1, 'infantry:5 mediumTank:3 artillery:2'],
+          [5, 1, 'infantry:4 mediumTank:2 motorised:2'],
+          [3, 1, 'infantry:3 lightTank:2 artillery:1'],
+          [1, 1, 'infantry:5 mediumTank:2 artillery:1'],
+          [2, 1, 'infantry:3 lightTank:2'],
+          [6, 0, 'infantry:2 interceptor:3 bomber:3'],
+          [7, 1, 'infantry:2'],
+        ],
+      },
+      // The invasion fleet: battleships and cruisers to shell the beaches, destroyers to escort the landing craft.
+      fleets: {
+        allies: [
+          [4, 2, 'battleship:2 cruiser:2 destroyer:4', 'britain'],
+          [6, 2, 'battleship:1 cruiser:2 destroyer:3', 'britain'],
+          [2, 2, 'battleship:1 cruiser:2 destroyer:4', 'usa'],
+          [5, 3, 'cruiser:1 destroyer:3', 'britain'],
+          [3, 3, 'cruiser:1 destroyer:3', 'usa'],
+        ],
+      },
+      reinforcements: [
+        { round: 2, side: 'axis', at: 'Paris', troops: 'mediumTank:2 heavyTank:1', text: 'The panzer reserves are released to Normandy' },
+        { round: 3, side: 'allies', at: 'Portsmouth', troops: 'infantry:4 mediumTank:2', text: 'Follow-up divisions cross the Channel' },
+        { round: 4, side: 'axis', at: 'Calais', troops: 'infantry:3', text: 'The 15th Army finally moves' },
+        { round: 5, side: 'allies', at: 'Cherbourg', troops: 'mediumTank:4 infantry:4 artillery:2', text: "Patton's Third Army lands" },
+        { round: 7, side: 'allies', at: 'Plymouth', troops: 'infantry:4 mediumTank:2', text: 'More American divisions arrive' },
+      ],
+    },
+    balanced: {
+      label: 'Balanced',
+      income: { axis: [[1, 110]], allies: [[1, 110]] },
+      supply: { allies: 30 },
+      materials: { axis: 12, allies: 14 },
+      research: null, // same as historical
+      winter: null,
+      armies: null,
+      fleets: null,
+      reinforcements: [
+        { round: 2, side: 'axis', at: 'Paris', troops: 'mediumTank:2 heavyTank:1', text: 'The panzer reserves are released to Normandy' },
+        { round: 3, side: 'allies', at: 'Portsmouth', troops: 'infantry:3 mediumTank:2', text: 'Follow-up divisions cross the Channel' },
+        { round: 4, side: 'axis', at: 'Calais', troops: 'infantry:3 mediumTank:1', text: 'The 15th Army finally moves' },
+        { round: 5, side: 'allies', at: 'Cherbourg', troops: 'mediumTank:3 infantry:3', text: "Patton's Third Army lands" },
+      ],
+    },
+  },
+  economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
+};
+
+const SCENARIOS = { eastFront41: EAST_FRONT_41, france40: FRANCE_40, northAfrica41: AFRICA_41, normandy44: NORMANDY_44 };
 
 // ---------------------------------------------------------------- helpers
 
@@ -490,7 +696,7 @@ function styleOf(s) {
 function withDefaults(sc, style) {
   const st = sc.styles[style] || sc.styles.balanced;
   const h = sc.styles.historical;
-  return { ...st, research: st.research || h.research, armies: st.armies || h.armies };
+  return { ...st, research: st.research || h.research, armies: st.armies || h.armies, bunkers: st.bunkers || null, fleets: st.fleets || h.fleets || null };
 }
 /** The side (index 0 or 1) a seat plays: even seats the first side, odd seats the second. */
 function sideIndex(seat) {
@@ -515,10 +721,27 @@ function cityTile(s, name) {
  * between its players, at least 1 each; the side's first player gets any remainder.
  */
 function attacksFor(s, seat) {
-  const total = s.settings.totalwar.scenarioAttacks ?? 4;
+  const total = sideAttacks(s, s.players[seat].side);
   const seats = s.players.filter((p) => sideIndex(p.seat) === sideIndex(seat)).map((p) => p.seat);
   const each = Math.floor(total / seats.length);
   return Math.max(1, each + (seats[0] === seat ? total - each * seats.length : 0));
+}
+
+/**
+ * Attacks a whole side may launch this round. A style can set the INITIATIVE per side
+ * and period ({ side: [[from round, attacks], ...] }); otherwise the lobby setting.
+ */
+function sideAttacks(s, sideId) {
+  const st = styleOf(s);
+  const steps = st && st.attacks && st.attacks[sideId];
+  if (steps) return steps.filter(([from]) => s.round >= from).pop()[1];
+  return s.settings.totalwar.scenarioAttacks ?? 4;
+}
+/** % of damage defenders in the scenario's fortified line take (the style may override it). */
+function fortPctOf(s) {
+  const sc = scenarioOf(s);
+  const st = styleOf(s);
+  return (st && st.fortPct) || (sc && sc.fortPct) || null;
 }
 
 /** Is it winter this round? Returns the winter rule or null. */
@@ -568,9 +791,10 @@ function setupScenario(state, id, style) {
   const at = (c, r) => tiles.find((t) => t.c === c && t.r === r);
   for (const [c, r, name, flags] of sc.cities) Object.assign(at(c, r), { name, ...(flags.ind ? { industry: true } : {}), ...(flags.vic ? { victory: true } : {}) });
   for (const [c, r] of sc.forts || []) at(c, r).fort = true; // fortified line
-  for (const [c, r, lvl] of sc.bunkers || []) at(c, r).bunker = lvl; // bunkers already built
+  for (const [c, r, lvl] of st.bunkers || sc.bunkers || []) at(c, r).bunker = lvl; // bunkers already built
 
   // Players: side, nation and region.
+  const regionSeat = {}; // 'side.region' -> seat that holds it
   sc.sides.forEach((side, idx) => {
     const seats = state.players.filter((p) => sideIndex(p.seat) === idx).map((p) => p.seat);
     const splits = side.splits || sc.splits;
@@ -578,6 +802,7 @@ function setupScenario(state, id, style) {
     seats.forEach((seat, k) => {
       const regions = split[k] || [];
       const p = state.players[seat];
+      for (const reg of regions) regionSeat[`${side.id}.${reg}`] = seat;
       const main = regions.some((reg) => side.regions[reg].main) || seats.length === 1;
       const hqName = main ? side.capital : side.regions[regions[0]].hq;
       p.side = side.id;
@@ -605,6 +830,22 @@ function setupScenario(state, id, style) {
   }
   state.board = { layout: 'scenario', tiles, seaLanes: true, scenario: id };
 
+  // Starting fleets: [col, row, ships, region] on sea hexes — held by the player with that region
+  // (or the side's first player). The sea hex becomes theirs.
+  const fleets = st.fleets || sc.fleets || {};
+  sc.sides.forEach((side) => {
+    for (const [c, r, str, reg] of fleets[side.id] || []) {
+      const t = at(c, r);
+      if (!t || t.kind !== 'sea') continue;
+      const seat = regionSeat[`${side.id}.${reg}`] ?? state.players.find((p) => p.side === side.id)?.seat;
+      if (seat == null) continue;
+      t.controller = seat;
+      t.troops = t.troops || {};
+      const cur = t.troops[seat] || {};
+      for (const [k, v] of Object.entries(T(str))) cur[k] = (cur[k] || 0) + v;
+      t.troops[seat] = cur;
+    }
+  });
   // Starting armies.
   for (const p of state.players) p.units = 0;
   sc.sides.forEach((side) => {
@@ -685,6 +926,12 @@ function income(s, seat, tiles, leastHeld) {
     for (const m of ['wood', 'stone', 'sandbag']) bag[m] = Math.floor((bag[m] * pct) / 100);
     while (bag.wood + bag.stone + bag.sandbag < want) bag[leastHeld(bag)] += 1;
   }
+  // Supply from outside the map (e.g. American production): a flat amount per round for the side, shared by its players.
+  const supply = (st.supply && st.supply[s.players[seat].side]) || 0;
+  if (supply) {
+    const share = Math.round(supply / s.players.filter((p) => p.side === s.players[seat].side).length);
+    for (let i = 0; i < share; i++) bag[leastHeld(bag)] += 1;
+  }
   return bag;
 }
 
@@ -740,7 +987,10 @@ function view(s, seat) {
     style: s.scenario.style,
     styleLabel: st.label,
     sides: sc.sides.map((x) => ({ id: x.id, name: x.name, icon: x.icon || '⬛', seats: sideSeats(s, x.id), goal: sc.victory.text[x.id] })),
-    fortPct: sc.fortPct || null,
+    fortPct: fortPctOf(s),
+    // Cities whose capture wins the war at once, and for which side.
+    decisive: { ...sc.victory.capture },
+    initiative: Object.fromEntries(sc.sides.map((x) => [x.id, sideAttacks(s, x.id)])),
     victoryCities: sc.victory.cities,
     held: victoryHeld(s),
     winter: w ? { ...w } : null,
@@ -751,4 +1001,4 @@ function view(s, seat) {
   };
 }
 
-module.exports = { attacksFor, SCENARIOS, setupScenario, roundStart, income, captureWins, victoryHeld, decide, view, winterNow, alliesOf, sideIndex, scenarioOf };
+module.exports = { fortPctOf, sideAttacks, attacksFor, SCENARIOS, setupScenario, roundStart, income, captureWins, victoryHeld, decide, view, winterNow, alliesOf, sideIndex, scenarioOf };

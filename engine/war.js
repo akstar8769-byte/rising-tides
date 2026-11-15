@@ -524,10 +524,6 @@ function botBonus(s) {
 function upkeep(s) {
   const w = W(s);
   if (TW(s)) {
-    if (s.scenario) {
-      SCEN.roundStart(s, addTroops);
-      syncUnits(s);
-    }
     finishResearch(s);
     botBonus(s);
   }
@@ -611,6 +607,11 @@ function upkeep(s) {
       s.floodFromArmies += rise;
       addLog(s, `Army emissions: ${parts.join(', ')}. Flood +${rise} to ${s.flood}.`, { kind: 'flood' });
     }
+  }
+  // Scenarios: reinforcements (and winter news) arrive after this round's upkeep is paid.
+  if (TW(s) && s.scenario) {
+    SCEN.roundStart(s, addTroops);
+    syncUnits(s);
   }
   if (s.phase !== 'ended') {
     checkAccord(s);
@@ -1993,7 +1994,7 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
 function fortPct(s, T) {
   if (!T || T.kind !== 'land') return null;
   const sc = SCEN.scenarioOf(s);
-  let pct = T.fort && sc && sc.fortPct ? sc.fortPct : 100;
+  let pct = T.fort && sc && SCEN.fortPctOf(s) ? SCEN.fortPctOf(s) : 100;
   if (T.bunker) pct = (pct * Math.max(0, 100 - (TWS(s).bunkerPct ?? 15) * T.bunker)) / 100;
   return pct < 100 ? pct : null;
 }
@@ -2498,7 +2499,10 @@ function bombard(s, actor, { from, target } = {}) {
   const D = T.controller;
   diplomacy.onHostile(s, actor, D);
   const rand = seededRand(s);
-  const chance = shotChance(s, S, actor);
+  // Bunkers and fortified lines shelter the defenders from shelling too.
+  // Scenarios: shelling softens a coast but doesn't grind armies down (shellPct of the normal chance).
+  const scenShell = s.scenario ? (SCEN.scenarioOf(s).shellPct ?? 50) / 100 : 1;
+  const chance = (shotChance(s, S, actor) * scenShell * (fortPct(s, T) ?? 100)) / 100;
   const c = troopsAt(T, D);
   const lost = [];
   for (let i = 0; i < shots; i++) if (rand() < chance) {

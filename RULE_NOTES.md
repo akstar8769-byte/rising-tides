@@ -523,3 +523,50 @@ Total War lobby → **Scenario: France, 1940** (Balanced or Historical). Same sc
 - **A regional HQ falling no longer surrenders its whole region** (only the side's main capital counts — and taking that wins the war). Before, the Allies could take Benghazi in round 2 and get the whole Afrika Korps with it.
 - France 1940 Balanced re-tuned now that bots build bunkers: Germany 115% income, the Allies 130% (20 bot games 1v1: 10–10; 2v2: 6–6; Historical 1v1: 7–5 to Germany).
 - Bot-vs-bot results vary a lot between runs (the bots make random choices); treat any single 8–10 game result as ± 2–3 games.
+
+## 📜 Historical-accuracy pass (15 November 2026)
+16 bot-vs-bot **Historical** games per scenario were played and every key city's fall was tracked against the real campaigns. They drifted from history (Germany took Moscow in 11/16 games, the Maginot Line fell in round 2, the Axis collapsed at once in North Africa), so:
+- **Initiative** (new scenario rule): a style can set how many attacks each side gets per period of the war, instead of the lobby's attacks-per-side setting. Historical uses it:
+  - *Eastern Front:* Germany 6 / USSR 2 (rounds 1–5, Barbarossa) → Germany 3 / USSR 4 (rounds 6–9, the winter counter-offensive) → Germany 5 / USSR 3 (rounds 10–14, Case Blue) → Germany 3 / USSR 4 (15+).
+  - *France:* Germany 5; the Allies 2, then 3 from round 6.
+  - *North Africa:* Axis 4 / Allies 2 until round 8; Axis 2 / Allies 5 from round 9 (El Alamein onwards).
+  - The briefing shows the current initiative.
+- **Fortresses (Historical):** Moscow (bunker 2), Leningrad (3), Berlin (2); the Maginot Line takes 35% damage instead of 50%; Tobruk (3) and El Alamein (2); Cologne (2).
+- **Eastern Front (Historical):** bigger Siberian divisions (8 infantry, 3 artillery, 2 anti-tank) and a bigger Leningrad garrison.
+- **France (both styles):** the **Westwall** — three fortified hexes on the German side facing the Maginot Line. The Allies now win outright by taking **Berlin** (was Cologne, only two hexes from Belgium).
+- **North Africa (both styles):** the war starts after Operation Compass — the **Allies hold Benghazi and Derna**, Rommel starts from El Agheila (Afrika Korps HQ). Historical: a stronger Afrika Korps; Axis income falls to 70% from round 9 (supply collapse) while the Allies rise to 160%; the American tanks and Eighth Army reserves arrive at El Alamein; 16 rounds.
+- **Engine fix:** scenario reinforcements now arrive **after** that round's upkeep is paid (before, a big reinforcement could force the player to disband units the moment it arrived — 16 units in one test game).
+- **Bot fixes (all scenarios):** bots count bunkers and fortified lines when judging whether they can win a battle; keep 4 units in fortified/bunkered tiles they attack from; treat any city whose loss ends the war (capital, Paris, Berlin, …) like their capital (keep and reinforce its garrison); march armies sitting in the rear up to the front; reserve at least the upkeep actually due next round; value empty sea hexes less.
+- **Results after the fixes (Historical, 2 players, bot-vs-bot):**
+
+| | Real history | Simulation |
+|---|---|---|
+| Eastern Front | USSR wins; Moscow, Leningrad, Stalingrad hold; Minsk, Riga, Kiev, Smolensk fall in 1941 | USSR ~60% (19–13 over 32 games); Minsk/Riga/Kiev/Smolensk fall rounds 2–7; Moscow fell in 4/32, Stalingrad ~0, Leningrad about half |
+| France | Germany wins; Paris falls ~week 6; the Maginot Line holds | Germany 16–0; Paris 15/16 (median round 7); Calais round 5; Maginot Line 1/16 |
+| North Africa | Rommel takes Cyrenaica, Tobruk falls mid-1942, stopped at El Alamein; the Allies win | Allies 11–5; Benghazi taken round ~3, Tobruk sometimes falls (~round 5–6), the Axis reaches Mersa Matruh, never El Alamein; the Axis land share peaks ~round 9 and falls back |
+
+- Bot results vary a lot between runs (two identical 16-game runs of the Eastern Front gave 11–5 and 8–8).
+- **Balanced re-check after these changes** (bot-vs-bot, 16 games unless noted): Eastern Front 1v1 8–8, France 1v1 8–8, North Africa 1v1 7–7 (14 games, after re-tuning its Balanced income to Axis 95% / Allies 115% for the new starting line). Team games lean more: Eastern Front 2v2 3–13 (Germany–USSR), France 2v2 11–5; North Africa 2v2 not re-measured.
+
+## ⚓ The Royal Navy (added 15 November 2026)
+Britain's navy is why Germany could never cross the Channel — so every scenario with Britain now starts with it at sea (scenarios can now place **starting fleets** on sea hexes, held by the player with that region):
+- **France 1940:** the Home Fleet — 2 battleships, 2 cruisers, 3 destroyers in the Channel; 2 cruisers + 3 destroyers and 1 battleship + 1 cruiser + 2 destroyers in the North Sea; a French squadron off Brest. Germany has 2 destroyers. The Allies start with cruisers and battleships researched. Any German crossing to Britain has to get past these ships (convoy interception).
+- **North Africa 1941:** the Mediterranean Fleet off Alexandria (2 battleships, 2 cruisers, 3 destroyers), the ships keeping Tobruk supplied, and a squadron off Mersa Matruh. A small Italian squadron (Historical); in Balanced a real Italian fleet, paid for by 15 materials of supply from Italy every round.
+- **Normandy 1944:** the invasion fleet (see below).
+- **Shelling in scenarios:** a shell destroys a unit at **25%** of the normal chance (`shellPct`) — naval guns soften a coast but don't grind whole armies down. **Bunkers and fortified lines also shelter defenders from shelling** (same % as in battle; every Total War game).
+- **Bots** treat enemy ships offshore as a threat when deciding how big a garrison their capital needs.
+
+## ⚔ Historical scenario: Normandy, 1944 (added 15 November 2026)
+- 🟫 **Germany** (OB West in Paris; the 7th Army in Normandy; the 15th Army in the Pas-de-Calais) vs 🟦 **the Allies** (Britain & Canada from London; the United States from Plymouth). 12 rounds (≈ a week each).
+- **Map:** southern England, the Channel, Brittany, Normandy (Cherbourg, the beaches Utah, Omaha, Gold and Sword, Caen, the **bocage** hedgerow country as woods — slow for tanks), the Seine, Paris, the Pas-de-Calais and Belgium.
+- **The Atlantic Wall:** bunkers along the coast — heaviest at the Pas-de-Calais (Calais level 3), Cherbourg, Omaha and Le Havre level 2 (Historical: Cherbourg 3 and Caen 2).
+- **The invasion fleet:** 4 battleships, 8 cruisers and 17 destroyers — they shell the beaches and carry the landing troops (3 per ship).
+- **Victory:** the Allies win by taking **Paris** (or holding 2 of Cherbourg / Caen / Paris at the end); Germany wins by holding 2 of the 3 at the end. (Taking London would also win for Germany.)
+- **Off-map supply** (new scenario rule): a side can get a flat amount every round, shared by its players. The Allies get 30 (American production) — England alone couldn't pay for the invasion army.
+- **Historical:** Allied initiative 5 attacks a round, Germany 2 then 3; Germany 75% income (Allied bombing), the Allies 150%; German panzer reserves (round 2), the 15th Army moves (4); Allied follow-up waves (3), Patton's Third Army (5), more Americans (7).
+- **Bot results:** Historical — the Allies win 10/10; the beaches fall in rounds 1–2, Saint-Lô ~round 6, **Paris ~round 9–11** (it was liberated 11 weeks after D-Day). Cherbourg still falls too early (round 1; it held three weeks). Balanced (12 games): Allies 8–4 then re-tuned (supply 30).
+
+## Balance after the navy (bot-vs-bot, Balanced)
+- France 1v1: 7–5 (Germany's Balanced income raised to 140%, the Allies 115%).
+- North Africa 1v1: **13–3 to the Allies** even with a bigger Axis economy (170%/90%) and an Italian fleet — the Royal Navy controls a coast where almost every hex is coastal. Without the Allied fleet the same setup was 5–3. Open question for the designers: keep the full Royal Navy in Balanced North Africa, or make it smaller there.
+- Historical: France 10–0 Germany (unchanged); North Africa 10–0 Allies, Tripoli falling ~round 12 (the real campaign ended with Tripoli in January 1943).

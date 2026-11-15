@@ -45,7 +45,8 @@ test('starting armies, research, no truce and no Flood', () => {
   assert.equal(engine.viewFor(s, 0).threshold, 999);
   const v = engine.viewFor(s, 0);
   assert.equal(v.scenario.name, 'Eastern Front, 1941');
-  assert.equal(v.scenario.attacksPerRound, 4);
+  assert.equal(v.scenario.attacksPerRound, 6, 'Historical: Germany has the initiative in 1941');
+  assert.equal(v.scenario.initiative.soviet, 2);
   assert.ok(v.attackTargets.length > 0, 'the war starts at once');
 });
 
@@ -114,7 +115,7 @@ test('reinforcements arrive on schedule, and winter slows tanks', () => {
   s = allReady(s); // trade phase ends -> round 6 starts
   assert.equal(s.round, 6);
   const after = Object.values(city(s, 'Moscow').troops[1]).reduce((a, n) => a + n, 0);
-  assert.equal(after - before, 7, 'Siberian divisions: 5 infantry + 2 artillery');
+  assert.equal(after - before, 13, 'Siberian divisions: 8 infantry + 3 artillery + 2 anti-tank');
   assert.ok(s.log.some((l) => /Siberian/.test(l.text)));
   assert.ok(SCEN.winterNow(s));
   const tw = require('../engine/totalwar');
@@ -172,7 +173,9 @@ test('France 1940: Germany vs the Allies, Britain across the Channel, the Magino
   assert.equal(s.players[1].nation, 'Allies');
   assert.equal(city(s, 'Paris').controller, 1);
   assert.equal(city(s, 'Berlin').controller, 0);
-  assert.deepEqual(s.board.tiles.filter((t) => t.fort).map((t) => s.players[t.controller].side), ['allies', 'allies', 'allies', 'allies']);
+  const forts = s.board.tiles.filter((t) => t.fort).map((t) => s.players[t.controller].side);
+  assert.equal(forts.filter((x) => x === 'allies').length, 4, 'the Maginot Line');
+  assert.equal(forts.filter((x) => x === 'axis').length, 3, 'the Westwall');
   // Britain is an island: no land route from London to Paris.
   const { areAdjacent } = require('../engine/board');
   const land = s.board.tiles.filter((t) => t.kind === 'land');
@@ -298,8 +301,8 @@ test('North Africa 1941: Axis vs Allies along the coast, Tobruk and El Alamein b
 });
 
 test('scenarios: losing a regional HQ does not surrender the region', () => {
-  let s = africa(3); // Axis: Italy (Tripoli) + Afrika Korps & desert (Benghazi); Allies: one player
-  const benghazi = city(s, 'Benghazi');
+  let s = africa(3); // Axis: Italy (Tripoli) + Afrika Korps & desert (El Agheila); Allies: one player
+  const benghazi = city(s, 'El Agheila');
   assert.equal(benghazi.owner, 2);
   const { areAdjacent } = require('../engine/board');
   const next = s.board.tiles.find((t) => t.kind === 'land' && t.controller === 2 && t !== benghazi && areAdjacent(t, benghazi));
@@ -312,7 +315,113 @@ test('scenarios: losing a regional HQ does not surrender the region', () => {
   s = allReady(s);
   s = act(s, 1, 'choose', { action: 'attack', target: benghazi.id, from: next.id, troops: { infantry: 4 } });
   for (const seat of [0, 2]) s = act(s, seat, 'choose', { action: 'sustainable', mix: { wood: 0, stone: 0, sandbag: 0 } });
-  assert.equal(city(s, 'Benghazi').controller, 1);
-  assert.equal(s.board.tiles.filter((t) => t.controller === 2).length, before - 1, 'only Benghazi changed hands');
+  assert.equal(city(s, 'El Agheila').controller, 1);
+  assert.equal(s.board.tiles.filter((t) => t.controller === 2).length, before - 1, 'only El Agheila changed hands');
   assert.notEqual(s.phase, 'ended');
+});
+
+// ---------------------------------------------------------------- Historical style: initiative and fortresses
+test('Historical initiative: attacks per side change with the period of the war', () => {
+  const s = game(2, 'historical');
+  const at = (round) => ((s.round = round), SCEN.view(s, 0).initiative);
+  assert.deepEqual(at(1), { axis: 6, soviet: 2 }); // Barbarossa
+  assert.deepEqual(at(7), { axis: 3, soviet: 4 }); // the winter counter-offensive
+  assert.deepEqual(at(11), { axis: 5, soviet: 3 }); // 1942: Germany attacks again
+  // Balanced keeps the lobby setting for both sides.
+  const b = game(2, 'balanced');
+  assert.deepEqual(SCEN.view(b, 0).initiative, { axis: 4, soviet: 4 });
+});
+
+test('Historical fortresses: Moscow, Leningrad, Berlin, Tobruk; a stronger Maginot Line', () => {
+  const e = game(2, 'historical');
+  assert.equal(city(e, 'Moscow').bunker, 2);
+  assert.equal(city(e, 'Leningrad').bunker, 3);
+  assert.equal(game(2, 'balanced').board.tiles.filter((t) => t.bunker).length, 0);
+  assert.equal(city(africa(2, 'historical'), 'Tobruk').bunker, 3);
+  assert.equal(city(africa(2, 'balanced'), 'Tobruk').bunker, 2);
+  assert.equal(SCEN.fortPctOf(france(2, 'historical')), 35);
+  assert.equal(SCEN.fortPctOf(france(2, 'balanced')), 50);
+});
+
+test('reinforcements arrive after upkeep is paid, so they are never disbanded on arrival', () => {
+  let s = game(2, 'historical');
+  for (const p of s.players) p.materials = { wood: 0, stone: 0, sandbag: 0 }; // broke: upkeep disbands what it must
+  s.round = 5;
+  s.phase = 'trade';
+  for (const p of s.players) p.ready = false;
+  s = allReady(s);
+  const moscow = Object.values(city(s, 'Moscow').troops[1]).reduce((a, n) => a + n, 0);
+  assert.ok(moscow >= 13, `the Siberian divisions are all there (${moscow})`);
+});
+
+test('France 1940: the Allies win outright by taking Berlin; Cologne is bunkered in Historical', () => {
+  const s = france(2, 'historical');
+  assert.equal(SCEN.captureWins(s, city(s, 'Berlin'), 1), 'allies');
+  assert.equal(SCEN.captureWins(s, city(s, 'Cologne'), 1), null);
+  assert.equal(city(s, 'Cologne').bunker, 2);
+  // North Africa 1941 starts after Operation Compass: the Allies hold Benghazi.
+  assert.equal(city(africa(2), 'Benghazi').controller, 1);
+});
+
+// ---------------------------------------------------------------- the Royal Navy, and Normandy 1944
+test('the Royal Navy starts at sea in France 1940 and North Africa (held by Britain in team games)', () => {
+  const ships = (s, seat) => s.board.tiles.filter((t) => t.kind === 'sea' && t.controller === seat).reduce((a, t) => a + Object.values(t.troops[seat]).reduce((x, n) => x + n, 0), 0);
+  const f = france(4, 'historical');
+  assert.ok(ships(f, 3) >= 15, 'Britain holds the Channel and the North Sea');
+  assert.ok(ships(f, 0) <= 2, 'Germany has only a couple of destroyers');
+  const a = africa(2, 'historical');
+  assert.ok(ships(a, 1) >= 12);
+  assert.ok(a.board.tiles.some((t) => t.kind === 'sea' && t.controller === 1 && (t.troops[1].battleship || 0) >= 2));
+});
+
+test('bunkers shelter defenders from naval shelling too', () => {
+  let s = africa(2, 'historical');
+  const tobruk = city(s, 'Tobruk'); // bunker 3, Allied — let the Axis "fleet" sit next to it
+  const { areAdjacent } = require('../engine/board');
+  const sea = s.board.tiles.find((t) => t.kind === 'sea' && areAdjacent(t, tobruk));
+  sea.controller = 0;
+  sea.troops = { 0: { battleship: 2 } };
+  sea.units = { 0: 2 };
+  tobruk.troops = { 1: { infantry: 50 } };
+  tobruk.units = { 1: 50 };
+  let killed = 0;
+  for (let i = 0; i < 20; i++) {
+    const g = act(Object.assign(structuredClone(s), { rng: 1000 + i }), 0, 'bombard', { from: sea.id, target: tobruk.id });
+    killed += 50 - city(g, 'Tobruk').troops[1].infantry;
+  }
+  // 2 battleships x 2 shots x 50% x 25% (scenario) x 55% (bunker 3) ~ 0.28 a salvo
+  assert.ok(killed / 20 < 0.6, `about a quarter of a unit a salvo (${killed / 20})`);
+});
+
+const normandy = (n = 2, style = 'historical') =>
+  newGame({ mode: 'totalwar', n, oceans: true, biomes: Array(n).fill('forest'), settings: (c) => ((c.totalwar.scenario = 'normandy44'), (c.totalwar.scenarioStyle = style)) });
+
+test('Normandy 1944: the Allies start in England with the invasion fleet; the Atlantic Wall is bunkered', () => {
+  const s = normandy(2);
+  assert.equal(city(s, 'London').controller, 1);
+  assert.equal(city(s, 'Paris').controller, 0);
+  assert.equal(city(s, 'Calais').bunker, 3, 'the Pas-de-Calais was the most heavily defended');
+  assert.ok(city(s, 'Omaha').bunker >= 2);
+  const fleet = s.board.tiles.filter((t) => t.kind === 'sea' && t.controller === 1);
+  assert.ok(fleet.length >= 5);
+  // The Allies can land on the beaches straight away, carried by their ships.
+  const v = engine.viewFor(s, 1);
+  for (const beach of ['Utah', 'Omaha', 'Gold', 'Sword']) {
+    const srcs = v.attackSources[city(s, beach).id] || [];
+    assert.ok(srcs.some((x) => x.amphibious && x.capacity >= 9), `${beach} can be stormed from the sea`);
+  }
+  assert.equal(SCEN.view(s, 1).initiative.allies, 5);
+  // Off-map supply: the Allies earn far more than England alone would give.
+  const war = require('../engine/war');
+  const inc = war.production(s, 1).passive;
+  assert.ok(inc.wood + inc.stone + inc.sandbag >= 50);
+});
+
+test('Normandy 1944: taking Paris wins for the Allies; Germany wins by holding 2 of Cherbourg, Caen, Paris', () => {
+  const s = normandy(2);
+  assert.equal(SCEN.captureWins(s, city(s, 'Paris'), 1), 'allies');
+  assert.equal(war.scoreTotalWar(s, 'rounds').scenario.side, 'axis');
+  city(s, 'Cherbourg').controller = 1;
+  city(s, 'Caen').controller = 1;
+  assert.equal(war.scoreTotalWar(s, 'rounds').scenario.side, 'allies');
 });
