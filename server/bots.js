@@ -363,8 +363,9 @@ function generalIdea(g, me, P) {
   const target = stacks.find((t) => !led.has(t.id));
   const here = (gn) => unitsOn(g.board.tiles.find((t) => t.id === gn.tile), g.you);
   const idle = mine.find((gn) => here(gn) < 2);
-  // At most one move per general per round, and only towards a bigger stack.
-  if (idle && target && target.id !== idle.tile && unitsOn(target, g.you) > here(idle)) return { key: `gen-move-${g.round}-${idle.id}`, action: { type: 'moveGeneral', id: idle.id, to: target.id } };
+  // At most one move per general per round, only towards a bigger stack it can reach.
+  const goal = idle && stacks.find((t) => !led.has(t.id) && (idle.moves || []).includes(t.id));
+  if (goal && unitsOn(goal, g.you) > here(idle)) return { key: `gen-move-${g.round}-${idle.id}`, action: { type: 'moveGeneral', id: idle.id, to: goal.id } };
   // A second (third) general for a big army.
   const all = (g.generals || []).filter((gn) => gn.seat === g.you).length;
   const spare = total(me.materials) - reserve(g, me, 1);
@@ -598,6 +599,24 @@ function frontier(g) {
     .map((x) => x.t.id);
 }
 
+/** Our tiles that units on tile `id` can walk to over our own land (no sea crossing). */
+const HEX_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+function walkable(g, id) {
+  const stand = new Set(g.standTiles || []);
+  const byQR = new Map(g.board.tiles.map((t) => [`${t.q},${t.r}`, t]));
+  const start = g.board.tiles.find((t) => t.id === id);
+  const seen = new Set([id]);
+  const todo = [start];
+  while (todo.length) {
+    const t = todo.pop();
+    for (const [dq, dr] of HEX_DIRS) {
+      const n = byQR.get(`${t.q + dq},${t.r + dr}`);
+      if (n && !seen.has(n.id) && n.kind === 'land' && stand.has(n.id)) (seen.add(n.id), todo.push(n));
+    }
+  }
+  return seen;
+}
+
 /** Move one batch of units: fill empty frontier tiles, then push spare units forward. */
 function moveIdea(g, me, P) {
   const stand = new Set(g.standTiles || []);
@@ -608,12 +627,14 @@ function moveIdea(g, me, P) {
   const big = withUnits[0];
   // Cautious and balanced bots make sure no frontier tile is empty.
   if (P !== PERSONALITIES.warlike) {
-    const emptyFront = front.find((id) => unitsOn(g.board.tiles.find((t) => t.id === id), g.you) === 0);
+    const near = walkable(g, big.id);
+    const emptyFront = front.find((id) => near.has(id) && unitsOn(g.board.tiles.find((t) => t.id === id), g.you) === 0);
     if (emptyFront && unitsOn(big, g.you) >= 2) return { key: `move-${big.id}-${emptyFront}`, action: { type: 'moveUnits', from: big.id, to: emptyFront, count: 1 } };
   }
   // Push spare units from the capital to the most exposed frontier tile.
   const cap = g.board.tiles.find((t) => t.id === me.homeTile);
-  const dest = front.find((id) => id !== cap.id);
+  const fromCap = walkable(g, cap.id);
+  const dest = front.find((id) => id !== cap.id && fromCap.has(id));
   const spare = unitsOn(cap, g.you) - (P === PERSONALITIES.warlike ? 0 : 1);
   if (dest && spare > 0) return { key: `move-${cap.id}-${dest}`, action: { type: 'moveUnits', from: cap.id, to: dest, count: spare } };
   return null;

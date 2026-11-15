@@ -1175,7 +1175,7 @@ function decorateView(v, s, seat) {
     if (TW(s) && mine) v.seaTiles = s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller === seat || t.controller == null)).map((t) => t.id);
     if (TW(s) && LANES(s)) v.blockaded = s.board.tiles.filter((t) => blockaded(s, t)).map((t) => t.id);
     if (TW(s) && mine) v.bombardTargets = bombardTargets(s, seat);
-    if (TW(s)) v.generals = (s.generals || []).map((g) => ({ ...g, traitName: TRAITS[g.trait] }));
+    if (TW(s)) v.generals = (s.generals || []).map((g) => ({ ...g, traitName: TRAITS[g.trait], ...(g.seat === seat && g.tile ? { moves: generalMoves(s, g) } : {}) }));
   }
 }
 
@@ -2482,6 +2482,26 @@ function promoteGeneral(s, actor, { tile, unit: type } = {}) {
   addLog(s, `⚑ ${p.name}'s Elite ${ARS.UNITS[type].name.toLowerCase()} commander is promoted: General ${g.name} (${TRAITS[g.trait]}).`, { kind: 'good' });
 }
 /** { id, to } — move a general to another of your tiles (over your land, or by sea on your ships). */
+/** The tiles a general could move to right now (own tiles it has a route to). */
+function generalMoves(s, g) {
+  const A = getTile(s, g.tile);
+  if (!A || !base.BUILD_PHASES.includes(s.phase)) return [];
+  // One walk over our own land from the general's tile (same rule as landRoute)...
+  const seen = new Set([A.id]);
+  const queue = [A];
+  while (queue.length) {
+    const t = queue.shift();
+    for (const n of s.board.tiles) {
+      if (!seen.has(n.id) && areAdjacent(t, n) && canStand(s, g.seat, n)) (seen.add(n.id), queue.push(n));
+    }
+  }
+  // ...plus anything reachable by sea on our ships.
+  return s.board.tiles
+    .filter((B) => B !== A && B.kind === 'land' && canStand(s, g.seat, B))
+    .filter((B) => seen.has(B.id) || (TWS(s).amphibious && landRoute(s, g.seat, A, B, true)))
+    .map((B) => B.id);
+}
+
 function moveGeneral(s, actor, { id, to } = {}) {
   requireBuild(s);
   if (!TW(s)) fail('Generals are part of Total War.');

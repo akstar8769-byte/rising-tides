@@ -169,6 +169,56 @@ const oceans = {
   },
 };
 
+/**
+ * continent (Total War): one huge landmass, west against east, with a long land
+ * front and a sea along the north coast. Same picture format as the oceans map.
+ */
+const CONTINENT_MAP = [
+  '..f...f...f..', // row 0   the northern sea
+  'LLLL..LLLLLLL', // row 1   a small bay
+  'LLLLLLLLLLLLL', // row 2
+  'LLLLLLVLLLLLL', // row 3   the Village in the middle of the front
+  'LLLLLLLLLLLLL', // row 4
+  'LLLLLLLLLLLLL', // row 5
+  'LLLLLLLLLLLLL', // row 6
+  ' LLLLLLLLLLL ', // row 7
+];
+const CONTINENT_WEDGES = {
+  WN: { capital: [1, 1], provinces: [[0, 1], [1, 2]] },
+  WM: { capital: [0, 4], provinces: [[0, 3], [1, 4]] },
+  WS: { capital: [1, 6], provinces: [[0, 6], [1, 7]] },
+  EN: { capital: [11, 1], provinces: [[12, 1], [11, 2]] },
+  EM: { capital: [12, 4], provinces: [[12, 3], [11, 4]] },
+  ES: { capital: [11, 6], provinces: [[12, 6], [11, 7]] },
+};
+const gridId = (c, r) => `${'ABCDEFGHIJKLM'[c]}${r + 1}`;
+function pictureTiles(map) {
+  const tiles = [];
+  map.forEach((line, r) => {
+    [...line].forEach((ch, c) => {
+      if (ch === ' ') return;
+      const t = { id: ch === 'V' ? 'V' : gridId(c, r), q: c - (r - (r & 1)) / 2, r };
+      if (ch === '.' || ch === 'f') t.sea = true;
+      if (ch === 'f') t.fish = true;
+      tiles.push(t);
+    });
+  });
+  return tiles;
+}
+const CONTINENT_ORDER = ['WN', 'EN', 'ES', 'WS', 'WM', 'EM'];
+const continent = {
+  description: 'One huge continent, west against east, with a long land front and a northern sea (Total War)',
+  village: 'V',
+  seaLanes: true,
+  tiles: pictureTiles(CONTINENT_MAP),
+  wedges: CONTINENT_ORDER.map((k) => ({ name: k, capital: gridId(...CONTINENT_WEDGES[k].capital), provinces: CONTINENT_WEDGES[k].provinces.map((p) => gridId(...p)) })),
+  seatsToWedges: {
+    3: [0, 5, 3], // two in the west (north, south), one in the east middle
+    4: [0, 1, 2, 3], // two on each side
+    5: [0, 1, 2, 3, 4],
+  },
+};
+
 const base37 = {
   description: '37 hexes in six identical sectors, resources balanced and shuffled (Base game)',
   village: 'V',
@@ -182,4 +232,4 @@ const base37 = {
   },
 };
 
-module.exports = { standard19, sea37, oceans, base37 };
+module.exports = { standard19, sea37, oceans, continent, base37 };

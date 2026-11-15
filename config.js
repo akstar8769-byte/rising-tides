@@ -444,7 +444,7 @@ const DECIMALS = [];
 const OPTIONS = {
   'general.boardLayout': ['standard19'],
   'base.boardLayout': ['base37', 'standard19'],
-  'totalwar.boardLayout': ['oceans', 'random', 'sea37', 'standard19'],
+  'totalwar.boardLayout': ['oceans', 'continent', 'random', 'sea37', 'standard19'],
   'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
 };
 
@@ -487,7 +487,7 @@ LABELS['base.majorityFloodDown'] = 'Majority Sustainable: Flood falls by';
 LABELS['base.majorityFloodUp'] = 'Majority Unsustainable: Flood rises by';
 LABELS['base.factoryUnsPer'] = 'Unsustainable factories: every this many on the board raise the Flood';
 LIMITS['base.factoryUnsPer'] = [1, 10];
-LABELS['totalwar.boardLayout'] = 'Board (oceans: two continents split by an ocean; random: a new map every game; sea37: smaller, with sea bays)';
+LABELS['totalwar.boardLayout'] = 'Board (oceans: two continents split by an ocean; continent: one huge landmass, a long land front; random: a new map every game; sea37: smaller, with sea bays)';
 LABELS['totalwar.fishingIncome'] = 'Oceans board: income from each fishing ground you hold';
 LABELS['totalwar.blockades'] = 'Oceans board: enemy ships off your coast stop that tile income (blockade)';
 LIMITS['totalwar.fishingIncome'] = [0, 10];

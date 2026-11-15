@@ -470,3 +470,8 @@ Before, a battle's ground came from the tile's **biome**, so every battle was wo
 - Shown on the Total War map (small marker on each tile, plus the legend) and in the tile menu.
 - Bots rate a tank-heavy army higher when attacking Plains and lower in Woods or Hills, and prefer open country for their tanks.
 - Old saved games without terrain fall back to the biome's terrain.
+
+## 🗺 Continent board (added 15 November 2026)
+- New Total War board, **continent** (lobby → Board). One huge landmass, west against east: 86 land hexes, a long land front with the Village in the middle, and a sea along the north coast (with three fishing grounds) so ships still have a job.
+- Capitals sit on the far west and east edges, each with two neighbouring provinces. 3 players: two west, one east. 4 players: two each side. 5 players: three west, two east.
+- Tiles are named by map grid (A1–M8). Battlefield terrain works as on every War board, so the front is a mix of plains, woods, hills and rivers.

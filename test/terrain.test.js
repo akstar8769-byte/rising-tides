@@ -89,3 +89,38 @@ test('bots rate a tank army higher on Plains and lower in Woods', () => {
   assert.ok(terrainFit(tanks, 'woods') < 0.8);
   assert.equal(terrainFit({ infantry: 4 }, 'woods'), 1);
 });
+
+test('continent board: one big landmass, west against east, every capital with two provinces', () => {
+  for (const n of [3, 4, 5]) {
+    const s = newGame({ mode: 'totalwar', n, oceans: true, settings: (c) => (c.totalwar.boardLayout = 'continent') });
+    const land = s.board.tiles.filter((t) => t.kind === 'land');
+    assert.equal(land.length, 86);
+    assert.ok(s.board.seaLanes);
+    for (const p of s.players) {
+      assert.equal(s.board.tiles.filter((t) => t.owner === p.seat).length, 3);
+      assert.ok(['B', 'A', 'L', 'M'].includes(p.homeTile[0]), 'capitals sit on the far west or east edge');
+    }
+    // All the land is one piece: walk it from the first tile.
+    const seen = new Set([land[0].id]);
+    const todo = [land[0]];
+    while (todo.length) {
+      const t = todo.pop();
+      for (const o of BOARD.landNeighbours(s.board, t.id)) if (!seen.has(o.id)) (seen.add(o.id), todo.push(o));
+    }
+    assert.equal(seen.size, land.length);
+  }
+});
+
+test('generals: the view lists only the tiles a general can reach, and bots stick to them', () => {
+  const { engine } = require('./helpers');
+  const s = newGame({ mode: 'totalwar', n: 4, oceans: true, settings: (c) => (c.totalwar.boardLayout = 'continent') });
+  const v = engine.viewFor(s, 0);
+  const gen = v.generals.find((g) => g.seat === 0);
+  assert.deepEqual([...gen.moves].sort(), s.board.tiles.filter((t) => t.owner === 0 && t.role === 'province').map((t) => t.id).sort());
+  assert.ok(!v.generals.find((g) => g.seat === 1).moves, "rivals' routes stay hidden");
+  // Cut a province off: give the bot a far tile it can't walk to; it must not be offered.
+  const far = s.board.tiles.find((t) => t.id === 'G6');
+  Object.assign(far, { controller: 0 });
+  const v2 = engine.viewFor(s, 0);
+  assert.ok(!v2.generals.find((g) => g.seat === 0).moves.includes('G6'));
+});
