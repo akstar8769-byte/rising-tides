@@ -4,7 +4,7 @@
 // Each tile shows:  biome colour + glyph; the OWNER as a coloured border with
 // their pattern; in War modes, an OCCUPIER's flag (⚑P2) when someone else holds it;
 // on capitals: name, walls, units and markers (🩹 Damaged, ⛔ sanctioned, ⛓ puppet, 👑 overlord).
-import { esc, BIOME, PLAYER_STYLE } from './ui.js';
+import { esc, BIOME, TERRAIN, PLAYER_STYLE } from './ui.js';
 import { viewBoxFor } from './mapview.js';
 
 const SIZE = 50; // hex radius in SVG units
@@ -136,6 +136,8 @@ export function renderBoard(game, opts = {}) {
         ${marks ? `<text x="${x + 30}" y="${y - 26}" class="marks">${marks}</text>` : ''}`;
     }
     if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
+    const ter = game.mode === 'totalwar' && TERRAIN[t.terrain];
+    if (ter) inner += `<g class="terrain-mark"><title>${ter.label}: ${ter.note}</title><circle cx="${x + 30}" cy="${y + 22}" r="13"/><text x="${x + 30}" y="${y + 28}">${ter.glyph}</text></g>`;
     if ((game.blockaded || []).includes(t.id)) inner += `<text x="${x - 28}" y="${y - 20}" class="marks"><title>Blockaded: enemy ships offshore, no income</title>⚓</text>`;
     if (game.stationed) inner += unitBadge(t, x, y, game);
     if (t.factory) inner += factoryBadge(t, x, y);
@@ -148,13 +150,13 @@ export function renderBoard(game, opts = {}) {
       act = ` data-act="pickTile" data-tile="${t.id}" role="button" tabindex="0"`;
       inner += `<polygon points="${hexPoints(x, y, SIZE - 4)}" class="target-ring"/>`;
     }
-    const title = `${owner ? `${owner.name}'s ${t.role}` : 'Open tile'} ${t.id} — ${b.label}${occupier != null ? `, held by ${game.players[occupier].name}` : ''}${(game.blockaded || []).includes(t.id) ? ' — BLOCKADED (no income)' : ''}`;
+    const title = `${owner ? `${owner.name}'s ${t.role}` : 'Open tile'} ${t.id} — ${b.label}${game.mode === 'totalwar' && TERRAIN[t.terrain] ? ', ' + TERRAIN[t.terrain].label : ''}${occupier != null ? `, held by ${game.players[occupier].name}` : ''}${(game.blockaded || []).includes(t.id) ? ' — BLOCKADED (no income)' : ''}`;
     return `<g class="${cls}"${act}><title>${esc(title)}</title>${inner}</g>`;
   });
 
   const factoryLegend = game.factories ? '<span>🌿 sustainable factory · 🏭 unsustainable factory (ring = owner)</span>' : '';
   const legendExtra = war
-    ? `${game.board.seaLanes ? '<span>🐟 fishing ground (income for its holder)</span><span>⚓ blockaded (enemy ships offshore)</span>' : ''}<span>⚑P2 = occupied by P2</span><span>⚔ units${game.stationed ? ' on that tile' : ''}</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
+    ? `${game.board.seaLanes ? '<span>🐟 fishing ground (income for its holder)</span><span>⚓ blockaded (enemy ships offshore)</span>' : ''}${game.mode === 'totalwar' ? '<span>🌾 plains · 🌳 woods · 🏔 hills · 〰 river (battlefield)</span>' : ''}<span>⚑P2 = occupied by P2</span><span>⚔ units${game.stationed ? ' on that tile' : ''}</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
     : '';
   const box = [Math.round(minX), Math.round(minY), Math.round(w), Math.round(h)];
   const vb = opts.view ? viewBoxFor(box, opts.view) : box;

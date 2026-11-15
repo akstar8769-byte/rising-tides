@@ -691,6 +691,21 @@ function warIdeas(g, me, P, danger) {
 }
 
 /** Score possible attacks; only take ones we expect to win. */
+/**
+ * How well an attacking force suits the battlefield (Total War terrain): tank-heavy
+ * forces do better on Plains and worse in Woods or Hills; a River slows any attack.
+ */
+const TRACKED_UNITS = ['lightTank', 'mediumTank', 'heavyTank', 'tankDestroyer', 'spArtillery'];
+function terrainFit(troops, terrain) {
+  const all = Object.values(troops || {}).reduce((a, n) => a + n, 0);
+  if (!all) return 1;
+  const armor = TRACKED_UNITS.reduce((a, k) => a + ((troops || {})[k] || 0), 0) / all;
+  if (terrain === 'plains') return 1 + 0.25 * armor;
+  if (terrain === 'woods' || terrain === 'hills') return 1 - 0.3 * armor;
+  if (terrain === 'river') return 0.9;
+  return 1;
+}
+
 function pickTarget(g, me, P) {
   let bestIdea = null;
   let bestScore = 0;
@@ -734,7 +749,7 @@ function pickTarget(g, me, P) {
       const ours = strength(g, troops, g.you, src.vet && src.vet[g.you]);
       const theirs = strength(g, (t.troops || {})[t.controller], t.controller, t.vet && t.vet[t.controller]);
       const need = (P === PERSONALITIES.warlike ? 1.0 : P === PERSONALITIES.cautious ? 1.6 : 1.25) / Math.sqrt(grit(g));
-      winnable = ours >= theirs * need;
+      winnable = ours * terrainFit(troops, t.terrain) >= theirs * need;
     }
     let score;
     if (t.controller == null) score = 2; // open tile: free claim
@@ -743,6 +758,7 @@ function pickTarget(g, me, P) {
     else score = P === PERSONALITIES.warlike && sent === defenders && !g.tw ? 1 : 0;
     if (score && t.controller != null) score += grudge(g, t.controller); // pay back those who hit us
     if (score && t.controller != null && allianceEnemies(g).includes(t.controller)) score += 2; // our alliance's target
+    if (score && troops) score += terrainFit(troops, t.terrain) - 1; // tanks hunt for open country
     if (score > bestScore) {
       bestScore = score;
       if (troops && !Object.keys(troops).length) troops = null;
@@ -1034,5 +1050,5 @@ function reply(text, from, g, mem, botName) {
   return named ? { say: pick(["I'm just a bot — try words like pact, trade, flood or attack.", 'Beep. I understand pact, trade, flood and attack.']) } : null;
 }
 
-module.exports = { decide, react, reply, wallTarget, judgeTreaty, expansionPlans, floodDanger, PERSONALITIES, PERSONALITY_ORDER, BOT_NAMES };
+module.exports = { decide, react, reply, wallTarget, judgeTreaty, expansionPlans, floodDanger, terrainFit, PERSONALITIES, PERSONALITY_ORDER, BOT_NAMES };
 

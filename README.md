@@ -93,6 +93,7 @@ Bots play every mode, answer your trade offers (they accept if they get at least
 - **Navy:** cruisers and battleships can 💥 **bombard** an enemy coast next to them once a round (tap the sea hex or the coast). Enemy cruisers/battleships next to your chain of ships fire on troops crossing it; your destroyers in the chain block those shots.
 - **Unit levels:** infantry, artillery, tanks, aircraft and ships can be researched up to level 4 (🔬 Research → open ▸ levels under the technology). Each level makes every unit of that type tougher, harder-hitting and a little faster.
 - **Self-propelled artillery** ✜: research Self-propelled guns (after Artillery and Motorised); it shoots as far as artillery but keeps up with tanks. Upgrade old guns in ⬆ Upgrade.
+- **Battlefield terrain:** every land tile shows its ground — 🌾 Plains (open tank country), 🌳 Woods, 🏔 Hills or 〰 River (tap a tile to read it). The battle is fought on the defended tile's terrain, so send tanks at Plains and hold Woods and Hills with infantry. The biome still decides what a tile produces.
 - **Research** (🏗️ Build panel → 🔬 Research): pay once during Talk & Build; it's ready at the start of next round. One project at a time.
   - Artillery → Light tanks → Medium tanks → Heavy tanks.
   - Motorised infantry → Mechanised infantry → Aircraft (interceptors and bombers).

@@ -1,6 +1,6 @@
 // Main game screen: phase bar, Flood track, my panel, players, trading, log.
 // On phones one tab is shown at a time; on wide screens everything is visible.
-import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
+import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, TERRAIN, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
 import { renderBoard, center } from './board.js';
 import { renderLog, renderChat } from './log.js';
 import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest, targetNote } from './war-ui.js';
@@ -188,7 +188,7 @@ function tileMenu(store) {
   const top = Math.max(8, Math.min(m.y + 6, (typeof innerHeight === 'number' ? innerHeight : 800) - 300));
   return `<div class="tile-menu" style="left:${left}px;top:${top}px;width:${w}px" role="dialog" aria-label="${esc(tileLabel(g, t.id))}">
     <div class="tm-head"><b>${esc(tileLabel(g, t.id))}</b><button class="icon-btn" data-act="closeTileMenu" aria-label="Close">✕</button></div>
-    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
+    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}${g.mode === 'totalwar' && TERRAIN[t.terrain] ? `<br>${TERRAIN[t.terrain].glyph} <b>${TERRAIN[t.terrain].label}</b> — ${TERRAIN[t.terrain].note}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
     ${units ? `<ul class="plain tm-units">${units}</ul>` : g.stationed && t.kind !== 'village' ? '<p class="small muted">No units here.</p>' : ''}
     ${generalLines(g, t)}
     ${acts.length ? `<div class="tm-actions">${acts.join('')}</div>` : `<p class="hint">${tileIdleHint(g)}</p>`}

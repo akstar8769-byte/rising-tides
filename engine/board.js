@@ -16,6 +16,54 @@ const BIOMES = {
 };
 const SINGLE_BIOMES = ['forest', 'quarry', 'riverbank'];
 
+/**
+ * Battlefield terrain (War modes): separate from the biome, which only decides what a
+ * tile produces. The terrain decides what a battle fought there looks like.
+ */
+const TERRAINS = {
+  plains: { label: 'Plains', icon: '🌾', note: 'open ground: tank country' },
+  woods: { label: 'Woods', icon: '🌳', note: 'woods round the objective: tanks bog down, infantry ambush' },
+  hills: { label: 'Hills', icon: '🏔', note: 'hills round the objective: slow for tanks, strong for defenders' },
+  river: { label: 'River', icon: '〰', note: 'a river across the field with two fords' },
+};
+/** The terrain a biome leans towards (also the fallback for tiles without a terrain). */
+const BIOME_TERRAIN = { forest: 'woods', quarry: 'hills', riverbank: 'river', mixed: null };
+
+/** A tile's battlefield terrain: its own, or (old saves, Base) the one its biome suggests. */
+function terrainOf(t) {
+  if (!t) return 'mixed';
+  if (t.terrain) return t.terrain;
+  return t.biome in BIOME_TERRAIN ? BIOME_TERRAIN[t.biome] || 'mixed' : t.biome;
+}
+
+/**
+ * Give every land tile a terrain: 40% Plains, 30% the biome's own terrain, 15% each of
+ * the other two (Mixed tiles: 40% Plains, 20% each). Uses its own random stream built
+ * from the game seed, so it never changes the game's other dice.
+ */
+function assignTerrain(state, tiles) {
+  let r = (state.rng ^ 0x9e3779b9) >>> 0;
+  const rand = () => {
+    let t = (r = (r + 0x6d2b79f5) >>> 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const rough = ['woods', 'hills', 'river'];
+  for (const t of tiles) {
+    if (t.kind !== 'land') continue;
+    const own = BIOME_TERRAIN[t.biome];
+    const x = rand();
+    if (x < 0.4) t.terrain = 'plains';
+    else if (!own) t.terrain = rough[Math.min(2, Math.floor((x - 0.4) / 0.2))];
+    else if (x < 0.7) t.terrain = own;
+    else {
+      const others = rough.filter((k) => k !== own);
+      t.terrain = others[x < 0.85 ? 0 : 1];
+    }
+  }
+}
+
 const DIRS = [
   [1, 0],
   [1, -1],
@@ -89,6 +137,7 @@ function buildBoard(state, layoutName, withTerritories) {
   for (const t of tiles) {
     if (t.kind === 'land' && t.biome === null) t.biome = SINGLE_BIOMES[randomInt(state, SINGLE_BIOMES.length)];
   }
+  if (withTerritories) assignTerrain(state, tiles);
   return { layout: layoutName, tiles, ...(L.seaLanes ? { seaLanes: true } : {}) };
 }
 
@@ -141,4 +190,4 @@ function landNeighbours(board, tileId) {
   return board.tiles.filter((o) => o.kind === 'land' && areAdjacent(t, o));
 }
 
-module.exports = { BIOMES, SINGLE_BIOMES, LAYOUTS, defaultBiomeList, buildBoard, areAdjacent, seaLinked, landNeighbours };
+module.exports = { BIOMES, SINGLE_BIOMES, TERRAINS, BIOME_TERRAIN, terrainOf, LAYOUTS, defaultBiomeList, buildBoard, areAdjacent, seaLinked, landNeighbours };

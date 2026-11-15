@@ -457,3 +457,16 @@ Tanks had only one counter (anti-tank guns, useless against everything else). Th
 - **Traits:** Tank commander (armour in the aura +20% damage), Defender (units in the aura take 20% less when defending), Swift (the whole army +10% speed), Artillerist (guns in the aura reach 3 squares further).
 - **Death:** if the general's unit is destroyed, the general is killed and that side is shaken (−10% damage for 8 seconds). A general on a tile that falls without a fight, or that surrenders when its capital falls, is captured. After a battle the general goes with their survivors (the captured tile, home, or the nearest tile of theirs).
 - Bots appoint a second and third general as their armies grow and keep them with their biggest stacks.
+
+## 🌾 Battlefield terrain (added 15 November 2026)
+Before, a battle's ground came from the tile's **biome**, so every battle was woods, hills or a river, all clustered round the objective. Tanks never had open country to fight in.
+- Every land tile in a War game now has a **terrain type**, separate from its biome. The biome still decides what the tile produces; the terrain decides the battlefield.
+  - 🌾 **Plains**: open ground, at most one small copse or rise. Tank country (about 98% open).
+  - 🌳 **Woods**: woods round the objective (tanks bog down, infantry ambush).
+  - 🏔 **Hills**: hills round the objective (slow for tanks, strong for defenders).
+  - 〰 **River**: a river across the field with two fords.
+- Mix: **40% Plains**, 30% the biome's own terrain (forest → Woods, quarry → Hills, riverbank → River), 15% each of the other two. Mixed tiles: 40% Plains, 20% each.
+- Terrain uses its own random stream from the game seed, so it never changes any other dice.
+- Shown on the Total War map (small marker on each tile, plus the legend) and in the tile menu.
+- Bots rate a tank-heavy army higher when attacking Plains and lower in Woods or Hills, and prefer open country for their tanks.
+- Old saved games without terrain fall back to the biome's terrain.

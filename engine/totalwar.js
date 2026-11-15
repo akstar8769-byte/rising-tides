@@ -34,6 +34,7 @@
 'use strict';
 
 const ARS = require('./arsenal');
+const BOARD = require('./board');
 
 const MAP_W = 60;
 const MAP_H = 40;
@@ -187,10 +188,15 @@ function setFormation(b, side, id, { arrangeNow = true } = {}) {
 
 /**
  * Terrain grid (rows of characters): '.' plain, 'f' forest, 'h' hill,
- * 'w' river, '=' ford, 'o' open sea. Built from the defended tile's biome (the
- * right side, around the objective) and the attacker's tile (the left side).
+ * 'w' river, '=' ford, 'o' open sea. Built from the defended tile's terrain type (the
+ * right side, around the objective) and the attacker's tile (the left side):
+ * plains | woods | hills | river (old biome names forest / quarry / riverbank / mixed
+ * still work). Plains are open "tank country" with at most one small copse or rise.
  */
 function makeTerrain(defBiome, attBiome, rand, kind = 'land') {
+  const ALIAS = { forest: 'woods', quarry: 'hills', riverbank: 'river' };
+  defBiome = ALIAS[defBiome] || defBiome;
+  attBiome = ALIAS[attBiome] || attBiome;
   const cols = MAP_W / TCELL;
   const rows = MAP_H / TCELL;
   if (kind === 'sea') return Array.from({ length: rows }, () => 'o'.repeat(cols));
@@ -203,14 +209,16 @@ function makeTerrain(defBiome, attBiome, rand, kind = 'land') {
     for (let i = 0; i < count; i++) {
       const cx = x0 + rand() * (x1 - x0);
       const cy = 1 + rand() * (rows - 2);
-      if (biome === 'forest') blob(cx, cy, 1 + rand(), 'f');
-      else if (biome === 'quarry') blob(cx, cy, 0.8 + rand(), 'h');
+      if (biome === 'woods') blob(cx, cy, 1 + rand(), 'f');
+      else if (biome === 'hills') blob(cx, cy, 0.8 + rand(), 'h');
       else if (biome === 'mixed') blob(cx, cy, 1, i % 2 ? 'f' : 'h');
+      else if (biome === 'plains') blob(cx, cy, 0.5 + rand() * 0.4, rand() < 0.5 ? 'f' : 'h');
     }
   };
-  scatter(defBiome, 7, 14, defBiome === 'riverbank' ? 0 : 3);
-  scatter(attBiome, 1, 6, attBiome === 'riverbank' ? 0 : 2);
-  if (defBiome === 'riverbank' || attBiome === 'riverbank') {
+  const count = (t, n) => (t === 'river' ? 0 : t === 'plains' ? (rand() < 0.5 ? 1 : 0) : n);
+  scatter(defBiome, 7, 14, count(defBiome, 3));
+  scatter(attBiome, 1, 6, count(attBiome, 2));
+  if (defBiome === 'river' || attBiome === 'river') {
     // A river crossing the map from top to bottom, with two fords.
     const rx = 6 + Math.floor(rand() * 2);
     for (let y = 0; y < rows; y++) g[y][rx] = 'w';
@@ -263,7 +271,7 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     from: from.id,
     attacker,
     defender,
-    terrain: makeTerrain(tile.biome, from.biome, rand, kind),
+    terrain: makeTerrain(BOARD.terrainOf(tile), BOARD.terrainOf(from), rand, kind),
     obj: { x: 47, y: 20, r: 5 },
     dpu,
     initial: { A: { ...zero(), ...aTroops }, D: { ...zero(), ...dTroops } },

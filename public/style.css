@@ -844,3 +844,7 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 
 /* Generals */
 #battle-svg .gen-flag { font-size: 1.6px; fill: #f3c623; stroke: #6b4a00; stroke-width: 0.08px; paint-order: stroke; pointer-events: none; }
+
+/* Battlefield terrain marker on War map tiles */
+.board .terrain-mark circle { fill: #ffffffd9; stroke: #0005; stroke-width: 1.5; }
+.board .terrain-mark text { font-size: 16px; text-anchor: middle; pointer-events: none; }

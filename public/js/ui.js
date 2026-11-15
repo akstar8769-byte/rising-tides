@@ -11,6 +11,14 @@ export const BIOME = {
   sea: { label: 'Sea', glyph: '🌊', color: '#1f4e79', res: null, sea: true },
 };
 
+/** Battlefield terrain (War modes) — separate from the biome, which only sets what a tile makes. */
+export const TERRAIN = {
+  plains: { label: 'Plains', glyph: '🌾', note: 'open ground — tank country' },
+  woods: { label: 'Woods', glyph: '🌳', note: 'woods round the objective — tanks bog down, infantry ambush' },
+  hills: { label: 'Hills', glyph: '🏔', note: 'hills round the objective — slow for tanks, strong for defenders' },
+  river: { label: 'River', glyph: '〰', note: 'a river across the field, two fords — hard to attack over' },
+};
+
 // Okabe–Ito colour-blind-safe palette, plus a pattern and a label for each seat.
 export const PLAYER_STYLE = [
   { color: '#0072B2', ink: '#fff', label: 'P1' },
