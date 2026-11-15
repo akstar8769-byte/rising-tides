@@ -47,6 +47,8 @@ export function liveBattle(store, id) {
     formation: snap.formation || full.formation,
     forms: snap.forms,
     terr: snap.terr,
+    gen: snap.gen || full.gen,
+    genDead: snap.genDead || full.genDead,
     lv: snap.lv || full.levels,
     dots: snap.dots.map(([id2, side, type, x, y, hp, cut, tx, ty, unit, rk]) => ({ id: id2, side, type, x, y, hpPct: hp, cut: !!cut, tx, ty, unit, rk: rk || 0, seat: side === 'A' ? full.attacker : full.defender })),
   };
@@ -62,6 +64,7 @@ function pickBattle(store) {
   return (want || mine.find((b) => b.status === 'live') || mine[0] || all[0] || null)?.id ?? null;
 }
 
+const GEN_TRAIT = { tank: 'Tank commander', defender: 'Defender', swift: 'Swift', artillerist: 'Artillerist' };
 const fmt = (secs) => `${Math.floor(secs / 60)}:${String(Math.max(0, Math.floor(secs % 60))).padStart(2, '0')}`;
 
 // ---------------------------------------------------------------- smooth movement
@@ -194,6 +197,17 @@ function dotsLayer(store, b, now) {
       parts.push(`<text x="${x.toFixed(2)}" y="${ly.toFixed(2)}" class="rank-stars" text-anchor="middle">${'★'.repeat(d.rk)}</text>`);
     }
     if (d.side === mySide) parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.6" fill="transparent" data-dot="${d.id}"/>`);
+  }
+  // Generals: a gold ⚑ above the unit they ride with, and a faint ring showing their aura.
+  for (const side of ['A', 'D']) {
+    const gn = b.gen && b.gen[side];
+    if (!gn || (b.genDead && b.genDead[side])) continue;
+    const lead = b.dots.find((d) => d.side === side && d.unit === gn.unit);
+    if (!lead) continue;
+    const { x, y } = (anim.battle === b.id && drawnPos(lead.id, now)) || lead;
+    const r = (g.settings.totalwar.generalAuraRadius ?? 6) + Math.min(gn.xp || 0, g.settings.totalwar.generalMaxXp ?? 3) * (g.settings.totalwar.generalXpRadius ?? 1);
+    parts.push(`<circle cx="${f2(x)}" cy="${f2(y)}" r="${r}" fill="#f3c623" fill-opacity=".06" stroke="#d4a017" stroke-width=".15" stroke-dasharray=".6 .4"/>`);
+    parts.push(`<text x="${f2(x)}" y="${f2(y - 1.4)}" class="gen-flag" text-anchor="middle">⚑</text>`);
   }
   parts.push(shellsLayer(b.id, now));
   return parts.join('');
@@ -379,6 +393,11 @@ export function battlePanel(store) {
   const typesIn = [...new Set(b.dots.map((d) => d.type))];
   const lvOf = (side, t) => (b.lv && b.lv[side] && b.lv[side][t]) || (b.levels && b.levels[side] && b.levels[side][t]) || 1;
   // Veteran units on each side (any rank): shown after the army line.
+  const genLine = (side) => {
+    const gn = b.gen && b.gen[side];
+    if (!gn) return '';
+    return b.genDead && b.genDead[side] ? ` <b class="warn">⚑ ${esc(gn.name)} has fallen</b>` : ` <b class="vet-line" title="General: units near them fight harder">⚑ Gen. ${esc(gn.name)} (${esc(GEN_TRAIT[gn.trait] || gn.trait)}${gn.xp ? ' ' + '★'.repeat(gn.xp) : ''})</b>`;
+  };
   const vetCount = (side) => new Set(b.dots.filter((d) => d.side === side && d.rk > 0).map((d) => d.unit)).size;
   const army = (side) => typesIn.map((t) => (units(side, t) ? `<span title="${esc(nameOf(g, t))}${lvOf(side, t) > 1 ? ' level ' + lvOf(side, t) : ''}">${shapeOf(g, t)}${units(side, t)}${lvOf(side, t) > 1 ? `<sup class="lv">L${lvOf(side, t)}</sup>` : ''}</span>` : '')).filter(Boolean).join(' ') || 'none left';
   const myTypes = mySide ? [...new Set(b.dots.filter((d) => d.side === mySide).map((d) => d.type))] : [];
@@ -392,9 +411,9 @@ export function battlePanel(store) {
   return `<div class="card phase-card battle-card">
     <h2>${KIND_TITLE[kind]} ${esc(tileLabel(g, b.tile))}</h2>
     <div class="battle-meta row wrap">
-      <span>${chip(A.seat, A.name)} <small>attacking · <span class="army-A">${army('A')}</span>${vetCount('A') ? ` <b class="vet-line">★${vetCount('A')} veteran${vetCount('A') === 1 ? '' : 's'}</b>` : ''}</small></span>
+      <span>${chip(A.seat, A.name)} <small>attacking · <span class="army-A">${army('A')}</span>${genLine('A')}${vetCount('A') ? ` <b class="vet-line">★${vetCount('A')} veteran${vetCount('A') === 1 ? '' : 's'}</b>` : ''}</small></span>
       <span>vs</span>
-      <span>${chip(D.seat, D.name)} <small>defending · <span class="army-D">${army('D')}</span>${vetCount('D') ? ` <b class="vet-line">★${vetCount('D')} veteran${vetCount('D') === 1 ? '' : 's'}</b>` : ''}</small></span>
+      <span>${chip(D.seat, D.name)} <small>defending · <span class="army-D">${army('D')}</span>${genLine('D')}${vetCount('D') ? ` <b class="vet-line">★${vetCount('D')} veteran${vetCount('D') === 1 ? '' : 's'}</b>` : ''}</small></span>
     </div>
     <div class="battle-meta row wrap small">
       <span>⏱ <b class="battle-clock">${done ? 'over' : fmt((b.limit - b.time) / (b.speed || 1))}</b></span>

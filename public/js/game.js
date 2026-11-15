@@ -190,9 +190,19 @@ function tileMenu(store) {
     <div class="tm-head"><b>${esc(tileLabel(g, t.id))}</b><button class="icon-btn" data-act="closeTileMenu" aria-label="Close">✕</button></div>
     <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
     ${units ? `<ul class="plain tm-units">${units}</ul>` : g.stationed && t.kind !== 'village' ? '<p class="small muted">No units here.</p>' : ''}
+    ${generalLines(g, t)}
     ${acts.length ? `<div class="tm-actions">${acts.join('')}</div>` : `<p class="hint">${tileIdleHint(g)}</p>`}
   </div>`;
 }
+
+/** Generals standing on this tile. */
+function generalLines(g, t) {
+  const here = (g.generals || []).filter((gn) => gn.tile === t.id);
+  if (!here.length) return '';
+  return `<ul class="plain tm-units">${here.map((gn) => `<li>⚑ <b>Gen. ${esc(gn.name)}</b> <small>${esc(gn.traitName)}${gn.xp ? ' ' + '★'.repeat(gn.xp) : ''} · ${esc(g.players[gn.seat].name)}</small></li>`).join('')}</ul>`;
+}
+
+const bagTotalOf = (b) => (b ? b.wood + b.stone + b.sandbag : 0);
 
 function tileIdleHint(g) {
   if (BUILD.includes(g.phase)) return 'Nothing to do on this tile right now.';
@@ -223,6 +233,17 @@ function tileActions(store, t) {
       out.push(btn('withdraw', planned ? '✔ Withdrawing at upkeep' : '↩ Withdraw at next upkeep'));
     }
     if (g.factories && g.factories.sites.includes(id)) out.push(btn('factory', '🏭 Build a factory here', '', true));
+    // Generals: move one of yours, appoint a new one, or promote an Elite unit here.
+    if (g.tw && t.kind === 'land' && t.controller === g.you) {
+      const tw = g.settings.totalwar;
+      const mineG = (g.generals || []).filter((gn) => gn.seat === g.you);
+      for (const gn of mineG.filter((x) => x.tile === id)) out.push(`<button class="btn" data-act="genMovePick" data-id="${gn.id}">⚑ Move Gen. ${esc(gn.name)}<small>then tap the tile to send them to</small></button>`);
+      if (mineG.length < tw.generalMax) {
+        out.push(`<button class="btn" data-act="trainGeneral" data-tile="${id}" ${bagTotalOf(me.materials) >= tw.generalCost ? '' : 'disabled'}>⚑ Appoint a general here (${tw.generalCost})<small>random trait: Tank commander, Defender, Swift or Artillerist</small></button>`);
+        const elite = Object.entries((t.vet && t.vet[g.you]) || {}).find(([, r]) => r[2] > 0);
+        if (elite) out.push(`<button class="btn" data-act="promoteGeneral" data-tile="${id}" data-unit="${elite[0]}">⚑ Promote an Elite ★★★ to general<small>free; the unit leaves the ranks</small></button>`);
+      }
+    }
   }
   // Navy: cruisers and battleships shell the coast next to them (once per round per hex).
   if (canBuild && g.bombardTargets) {

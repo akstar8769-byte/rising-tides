@@ -1175,6 +1175,7 @@ function decorateView(v, s, seat) {
     if (TW(s) && mine) v.seaTiles = s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller === seat || t.controller == null)).map((t) => t.id);
     if (TW(s) && LANES(s)) v.blockaded = s.board.tiles.filter((t) => blockaded(s, t)).map((t) => t.id);
     if (TW(s) && mine) v.bombardTargets = bombardTargets(s, seat);
+    if (TW(s)) v.generals = (s.generals || []).map((g) => ({ ...g, traitName: TRAITS[g.trait] }));
   }
 }
 
@@ -1844,6 +1845,7 @@ function nextWave(s) {
         addLog(s, `${A.name}'s fleet sails into ${T.id} unopposed.`);
       } else {
         addLog(s, `${A.name} marches into ${name} — nobody was there to defend it.`);
+        generalsLost(s, T, D);
         conquerTW(s, e.seat, D, T, sent);
       }
       continue;
@@ -1856,7 +1858,11 @@ function nextWave(s) {
     fighting.add(e.seat);
     fighting.add(D);
     rise += TWS(s).battleFlood;
-    const b = beginBattleTW(s, { attacker: e.seat, defender: D, T, src, sent, defenders, ranks: { A: RANKS.get(sent) || {}, D: defRanks } });
+    // Generals: the attacker's from the tile the attack starts on, the defender's on the tile itself (land only).
+    const genA = T.kind === 'land' && src.kind === 'land' ? leadGeneral(s, src.id, e.seat) : null;
+    const genD = T.kind === 'land' ? leadGeneral(s, T.id, D) : null;
+    for (const gg of [genA, genD]) if (gg) gg.tile = null; // in the battle now
+    const b = beginBattleTW(s, { attacker: e.seat, defender: D, T, src, sent, defenders, ranks: { A: RANKS.get(sent) || {}, D: defRanks }, generals: { A: packGeneral(genA), D: packGeneral(genD) } });
     addLog(s, `⚔ ${T.kind === 'sea' ? 'NAVAL BATTLE' : 'BATTLE'} for ${name}: ${A.name} (${describeTroops(sent)}) attacks ${s.players[D].name} (${describeTroops(defenders)}).${b.kind === 'air' ? ' Both sides have aircraft: the air battle comes first!' : ''}`, { kind: 'battle', event: 'battleStart', battle: b.id });
   }
   s.battleQueueTW = later;
@@ -1900,12 +1906,12 @@ function bombardFor(s, T, seat) {
  * brought aircraft, an AIR battle first (the land battle follows when it ends).
  * Otherwise straight to the land battle, with the bombers of whoever has aircraft.
  */
-function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks = null }) {
+function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks = null, generals = null }) {
   const cfg = TWS(s);
   const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
   const knows = (seat, id) => ((s.players[seat].research && s.players[seat].research.done) || []).includes(id);
   const tech = { A: { bazooka: knows(attacker, 'bazookas') }, D: { bazooka: knows(defender, 'bazookas') } };
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -1996,6 +2002,7 @@ function conquerTW(s, taker, D, T, troops) {
     for (const t of rest) {
       lost += unitsAt(t, D);
       setTroops(t, D, zeroTroops());
+      generalsLost(s, t, D);
       t.controller = taker;
       clearTile(s, t, 'home'); // anyone else's troops there go home
     }
@@ -2024,7 +2031,7 @@ function finishAirTW(s, b) {
   const win = b.winner === 'A' ? A : D;
   addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
   const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
-  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
   addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
 }
 
@@ -2109,6 +2116,7 @@ function finishBattleTW(s, b) {
     addTroops(T, b.defender, tagRanks(addAll(dGround, dPlanesAll), mergeRanks(RANKS.get(dGround), RANKS.get(dPlanesAll))));
     returnStrike(s, b.attacker, src, tagRanks(addAll(aGround, aHome), mergeRanks(RANKS.get(aGround), RANKS.get(aHome))));
   }
+  settleGenerals(s, b, T, src);
   syncUnits(s);
 }
 
@@ -2408,11 +2416,120 @@ function bombardTargets(s, seat) {
   return out;
 }
 
-const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard };
+// ---------------------------------------------------------------- generals (Total War)
+// A general stands on one of your tiles. Attacks launched from that tile, and battles
+// fought on it, take the general along: it rides with your toughest unit and gives the
+// units near it a bonus (an aura). If that unit is destroyed, the general is killed.
+const GEN_FIRST = ['Ana', 'Ivo', 'Lena', 'Mara', 'Niko', 'Olga', 'Pavel', 'Rosa', 'Sven', 'Tomas', 'Vera', 'Yuri', 'Zora', 'Hugo', 'Ines', 'Kofi', 'Elsa', 'Raul', 'Mei', 'Arjun'];
+const GEN_LAST = ['Kovač', 'Mercer', 'Halden', 'Rostova', 'Okafor', 'Lindqvist', 'Duarte', 'Brandt', 'Nakamura', 'Ferreira', 'Volkov', 'Ashby', 'Moreau', 'Castell', 'Reyes', 'Hartmann'];
+const TRAITS = { tank: 'Tank commander', defender: 'Defender', swift: 'Swift', artillerist: 'Artillerist' };
+function newGeneral(s, seat, tile) {
+  s.generals = s.generals || [];
+  s.nextGeneralId = (s.nextGeneralId || 0) + 1;
+  const rand = seededRand(s);
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  const g = { id: s.nextGeneralId, seat, name: `${pick(GEN_FIRST)} ${pick(GEN_LAST)}`, trait: pick(Object.keys(TRAITS)), xp: 0, tile };
+  s.generals.push(g);
+  return g;
+}
+const generalsOf = (s, seat) => (s.generals || []).filter((g) => g.seat === seat);
+const generalsOn = (s, tileId, seat) => (s.generals || []).filter((g) => g.tile === tileId && (seat == null || g.seat === seat));
+function killGeneral(s, g, why) {
+  s.generals = (s.generals || []).filter((x) => x !== g);
+  addLog(s, `⚑ General ${g.name} (${s.players[g.seat].name}) ${why}.`, { kind: 'bad' });
+}
+/** Generals on a tile that falls without a fight are captured. */
+function generalsLost(s, T, seat) {
+  for (const g of generalsOn(s, T.id, seat)) killGeneral(s, g, `is captured at ${tileName(s, T)}`);
+}
+/** The general who leads troops from / on this tile (the most experienced). */
+function leadGeneral(s, tileId, seat) {
+  return generalsOn(s, tileId, seat).sort((a, b) => b.xp - a.xp)[0] || null;
+}
+const packGeneral = (g) => (g ? { id: g.id, name: g.name, trait: g.trait, xp: g.xp } : null);
+
+/** { tile, materials } — appoint a new general on a tile you hold. */
+function trainGeneral(s, actor, { tile, materials } = {}) {
+  requireBuild(s);
+  if (!TW(s)) fail('Generals are part of Total War.');
+  const p = me(s, actor);
+  const cfg = TWS(s);
+  const T = getTile(s, tile);
+  if (T.controller !== actor) fail('Appoint generals on a tile you hold.');
+  if (generalsOf(s, actor).length >= cfg.generalMax) fail(`You can have at most ${cfg.generalMax} generals.`);
+  const bag = cleanBag(materials);
+  if (bagTotal(bag) !== cfg.generalCost) fail(`A general costs ${cfg.generalCost} materials (any mix).`);
+  if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
+  subBag(p.materials, bag);
+  const g = newGeneral(s, actor, T.id);
+  addLog(s, `⚑ ${p.name} appoints General ${g.name} (${TRAITS[g.trait]}) on ${tileName(s, T)}.`);
+}
+/** { tile, unit } — an Elite ★★★ unit leaves the ranks to become a general (free). */
+function promoteGeneral(s, actor, { tile, unit: type } = {}) {
+  requireBuild(s);
+  if (!TW(s)) fail('Generals are part of Total War.');
+  const p = me(s, actor);
+  const T = getTile(s, tile);
+  if (T.controller !== actor) fail('Promote on a tile you hold.');
+  if (generalsOf(s, actor).length >= TWS(s).generalMax) fail(`You can have at most ${TWS(s).generalMax} generals.`);
+  const v = vetAt(T, actor)[type];
+  if (!ARS.UNITS[type] || !v || !v[2]) fail('Only an Elite ★★★ unit can be promoted to general.');
+  v[2] -= 1;
+  takeTroops(T, actor, { ...zeroTroops(), [type]: 1 });
+  syncUnits(s);
+  const g = newGeneral(s, actor, T.id);
+  g.xp = 1; // a seasoned leader
+  addLog(s, `⚑ ${p.name}'s Elite ${ARS.UNITS[type].name.toLowerCase()} commander is promoted: General ${g.name} (${TRAITS[g.trait]}).`, { kind: 'good' });
+}
+/** { id, to } — move a general to another of your tiles (over your land, or by sea on your ships). */
+function moveGeneral(s, actor, { id, to } = {}) {
+  requireBuild(s);
+  if (!TW(s)) fail('Generals are part of Total War.');
+  const g = (s.generals || []).find((x) => x.id === Number(id) && x.seat === actor);
+  if (!g) fail('No such general.');
+  const A = getTile(s, g.tile);
+  const B = getTile(s, to);
+  if (A === B) fail('The general is already there.');
+  if (!canStand(s, actor, B)) fail('Generals can only go to your own tiles.');
+  if (!landRoute(s, actor, A, B, false) && !(TWS(s).amphibious && landRoute(s, actor, A, B, true))) fail('No route: generals travel through your own tiles, or by sea on your ships.');
+  g.tile = B.id;
+  addLog(s, `⚑ General ${g.name} moves to ${tileName(s, B)}.`);
+}
+
+/** After a land battle: where each general ends up, who died, who gained experience. */
+function settleGenerals(s, b, T, src) {
+  const packs = b.genPack || {};
+  for (const side of ['A', 'D']) {
+    const pk = packs[side];
+    if (!pk) continue;
+    const g = (s.generals || []).find((x) => x.id === pk.id);
+    if (!g) continue;
+    const seat = side === 'A' ? b.attacker : b.defender;
+    if (b.genDead && b.genDead[side]) {
+      killGeneral(s, g, `falls in the battle for ${tileName(s, T)}`);
+      continue;
+    }
+    const won = b.winner === side;
+    if (won) g.xp = Math.min(TWS(s).generalMaxXp ?? 3, g.xp + 1);
+    let to = null;
+    if (won && canStand(s, seat, T)) to = T;
+    else if (side === 'A' && canStand(s, seat, src)) to = src;
+    else {
+      to =
+        s.board.tiles.filter((x) => areAdjacent(x, T) && canStand(s, seat, x)).sort((a, c) => unitsAt(c, seat) - unitsAt(a, seat))[0] ||
+        (canStand(s, seat, capitalOf(s, seat)) ? capitalOf(s, seat) : s.board.tiles.find((x) => canStand(s, seat, x)));
+    }
+    if (to) g.tile = to.id;
+    else killGeneral(s, g, 'is captured with nowhere to fall back to');
+  }
+}
+
+const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
 
 
 
 module.exports = {
+  newGeneral,
   handlers,
   upkeep,
   reveal,

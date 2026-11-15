@@ -108,6 +108,7 @@ export function warMyPanel(store) {
     <div class="row wrap"><span>⚔ <b>${me.units}</b> ${g.tw ? '' : 'militia '}unit${me.units === 1 ? '' : 's'}${g.stationed ? ` — ${unitSpread(g, g.you)}` : ''}</span>
       ${g.tw ? `<span class="small">${troopSummary(g, g.you)}</span>` : ''}
       ${g.tw ? veteranSummary(g) : ''}
+      ${g.tw ? generalSummary(g) : ''}
       ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}${me.production.fishing ? ` (incl. ${me.production.fishing} fishing ground${me.production.fishing === 1 ? '' : 's'} 🐟)` : ''}</span>` : ''}
       ${me.production && me.production.blockaded && me.production.blockaded.length ? `<span class="small warn">⚓ Blockaded, earning nothing: ${me.production.blockaded.join(', ')} — drive the enemy ships off or bring your own.</span>` : ''}
       <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span>
@@ -364,6 +365,14 @@ function veteranSummary(g) {
   return rows.length
     ? `<span class="small vet-line">🎖 Veterans: ${rows.join(' · ')}</span>`
     : '<span class="small muted">🎖 No veterans yet — units that survive a battle earn a ★ (Seasoned → Veteran → Elite).</span>';
+}
+
+/** "⚑ Generals: Gen. Mara Kovač (Swift ★) on B2 …" — and how to get more. */
+function generalSummary(g) {
+  const mine = (g.generals || []).filter((gn) => gn.seat === g.you);
+  const cfg = g.settings.totalwar;
+  const list = mine.map((gn) => `Gen. ${esc(gn.name)} (${esc(gn.traitName)}${gn.xp ? ' ' + '★'.repeat(gn.xp) : ''}) on ${gn.tile || 'the battlefield'}`).join(' · ');
+  return `<span class="small vet-line">⚑ Generals: ${list || 'none left'}${mine.length < cfg.generalMax ? ` — tap a tile of yours to appoint one (${cfg.generalCost}) or promote an Elite ★★★` : ''}</span>`;
 }
 
 /** Pay n materials from the biggest piles (research and upgrades). */

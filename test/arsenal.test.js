@@ -745,3 +745,92 @@ test('tank destroyers: after Anti-tank guns + Medium tanks; deadly to tanks, so-
   assert.ok(vsTank > vsInf * 4, `tank destroyer vs tank ${vsTank}, vs infantry ${vsInf}`);
   assert.ok(CFG.tankDestroyer.speed > CFG.antitank.speed, 'faster than a towed anti-tank gun');
 });
+
+test('tanks fire at range: the bigger gun reaches further; half damage to troops and on the move', () => {
+  const T = { id: 'M1', kind: 'land' };
+  const setup = (aT, dT, gap, moving = false) => {
+    const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { [aT]: 1 }, dTroops: { [dT]: 1 }, cfg: { ...CFG, dotsPerUnit: 1 }, rand: () => 0.5 });
+    b.terrain = b.terrain.map((row) => '.'.repeat(row.length));
+    const a = b.dots.find((d) => d.side === 'A');
+    const d = b.dots.find((x) => x.side === 'D');
+    Object.assign(a, { x: 30, y: 20, tx: moving ? 10 : 30, ty: 20 });
+    Object.assign(d, { x: 30 + gap, y: 20, tx: 30 + gap, ty: 20 });
+    b.auto = { A: false, D: false };
+    b.ordered = { A: true, D: true };
+    b.gunsHeld = { A: { [a.unit]: true }, D: { [d.unit]: true } };
+    tw.stepBattle(b, 0.1, CFG);
+    return { a: a.max - a.hp, d: d.max - d.hp };
+  };
+  // 5 squares apart: a heavy (range 6) hits a medium (range 4), which can't hit back.
+  const duel = setup('heavyTank', 'mediumTank', 5);
+  assert.ok(duel.d > 0, 'the heavy hits');
+  assert.equal(duel.a, 0, 'the medium is out of range');
+  // Against infantry at range, a tank does tankRangedSoftPct of what it does to armour-equivalent targets.
+  const vsInf = setup('mediumTank', 'infantry', 3).d;
+  const vsInfMoving = setup('mediumTank', 'infantry', 3, true).d;
+  assert.ok(Math.abs(vsInfMoving / vsInf - CFG.movingFirePct / 100) < 0.05, `moving: ${vsInf} -> ${vsInfMoving}`);
+  assert.equal(CFG.antitank.range, 5, 'anti-tank guns fire from behind the line');
+});
+
+// ---------------------------------------------------------------- generals
+test('generals: everyone starts with one on their capital; appoint more (max 3); move them; promote an Elite', () => {
+  let s = game();
+  for (const p of s.players) assert.equal(s.generals.filter((g) => g.seat === p.seat && g.tile === p.homeTile).length, 1);
+  const g0 = s.generals.find((g) => g.seat === 0);
+  assert.ok(g0.name && ['tank', 'defender', 'swift', 'artillerist'].includes(g0.trait));
+  s = act(s, 0, 'trainGeneral', { tile: 'C0', materials: bag(CFG.generalCost) });
+  assert.equal(s.generals.filter((g) => g.seat === 0).length, 2);
+  s = act(s, 0, 'moveGeneral', { id: g0.id, to: 'M0' });
+  assert.equal(s.generals.find((g) => g.id === g0.id).tile, 'M0');
+  // Promote an Elite: the unit leaves the ranks, a seasoned general appears.
+  s = put(s, 'E0', 0, { infantry: 2 });
+  s = edit(s, (c) => (tile(c, 'E0').vet = { 0: { infantry: [0, 0, 1] } }));
+  s = act(s, 0, 'promoteGeneral', { tile: 'E0', unit: 'infantry' });
+  const promoted = s.generals.find((g) => g.seat === 0 && g.tile === 'E0');
+  assert.ok(promoted && promoted.xp === 1);
+  assert.equal(tile(s, 'E0').troops[0].infantry, 1);
+  assert.throws(() => act(s, 0, 'trainGeneral', { tile: 'C0', materials: bag(CFG.generalCost) }), /at most 3/);
+});
+
+test('generals in battle: an aura makes nearby units fight harder; the general dies with their unit', () => {
+  const T = { id: 'M1', kind: 'land' };
+  const run = (generals) => {
+    const b = tw.createBattle({ id: 1, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { infantry: 1 }, dTroops: { infantry: 1 }, cfg: { ...CFG, dotsPerUnit: 1 }, rand: () => 0.5, generals });
+    b.terrain = b.terrain.map((row) => '.'.repeat(row.length));
+    const a = b.dots.find((d) => d.side === 'A');
+    const d = b.dots.find((x) => x.side === 'D');
+    Object.assign(a, { x: 30, y: 20, tx: 30, ty: 20 });
+    Object.assign(d, { x: 31, y: 20, tx: 31, ty: 20 });
+    b.auto = { A: false, D: false };
+    b.ordered = { A: true, D: true };
+    tw.stepBattle(b, 0.5, CFG);
+    return { b, dmg: d.max - d.hp };
+  };
+  const plain = run(null).dmg;
+  const led = run({ A: { id: 1, name: 'X', trait: 'swift', xp: 0 }, D: null });
+  assert.ok(led.b.gen.A && led.b.dots.some((x) => x.gen), 'the general rides with a unit');
+  assert.ok(Math.abs(led.dmg / plain - (1 + CFG.generalAuraPct / 100)) < 0.01, `aura: ${plain} -> ${led.dmg}`);
+  // Kill the general's unit: the general falls and that side is shaken.
+  const b = led.b;
+  b.dots = b.dots.filter((x) => !x.gen);
+  tw.stepBattle(b, 0.1, CFG);
+  assert.equal(b.genDead.A, true);
+  assert.ok(b.shakenUntil.A > b.time);
+});
+
+test('generals left alone on a tile that falls are captured', () => {
+  let s = game();
+  const g1 = s.generals.find((g) => g.seat === 1);
+  s = edit(s, (c) => {
+    tile(c, 'M1').controller = 0; // a province already taken: the capital is open
+    c.generals.find((g) => g.id === g1.id).tile = 'C1';
+  });
+  s = put(s, 'M1', 0, { infantry: 2 });
+  s = put(s, 'C1', 1, {});
+  s = edit(s, (c) => (tile(c, 'C1').controller = 1));
+  s = allReady(s);
+  s = act(s, 0, 'choose', { action: 'attack', target: 'C1', from: 'M1', count: 2, troops: { infantry: 2 } });
+  for (const p of s.players) if (!p.choice) s = act(s, p.seat, 'choose', { action: 'sustainable', mix: p.biome === 'mixed' ? { wood: 3 } : undefined });
+  assert.ok(!s.generals.some((g) => g.id === g1.id), 'captured');
+  assert.ok(s.log.some((e) => /is captured/.test(e.text)));
+});

@@ -349,6 +349,31 @@ function fleetMoveIdea(g, me, P) {
   return { key: `fleet-${g.round}-${stack.id}-${to.id}`, action: { type: 'moveUnits', from: stack.id, to: to.id, count: 1, troops: { [type]: 1 } } };
 }
 
+/**
+ * Generals: keep each one with our biggest stack (that's where the battles are), and
+ * appoint a second one once the army is big enough to fight on two fronts.
+ */
+function generalIdea(g, me, P) {
+  const cfg = g.settings.totalwar;
+  const mine = (g.generals || []).filter((gn) => gn.seat === g.you && gn.tile);
+  const stacks = g.board.tiles.filter((t) => t.kind === 'land' && t.controller === g.you && unitsOn(t, g.you) > 0).sort((a, b) => unitsOn(b, g.you) - unitsOn(a, g.you));
+  if (!stacks.length) return null;
+  // Move a general that sits away from the troops to the biggest stack without a general.
+  const led = new Set(mine.map((gn) => gn.tile));
+  const target = stacks.find((t) => !led.has(t.id));
+  const here = (gn) => unitsOn(g.board.tiles.find((t) => t.id === gn.tile), g.you);
+  const idle = mine.find((gn) => here(gn) < 2);
+  // At most one move per general per round, and only towards a bigger stack.
+  if (idle && target && target.id !== idle.tile && unitsOn(target, g.you) > here(idle)) return { key: `gen-move-${g.round}-${idle.id}`, action: { type: 'moveGeneral', id: idle.id, to: target.id } };
+  // A second (third) general for a big army.
+  const all = (g.generals || []).filter((gn) => gn.seat === g.you).length;
+  const spare = total(me.materials) - reserve(g, me, 1);
+  if (all < Math.min(cfg.generalMax, me.units >= 12 ? 3 : me.units >= 6 ? 2 : 1) && spare >= cfg.generalCost + 2 && target) {
+    return { key: `gen-new-${g.round}-${all}`, action: { type: 'trainGeneral', tile: target.id, materials: payFromLargest(me, cfg.generalCost) } };
+  }
+  return null;
+}
+
 /** Shell an enemy coast from our cruisers / battleships: the most units there, from players we'd hit. */
 function bombardIdea(g, me, P) {
   const opts = Object.entries(g.bombardTargets || {});
@@ -513,6 +538,8 @@ function buildStep(g, me, P, mem, fresh) {
       if (fm && fresh(fm.key)) return fm;
       const bb = g.tw ? bombardIdea(g, me, P) : null;
       if (bb && fresh(bb.key)) return bb;
+      const gi = g.tw ? generalIdea(g, me, P) : null;
+      if (gi && fresh(gi.key)) return gi;
     }
     // 5. Overlords give their puppets orders.
     for (const q of me.puppets || []) {

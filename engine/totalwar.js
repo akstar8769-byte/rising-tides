@@ -254,7 +254,7 @@ function defenceFactor(ch, cfg) {
  * `rand` is the game's seeded random number function, so battles replay exactly.
  * bombard: { A, D } shore-bombardment damage per second from ships offshore.
  */
-function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null, tech = null }) {
+function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroops, dTroops, cfg, rand, bombard = null, levels = null, ranks = null, tech = null, generals = null }) {
   const dpu = Math.max(1, Math.min(SLOTS.length, cfg.dotsPerUnit || 1));
   const b = {
     id,
@@ -288,6 +288,12 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
     shots: [], // recent shells, for the battle screen
     levels: levels || { A: {}, D: {} }, // research levels: { side: { type: level } }
     tech: tech || { A: {}, D: {} }, // battle-relevant research: { side: { bazooka: true } }
+    // Generals: genPack = who came (passed on from an air battle to the land battle);
+    // gen = who leads here and which unit they ride with; genDead = killed in this battle.
+    genPack: generals || { A: null, D: null },
+    gen: { A: null, D: null },
+    genDead: { A: false, D: false },
+    shakenUntil: { A: -1, D: -1 },
     // Veterans: { side: { type: [seasoned, veteran, elite] } } brought into the battle; the
     // best are handed out first, whatever isn't used (e.g. planes held in reserve) is kept here.
     rankLeft: JSON.parse(JSON.stringify(ranks || { A: {}, D: {} })),
@@ -340,6 +346,19 @@ function createBattle({ id, kind = 'land', tile, from, attacker, defender, aTroo
   };
   place('A', attacker, aTroops);
   place('D', defender, dTroops);
+  // Each general rides with that side's toughest ground unit (never guns or aircraft if there's a choice).
+  if (kind === 'land')
+    for (const side of SIDES) {
+      const pk = b.genPack[side];
+      if (!pk) continue;
+      const mine = b.dots.filter((d) => d.side === side && !isAir(d));
+      if (!mine.length) continue;
+      const pickable = mine.filter((d) => !ARS.GUNS.includes(d.type));
+      const pool = pickable.length ? pickable : mine;
+      const lead = pool.reduce((a, d) => (d.max > a.max ? d : a));
+      b.gen[side] = { ...pk, unit: lead.unit };
+      for (const d of b.dots) if (d.side === side && d.unit === lead.unit) d.gen = true;
+    }
   if (kind === 'land') computeSupply(b);
   return b;
 }
@@ -622,6 +641,22 @@ function stepBattle(b, dt, cfg) {
   b.time += dt;
   const dpu = b.dpu || 1;
   const bonus = { A: formationBonus(b, 'A', cfg), D: formationBonus(b, 'D', cfg) };
+  // Generals: where each one is, how far the aura reaches; a general whose unit is gone has fallen.
+  const aura = { A: null, D: null };
+  for (const side of SIDES) {
+    const gn = b.gen && b.gen[side];
+    if (!gn || b.genDead[side]) continue;
+    const at = b.dots.find((d) => d.side === side && d.gen);
+    if (!at) {
+      b.genDead[side] = true;
+      b.shakenUntil[side] = b.time + (cfg.generalShakeSeconds ?? 8);
+      continue;
+    }
+    const xp = Math.min(gn.xp || 0, cfg.generalMaxXp ?? 3);
+    aura[side] = { x: at.x, y: at.y, r: (cfg.generalAuraRadius ?? 6) + xp * (cfg.generalXpRadius ?? 1), pct: (cfg.generalAuraPct ?? 15) + xp * (cfg.generalXpPct ?? 5), trait: gn.trait };
+    if (gn.trait === 'swift') bonus[side] = { ...bonus[side], spd: bonus[side].spd * (1 + (cfg.traitSwiftPct ?? 10) / 100) };
+  }
+  const inAura = (d) => aura[d.side] && dist(d, aura[d.side]) <= aura[d.side].r;
 
   // Sides that never gave an order get the computer's help.
   for (const side of SIDES) {
@@ -702,6 +737,11 @@ function stepBattle(b, dt, cfg) {
       const ground = terrainAt(b, d.x, d.y);
       if (ARS.AMBUSHERS.includes(d.type) && (ground === 'f' || ground === 'h')) m *= (cfg.ambushVsArmorPct ?? 150) / 100;
     }
+    if (inAura(d)) {
+      m *= 1 + aura[d.side].pct / 100;
+      if (aura[d.side].trait === 'tank' && ARS.UNITS[d.type].cls === 'armor') m *= 1 + (cfg.traitBonusPct ?? 20) / 100;
+    }
+    if (b.time < b.shakenUntil[d.side]) m *= 1 - (cfg.generalShakePct ?? 10) / 100; // their general just fell
     let dmg = ((cfg[d.type].attack * lvl(b, d, cfg.levelAttackPct) * rankBoost(d.rk, cfg.rankBonusPct)) / dpu) * m * base * bonus[d.side].att * dt;
     if (d.cut) dmg *= 0.75; // cut-off troops are low on supplies
     if (dmg > 0) damage.set(target, (damage.get(target) || 0) + dmg);
@@ -728,20 +768,33 @@ function stepBattle(b, dt, cfg) {
     let range = cfg[d.type].range || 0;
     if (!range) continue;
     if (ARS.GUNS.includes(d.type) && b.formation[d.side] === 'firebase') range += 3;
+    if (ARS.GUNS.includes(d.type) && inAura(d) && aura[d.side].trait === 'artillerist') range += cfg.traitArtilleryRange ?? 3;
+    // Direct fire: tanks, tank destroyers and anti-tank guns shoot what they're best
+    // against within range (armour first); artillery and anti-air take the nearest.
+    const direct = DIRECT_FIRE.includes(d.type);
     let target = null;
-    let best = range;
+    let best = direct ? -Infinity : range;
     for (const e of b.dots) {
       if (e.side === d.side || ARS.matchup(d.type, e.type, cfg) <= 0) continue;
       if (d.type === 'antiair' && !isAir(e)) continue; // anti-air saves its fire for aircraft
       const dd = dist(d, e);
-      if (dd <= best) {
-        best = dd;
+      if (dd > range) continue;
+      const score = direct ? ARS.matchup(d.type, e.type, cfg) * 100 - dd : -dd;
+      if (direct ? score > best : dd <= best) {
+        best = direct ? score : dd;
         target = e;
       }
     }
     if (target) {
-      hit(d, target, 1);
-      shoot(b, d, target, d.type);
+      let base = 1;
+      if (direct) {
+        // Tanks firing high-explosive at troops from a distance do less than up close.
+        if (ARS.TANKS.includes(d.type) && ARS.UNITS[target.type].cls !== 'armor') base *= (cfg.tankRangedSoftPct ?? 50) / 100;
+        // Firing on the move is inaccurate.
+        if (Math.hypot(d.tx - d.x, d.ty - d.y) > 0.15) base *= (cfg.movingFirePct ?? 50) / 100;
+      }
+      hit(d, target, base);
+      shoot(b, d, target, direct ? 'tank' : d.type);
     }
   }
   // Shore bombardment: ships offshore shell the enemy troops nearest the flag.
@@ -760,6 +813,10 @@ function stepBattle(b, dt, cfg) {
   }
   for (const [t, dmg] of damage) {
     let mult = isAir(t) ? 1 : 1 / defenceFactor(terrainAt(b, t.x, t.y), cfg);
+    if (inAura(t)) {
+      mult /= 1 + aura[t.side].pct / 100; // tougher near their general
+      if (aura[t.side].trait === 'defender' && t.side === 'D') mult *= 1 - (cfg.traitBonusPct ?? 20) / 100;
+    }
     mult /= bonus[t.side].def;
     if (t.cut) mult *= cfg.cutOffDamagePct / 100;
     if (flanked(t, contact.get(t))) mult *= cfg.flankDamagePct / 100;
@@ -849,6 +906,8 @@ function unitsSurrendered(b, side) {
 }
 
 const r1 = (n) => Math.round(n * 10) / 10;
+/** Units whose ranged fire is aimed gunfire (tanks, tank destroyers, anti-tank guns). */
+const DIRECT_FIRE = ['lightTank', 'mediumTank', 'heavyTank', 'tankDestroyer', 'antitank'];
 /** Dots bucketed into CONTACT-sized cells, so neighbour checks don't scan the whole battle. */
 function gridOf(dots) {
   const m = new Map();
@@ -908,6 +967,8 @@ function snapshot(b) {
     forms: { A: availableFormations(b, 'A'), D: availableFormations(b, 'D') },
     terr: territoryString(b),
     lv: b.levels,
+    gen: b.gen,
+    genDead: b.genDead,
     // Shells fired since the last snapshot (each is sent once, then forgotten)
     shots: (b.shots || []).splice(0).map((s) => [r1(s.x1), r1(s.y1), r1(s.x2), r1(s.y2), s.k]),
     dots: b.dots.map((d) => [

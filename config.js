@@ -156,7 +156,7 @@ const DEFAULTS = {
     // vsArmorPct = damage against tanks / mechanised, vsAirPct = damage against aircraft.
     militia: { cost: 2, upkeep: 1, hp: 10, attack: 1, speed: 3, range: 0, vsArmorPct: 30, vsAirPct: 0 },
     // Specialists: anti-tank shreds armour, anti-air shreds aircraft; both are nearly useless against troops.
-    antitank: { cost: 4, upkeep: 1, hp: 12, attack: 1, speed: 2.5, range: 0, vsArmorPct: 600, vsAirPct: 0, vsSoftPct: 15 },
+    antitank: { cost: 4, upkeep: 1, hp: 12, attack: 1, speed: 2.5, range: 5, vsArmorPct: 600, vsAirPct: 0, vsSoftPct: 15 },
     antiair: { cost: 4, upkeep: 1, hp: 12, attack: 0.8, speed: 2.5, range: 7, vsArmorPct: 10, vsAirPct: 500, vsSoftPct: 15 },
     infantry: { cost: 4, upkeep: 1, hp: 18, attack: 1.5, speed: 2.5, range: 0, vsArmorPct: 40, vsAirPct: 0 },
     motorised: { cost: 5, upkeep: 1, hp: 20, attack: 1.6, speed: 4, range: 0, vsArmorPct: 50, vsAirPct: 0 },
@@ -164,13 +164,29 @@ const DEFAULTS = {
     cavalry: { cost: 5, upkeep: 2, hp: 12, attack: 1.5, speed: 5, range: 0, vsArmorPct: 20, vsAirPct: 0 },
     artillery: { cost: 6, upkeep: 1, hp: 10, attack: 2.2, speed: 1.8, range: 14, vsArmorPct: 60, vsAirPct: 0 },
     spArtillery: { cost: 9, upkeep: 2, hp: 16, attack: 2.4, speed: 4, range: 14, vsArmorPct: 60, vsAirPct: 0 }, // self-propelled: keeps up with tanks
-    lightTank: { cost: 6, upkeep: 2, hp: 20, attack: 2.4, speed: 5, range: 0, vsArmorPct: 100, vsAirPct: 0 },
-    mediumTank: { cost: 8, upkeep: 2, hp: 30, attack: 3, speed: 4.5, range: 0, vsArmorPct: 120, vsAirPct: 0 },
-    heavyTank: { cost: 11, upkeep: 3, hp: 45, attack: 4, speed: 3, range: 0, vsArmorPct: 150, vsAirPct: 0 },
+    // Tanks shoot at range too (ranges in battlefield squares): full damage to armour, tankRangedSoftPct to troops; half on the move.
+    lightTank: { cost: 6, upkeep: 2, hp: 20, attack: 2.4, speed: 5, range: 3, vsArmorPct: 100, vsAirPct: 0 },
+    mediumTank: { cost: 8, upkeep: 2, hp: 30, attack: 3, speed: 4.5, range: 4, vsArmorPct: 120, vsAirPct: 0 },
+    heavyTank: { cost: 11, upkeep: 3, hp: 45, attack: 4, speed: 3, range: 6, vsArmorPct: 150, vsAirPct: 0 },
     // Tank destroyer: armoured and quick, built to kill tanks, so-so against troops (upgrade from anti-tank guns).
-    tankDestroyer: { cost: 8, upkeep: 2, hp: 24, attack: 2.4, speed: 4.5, range: 0, vsArmorPct: 300, vsAirPct: 0, vsSoftPct: 50 },
+    tankDestroyer: { cost: 8, upkeep: 2, hp: 24, attack: 2.4, speed: 4.5, range: 6, vsArmorPct: 300, vsAirPct: 0, vsSoftPct: 50 },
     interceptor: { cost: 6, upkeep: 2, hp: 14, attack: 3, speed: 9, range: 0, vsArmorPct: 0, vsAirPct: 100 },
     bomber: { cost: 8, upkeep: 2, hp: 16, attack: 6, speed: 7, range: 0, vsArmorPct: 160, vsAirPct: 20, vsSoftPct: 130 },
+    // Generals: everyone starts with one; appoint more or promote an Elite ★★★ unit.
+    generalCost: 10,             // materials to appoint a general
+    generalMax: 3,               // most generals a player may have
+    generalAuraRadius: 6,        // units this close to their general get the bonus (battlefield squares)
+    generalAuraPct: 15,          // ...+this % damage and toughness
+    generalXpRadius: 1,          // each win: aura +1 square...
+    generalXpPct: 5,             // ...and +5% bonus
+    generalMaxXp: 3,             // up to this many wins count
+    generalShakeSeconds: 8,      // when a general dies, that side fights worse for this long...
+    generalShakePct: 10,         // ...by this %
+    traitBonusPct: 20,           // Tank commander: armour in the aura +20% damage; Defender: units in the aura take 20% less when defending
+    traitSwiftPct: 10,           // Swift: the whole army +10% speed
+    traitArtilleryRange: 3,      // Artillerist: guns in the aura reach 3 squares further
+    tankRangedSoftPct: 50,       // tanks firing at troops from a distance do this % (high-explosive shells); full damage up close
+    movingFirePct: 50,           // tanks, tank destroyers and anti-tank guns firing on the move do this %
     bazookaVsArmorPct: 100,      // with Bazookas, infantry / motorised / mechanised do at least this % of their damage to tanks
     ambushVsArmorPct: 150,       // foot soldiers standing in a forest or on a hill do this % damage to tanks (ambush)
     tankForestSpeedPct: 40,      // tanks, tank destroyers and self-propelled guns move this % of their speed in forests...
@@ -499,6 +515,24 @@ LIMITS['totalwar.botBonusBrutal'] = [0, 30];
 LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
 LABELS['totalwar.artilleryMeleeAttackPct'] = 'Artillery in close combat: damage dealt (%)';
 LABELS['totalwar.artilleryMeleeDamageTakenPct'] = 'Artillery in close combat: damage taken (%)';
+LABELS['totalwar.generalCost'] = 'Generals: cost to appoint';
+LABELS['totalwar.generalMax'] = 'Generals: most per player';
+LABELS['totalwar.generalAuraRadius'] = 'Generals: aura radius (squares)';
+LABELS['totalwar.generalAuraPct'] = 'Generals: aura bonus to damage and toughness (%)';
+LABELS['totalwar.generalXpRadius'] = 'Generals: extra aura radius per win';
+LABELS['totalwar.generalXpPct'] = 'Generals: extra bonus per win (%)';
+LABELS['totalwar.generalMaxXp'] = 'Generals: most wins that count';
+LABELS['totalwar.generalShakeSeconds'] = 'Generals: seconds an army is shaken when its general dies';
+LABELS['totalwar.generalShakePct'] = 'Generals: shaken army damage loss (%)';
+LABELS['totalwar.traitBonusPct'] = 'Traits: Tank commander / Defender bonus (%)';
+LABELS['totalwar.traitSwiftPct'] = 'Traits: Swift speed bonus (%)';
+LABELS['totalwar.traitArtilleryRange'] = 'Traits: Artillerist extra range';
+LIMITS['totalwar.generalMax'] = [0, 10];
+LIMITS['totalwar.generalCost'] = [1, 60];
+LABELS['totalwar.tankRangedSoftPct'] = 'Tanks firing at troops from range: damage (%)';
+LABELS['totalwar.movingFirePct'] = 'Tanks / anti-tank firing on the move: damage (%)';
+LIMITS['totalwar.tankRangedSoftPct'] = [0, 200];
+LIMITS['totalwar.movingFirePct'] = [0, 100];
 LABELS['totalwar.bazookaVsArmorPct'] = 'Bazookas: infantry damage vs tanks (%, at least)';
 LABELS['totalwar.ambushVsArmorPct'] = 'Ambush: foot soldiers in forests / hills vs tanks (%)';
 LABELS['totalwar.tankForestSpeedPct'] = 'Tanks in forests: speed (%)';

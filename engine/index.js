@@ -181,6 +181,8 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
     // Stationed units: everyone's starting militia stands on their capital.
     for (const p of state.players) state.board.tiles.find((t) => t.id === p.homeTile).units[p.seat] = p.units;
   }
+  // Total War: everyone starts with one general on their capital.
+  if (mode === 'totalwar') for (const p of state.players) war.newGeneral(state, p.seat, p.homeTile);
   const modeName = { base: 'Base', war: 'War', empire: 'War + Empire', totalwar: 'Total War' }[mode];
   addLog(state, `Game started: ${players.length} players, ${modeName} mode. Flood starts at ${state.flood}; catastrophe at ${base.threshold(state)}${mode === 'base' ? '' : `; the Climate Accord breaks at ${settings.war.accordLine}`}.`, { kind: 'round' });
   addLog(state, `Round 1 begins. Starting player: ${state.players[0].name}. Talk & build, then press Ready.`, { kind: 'round' });

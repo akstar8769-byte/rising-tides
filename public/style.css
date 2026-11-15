@@ -841,3 +841,6 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .tut-btns.pick { flex-direction: column; }
 .tut-btns.pick .btn { width: 100%; }
 @media (prefers-reduced-motion: reduce) { .tut-spot.pulse { animation: none; } }
+
+/* Generals */
+#battle-svg .gen-flag { font-size: 1.6px; fill: #f3c623; stroke: #6b4a00; stroke-width: 0.08px; paint-order: stroke; pointer-events: none; }

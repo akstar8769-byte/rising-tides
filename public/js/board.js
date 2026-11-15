@@ -25,12 +25,13 @@ function hexPoints(cx, cy, r) {
 }
 
 /** Stationed units: a dark badge like "⚔3" (or "⚔2+1" when an overlord helps defend). */
-function unitBadge(t, x, y) {
+function unitBadge(t, x, y, game) {
   const stacks = Object.entries(t.units || {}).filter(([, n]) => n > 0);
   if (!stacks.length) return '';
   stacks.sort(([a], [b]) => (Number(b) === t.controller) - (Number(a) === t.controller));
   const vets = t.vet && t.vet[stacks[0][0]] ? Object.values(t.vet[stacks[0][0]]).reduce((a, r) => a + r[0] + r[1] + r[2], 0) : 0;
-  const label = '⚔' + stacks.map(([, n]) => n).join('+');
+  const gens = ((game && game.generals) || []).filter((gn) => gn.tile === t.id).length;
+  const label = (gens ? '⚑' : '') + '⚔' + stacks.map(([, n]) => n).join('+');
   const w = 16 + label.length * 9;
   const bx = x - 38;
   const by = y - 34;
@@ -97,7 +98,7 @@ export function renderBoard(game, opts = {}) {
         <polygon points="${hexPoints(x, y, SIZE - 2)}" fill="#1f4e79" stroke="${hold ? hold.color : '#ffffff'}" stroke-width="${hold ? 6 : 2}"/>
         <text x="${x}" y="${y - 4}" class="glyph">${t.fish ? '🐟' : '🌊'}</text>
         <text x="${x}" y="${y + 38}" class="tid" style="fill:#fff">${t.id}</text>
-        ${game.stationed ? unitBadge(t, x, y) : ''}${ring}</g>`;
+        ${game.stationed ? unitBadge(t, x, y, game) : ''}${ring}</g>`;
     }
     const b = BIOME[t.biome];
     const owner = t.owner != null ? game.players[t.owner] : null;
@@ -136,7 +137,7 @@ export function renderBoard(game, opts = {}) {
     }
     if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
     if ((game.blockaded || []).includes(t.id)) inner += `<text x="${x - 28}" y="${y - 20}" class="marks"><title>Blockaded: enemy ships offshore, no income</title>⚓</text>`;
-    if (game.stationed) inner += unitBadge(t, x, y);
+    if (game.stationed) inner += unitBadge(t, x, y, game);
     if (t.factory) inner += factoryBadge(t, x, y);
     else if (t.controller == null && !owner && game.factories) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
     let cls = 'tile';

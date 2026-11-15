@@ -321,6 +321,14 @@ const actions = {
     render();
   },
   tileMenu: (ds, el) => {
+    // Sending a general: the next tile tapped is where they go.
+    if (store.ui.genMove) {
+      const id = store.ui.genMove;
+      store.ui.genMove = null;
+      act({ type: 'moveGeneral', id, to: ds.tile });
+      render();
+      return;
+    }
     const r = el.getBoundingClientRect();
     store.ui.tileMenu = store.ui.tileMenu && store.ui.tileMenu.id === ds.tile ? null : { id: ds.tile, x: r.left + r.width / 2, y: r.bottom };
     store.ui.rival = null;
@@ -339,6 +347,24 @@ const actions = {
     render();
   },
   tutorial: () => startTutorial(),
+  genMovePick: (ds) => {
+    store.ui.genMove = +ds.id;
+    store.ui.tileMenu = null;
+    toast('Tap one of your tiles to send the general there.');
+    render();
+  },
+  trainGeneral: (ds) => {
+    const g = store.data.game;
+    const pay = payLargest(g.players[g.you].materials, g.settings.totalwar.generalCost);
+    store.ui.tileMenu = null;
+    if (pay) act({ type: 'trainGeneral', tile: ds.tile, materials: pay });
+    render();
+  },
+  promoteGeneral: (ds) => {
+    store.ui.tileMenu = null;
+    act({ type: 'promoteGeneral', tile: ds.tile, unit: ds.unit });
+    render();
+  },
   closeTileMenu: () => {
     store.ui.tileMenu = null;
     render();
