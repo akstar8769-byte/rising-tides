@@ -228,3 +228,91 @@ test('France 1940: taking Paris wins for Germany', () => {
   assert.equal(s.phase, 'ended');
   assert.equal(s.outcome.scenario.side, 'axis');
 });
+
+// ---------------------------------------------------------------- bunkers (all Total War games)
+test('bunkers: need Fortifications research, cost 5 / 8 / 12, top out at level 3', () => {
+  let s = newGame({ mode: 'totalwar', n: 3, oceans: true });
+  const home = s.players[0].homeTile;
+  s.players[0].materials = { wood: 30, stone: 30, sandbag: 30 };
+  assert.throws(() => act(s, 0, 'buildBunker', { tile: home, materials: { wood: 5, stone: 0, sandbag: 0 } }), /Research Fortifications/);
+  s.players[0].research.done.push('fortifications');
+  assert.throws(() => act(s, 0, 'buildBunker', { tile: home, materials: { wood: 4, stone: 0, sandbag: 0 } }), /costs 5/);
+  assert.throws(() => act(s, 0, 'buildBunker', { tile: s.players[1].homeTile, materials: { wood: 5, stone: 0, sandbag: 0 } }), /land you hold/);
+  s = act(s, 0, 'buildBunker', { tile: home, materials: { wood: 5, stone: 0, sandbag: 0 } });
+  s = act(s, 0, 'buildBunker', { tile: home, materials: { wood: 8, stone: 0, sandbag: 0 } });
+  s = act(s, 0, 'buildBunker', { tile: home, materials: { wood: 12, stone: 0, sandbag: 0 } });
+  assert.equal(s.board.tiles.find((t) => t.id === home).bunker, 3);
+  assert.throws(() => act(s, 0, 'buildBunker', { tile: home, materials: { wood: 5, stone: 0, sandbag: 0 } }), /top level/);
+  assert.equal(s.players[0].materials.wood, 5);
+  assert.ok(engine.viewFor(s, 0).tw.techs.some((t) => t.id === 'fortifications'));
+});
+
+test('bunkers: defenders take 15% less damage per level, and a captured bunker loses a level', () => {
+  const tw = require('../engine/totalwar');
+  const s = newGame({ mode: 'totalwar', n: 3, oceans: true });
+  const T = s.board.tiles.find((t) => t.id === s.players[1].homeTile);
+  const run = (fort) => {
+    const cfg = { ...s.settings.totalwar, dotsPerUnit: 1 };
+    const b = tw.createBattle({ id: 1, tile: T, from: T, attacker: 0, defender: 1, aTroops: { infantry: 1 }, dTroops: { infantry: 1 }, cfg, rand: () => 0.5, fort });
+    const [a, d] = [b.dots.find((x) => x.side === 'A'), b.dots.find((x) => x.side === 'D')];
+    Object.assign(a, { x: 46, y: 20, tx: 46, ty: 20 });
+    Object.assign(d, { x: 47, y: 20, tx: 47, ty: 20 });
+    tw.stepBattle(b, 1, cfg);
+    return d.max - d.hp;
+  };
+  const open = run(null);
+  assert.ok(Math.abs(run(70) - open * 0.7) < 1e-9, 'level 2 = 70% damage');
+  // A level-2 bunker is a level-1 bunker for whoever takes the tile.
+  let g = newGame({ mode: 'totalwar', n: 3, oceans: true });
+  const tgt = g.attackTargets ? null : null;
+  const v = engine.viewFor(g, 0);
+  const id = v.attackTargets.find((x) => g.board.tiles.find((t) => t.id === x).kind === 'land');
+  const tile = g.board.tiles.find((t) => t.id === id);
+  tile.bunker = 2;
+  if (tile.controller == null) Object.assign(tile, { controller: 1, owner: 1, role: 'province' }); // an enemy tile, undefended
+  tile.troops = {};
+  tile.units = {};
+  g = allReady(g);
+  const src = engine.viewFor(g, 0).attackSources[id][0];
+  g = act(g, 0, 'choose', { action: 'attack', target: id, from: src.tile, troops: { militia: src.units } });
+  for (const seat of [1, 2]) g = act(g, seat, 'choose', { action: 'sustainable', mix: g.players[seat].biome === 'mixed' ? { wood: 2, stone: 0, sandbag: 0 } : undefined });
+  const after = g.board.tiles.find((t) => t.id === id);
+  assert.equal(after.controller, 0);
+  assert.equal(after.bunker, 1);
+});
+
+// ---------------------------------------------------------------- North Africa, 1941
+const africa = (n = 2, style = 'balanced') =>
+  newGame({ mode: 'totalwar', n, oceans: true, biomes: Array(n).fill('forest'), settings: (c) => ((c.totalwar.scenario = 'northAfrica41'), (c.totalwar.scenarioStyle = style)) });
+
+test('North Africa 1941: Axis vs Allies along the coast, Tobruk and El Alamein bunkered, one connected front', () => {
+  const s = africa(2);
+  assert.equal(city(s, 'Tripoli').controller, 0);
+  assert.equal(city(s, 'Cairo').controller, 1);
+  assert.equal(city(s, 'Tobruk').bunker, 2);
+  assert.equal(city(s, 'El Alamein').bunker, 1);
+  assert.ok(s.board.tiles.filter((t) => t.kind === 'land').every((t) => t.terrain));
+  const v = engine.viewFor(s, 0);
+  assert.equal(v.scenario.name, 'North Africa, 1941');
+  assert.deepEqual(v.scenario.victoryCities, ['Benghazi', 'Tobruk', 'Alexandria']);
+});
+
+test('scenarios: losing a regional HQ does not surrender the region', () => {
+  let s = africa(3); // Axis: Italy (Tripoli) + Afrika Korps & desert (Benghazi); Allies: one player
+  const benghazi = city(s, 'Benghazi');
+  assert.equal(benghazi.owner, 2);
+  const { areAdjacent } = require('../engine/board');
+  const next = s.board.tiles.find((t) => t.kind === 'land' && t.controller === 2 && t !== benghazi && areAdjacent(t, benghazi));
+  next.controller = 1;
+  next.troops = { 1: { infantry: 4 } };
+  next.units = { 1: 4 };
+  benghazi.troops = {};
+  benghazi.units = {};
+  const before = s.board.tiles.filter((t) => t.controller === 2).length;
+  s = allReady(s);
+  s = act(s, 1, 'choose', { action: 'attack', target: benghazi.id, from: next.id, troops: { infantry: 4 } });
+  for (const seat of [0, 2]) s = act(s, seat, 'choose', { action: 'sustainable', mix: { wood: 0, stone: 0, sandbag: 0 } });
+  assert.equal(city(s, 'Benghazi').controller, 1);
+  assert.equal(s.board.tiles.filter((t) => t.controller === 2).length, before - 1, 'only Benghazi changed hands');
+  assert.notEqual(s.phase, 'ended');
+});

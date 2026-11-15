@@ -862,3 +862,5 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .scen-card .goals li { margin: 4px 0; }
 @media (max-width: 700px) { .scen-pill { display: none; } }
 .board .fort-mark text { font-size: 16px; text-anchor: middle; pointer-events: none; }
+.board .bunker-mark rect { fill: #4a4a4a; stroke: #f3c623; stroke-width: 1.5; }
+.board .bunker-mark text { fill: #fff; font-size: 12px; font-weight: 700; text-anchor: middle; pointer-events: none; }

@@ -353,6 +353,14 @@ const actions = {
     toast('Tap one of your tiles to send the general there.');
     render();
   },
+  buildBunker: (ds) => {
+    const g = store.data.game;
+    const t = g.board.tiles.find((x) => x.id === ds.tile);
+    const pay = payLargest(g.players[g.you].materials, g.settings.totalwar[`bunkerCost${(t.bunker || 0) + 1}`]);
+    store.ui.tileMenu = null;
+    if (pay) act({ type: 'buildBunker', tile: ds.tile, materials: pay });
+    render();
+  },
   trainGeneral: (ds) => {
     const g = store.data.game;
     const pay = payLargest(g.players[g.you].materials, g.settings.totalwar.generalCost);

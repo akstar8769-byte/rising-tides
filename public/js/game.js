@@ -192,7 +192,7 @@ function tileMenu(store) {
   const top = Math.max(8, Math.min(m.y + 6, (typeof innerHeight === 'number' ? innerHeight : 800) - 300));
   return `<div class="tile-menu" style="left:${left}px;top:${top}px;width:${w}px" role="dialog" aria-label="${esc(tileLabel(g, t.id))}">
     <div class="tm-head"><b>${esc(tileLabel(g, t.id))}</b><button class="icon-btn" data-act="closeTileMenu" aria-label="Close">✕</button></div>
-    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}${g.mode === 'totalwar' && TERRAIN[t.terrain] ? `<br>${TERRAIN[t.terrain].glyph} <b>${TERRAIN[t.terrain].label}</b> — ${TERRAIN[t.terrain].note}` : ''}${t.fort ? `<br>🛡 <b>Fortified</b> — defenders here take only ${(g.scenario && g.scenario.fortPct) || 50}% of the damage` : ''}${t.name ? `<br>🏙 <b>${esc(t.name)}</b>${t.industry ? ' — ⚙ industrial city: +3 materials a round' : ' — city: +1 material a round'}${t.victory ? ' · ★ victory city' : ''}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
+    <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}${g.mode === 'totalwar' && TERRAIN[t.terrain] ? `<br>${TERRAIN[t.terrain].glyph} <b>${TERRAIN[t.terrain].label}</b> — ${TERRAIN[t.terrain].note}` : ''}${t.bunker ? `<br>🛡 <b>Bunker level ${t.bunker}</b> — defenders here take ${100 - g.settings.totalwar.bunkerPct * t.bunker}% damage` : ''}${t.fort ? `<br>🛡 <b>Fortified</b> — defenders here take only ${(g.scenario && g.scenario.fortPct) || 50}% of the damage` : ''}${t.name ? `<br>🏙 <b>${esc(t.name)}</b>${t.industry ? ' — ⚙ industrial city: +3 materials a round' : ' — city: +1 material a round'}${t.victory ? ' · ★ victory city' : ''}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
     ${units ? `<ul class="plain tm-units">${units}</ul>` : g.stationed && t.kind !== 'village' ? '<p class="small muted">No units here.</p>' : ''}
     ${generalLines(g, t)}
     ${acts.length ? `<div class="tm-actions">${acts.join('')}</div>` : `<p class="hint">${tileIdleHint(g)}</p>`}
@@ -237,6 +237,12 @@ function tileActions(store, t) {
       out.push(btn('withdraw', planned ? '✔ Withdrawing at upkeep' : '↩ Withdraw at next upkeep'));
     }
     if (g.factories && g.factories.sites.includes(id)) out.push(btn('factory', '🏭 Build a factory here', '', true));
+    // Bunkers (research Fortifications): build or strengthen one on your own land.
+    if (g.tw && t.kind === 'land' && t.controller === g.you && (me.research.done || []).includes('fortifications') && (t.bunker || 0) < 3) {
+      const lvl = (t.bunker || 0) + 1;
+      const cost = g.settings.totalwar[`bunkerCost${lvl}`];
+      out.push(`<button class="btn" data-act="buildBunker" data-tile="${id}" ${bagTotalOf(me.materials) >= cost && ['talk', 'trade'].includes(g.phase) ? '' : 'disabled'}>🛡 ${lvl === 1 ? 'Build a bunker' : `Strengthen bunker to level ${lvl}`} (${cost})<small>defenders here take ${100 - g.settings.totalwar.bunkerPct * lvl}% damage</small></button>`);
+    }
     // Generals: move one of yours, appoint a new one, or promote an Elite unit here.
     if (g.tw && t.kind === 'land' && t.controller === g.you) {
       const tw = g.settings.totalwar;

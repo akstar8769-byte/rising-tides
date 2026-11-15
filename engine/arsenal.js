@@ -62,6 +62,7 @@ const TECHS = {
   aircraft: { name: 'Aircraft', needs: ['mechanised'], unlocks: ['interceptor', 'bomber'] },
   antiTank: { name: 'Anti-tank guns', needs: [], unlocks: ['antitank'] },
   antiAir: { name: 'Anti-air guns', needs: [], unlocks: ['antiair'] },
+  fortifications: { name: 'Fortifications', needs: [], unlocks: [], effect: 'build bunkers on your tiles (up to level 3): defenders there take less damage' },
   shipyards: { name: 'Shipyards', needs: [], unlocks: ['destroyer'] },
   cruisers: { name: 'Cruisers', needs: ['shipyards'], unlocks: ['cruiser'] },
   battleships: { name: 'Battleships', needs: ['cruisers'], unlocks: ['battleship'] },

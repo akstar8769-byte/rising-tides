@@ -311,7 +311,7 @@ const FRANCE_40 = {
     },
     balanced: {
       label: 'Balanced',
-      income: { axis: [[1, 120]], allies: [[1, 105]] },
+      income: { axis: [[1, 115]], allies: [[1, 130]] },
       materials: { axis: 12, allies: 12 },
       research: {
         axis: ['motorised', 'artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'infantryL2', 'mediumTankL2'],
@@ -330,7 +330,147 @@ const FRANCE_40 = {
   economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
 };
 
-const SCENARIOS = { eastFront41: EAST_FRONT_41, france40: FRANCE_40 };
+// ---------------------------------------------------------------- North Africa, 1941
+
+const AFRICA_MAP = [
+  '...f......f.....', // 0  the Mediterranean
+  'pp..phhppppppprr', // 1  Tripoli · Gulf of Sirte · Benghazi · Tobruk · the coast road · El Alamein · Alexandria
+  'ppp.pphpppppprrr', // 2  the Gulf of Sirte · Cairo · Suez (the Nile)
+  'pppppppppp  pprr', // 3  the desert · the Qattara Depression (no hexes) narrows the front
+  'pppphpppp    ppr', // 4  Jalo oasis · Siwa oasis
+  ' pppppppp    ppr', // 5
+  '  ppppp      pp ', // 6
+];
+const AFRICA_CITIES = [
+  [0, 1, 'Tripoli', { ind: true }],
+  [1, 1, 'Misrata', {}],
+  [4, 1, 'El Agheila', {}],
+  [5, 1, 'Benghazi', { vic: true }],
+  [6, 1, 'Derna', {}],
+  [4, 4, 'Jalo', {}],
+  [7, 1, 'Tobruk', { vic: true }],
+  [8, 1, 'Bardia', {}],
+  [9, 1, 'Sollum', {}],
+  [11, 1, 'Mersa Matruh', {}],
+  [13, 1, 'El Alamein', {}],
+  [14, 1, 'Alexandria', { ind: true, vic: true }],
+  [15, 1, 'Port Said', {}],
+  [14, 2, 'Cairo', { ind: true }],
+  [15, 2, 'Suez', { ind: true }],
+  [8, 4, 'Siwa', {}],
+];
+const NA_AXIS = (c) => c <= 6;
+const AFRICA_41 = {
+  id: 'northAfrica41',
+  name: 'North Africa, 1941',
+  map: AFRICA_MAP,
+  cities: AFRICA_CITIES,
+  rounds: 14,
+  // Starting bunkers [col, row, level]: the fortress of Tobruk, and the line at El Alamein.
+  bunkers: [[7, 1, 2], [13, 1, 1]],
+  sides: [
+    {
+      id: 'axis',
+      name: 'Axis',
+      short: 'Axis',
+      icon: '🟫',
+      owns: (c) => NA_AXIS(c),
+      regions: {
+        west: { hq: 'Tripoli', name: 'Italy (Libya)', main: true, test: (c) => c <= 3 },
+        east: { hq: 'Benghazi', name: 'Afrika Korps', test: (c, r) => c >= 4 && r <= 2 },
+        south: { hq: 'Jalo', name: 'Axis (Desert)', test: (c, r) => c >= 4 && r >= 3 },
+      },
+      capital: 'Tripoli',
+      splits: { 1: [['west', 'east', 'south']], 2: [['west'], ['east', 'south']], 3: [['west'], ['east'], ['south']] },
+    },
+    {
+      id: 'allies',
+      name: 'Allies',
+      short: 'Allies',
+      icon: '🟦',
+      owns: (c) => !NA_AXIS(c),
+      regions: {
+        egypt: { hq: 'Cairo', name: 'Britain (Egypt)', main: true, test: (c) => c >= 12 },
+        front: { hq: 'Tobruk', name: 'Western Desert Force', test: (c, r) => c <= 11 && r <= 2 },
+        south: { hq: 'Siwa', name: 'Allies (Desert)', test: (c, r) => c <= 11 && r >= 3 },
+      },
+      capital: 'Cairo',
+      splits: { 1: [['egypt', 'front', 'south']], 2: [['egypt'], ['front', 'south']], 3: [['egypt'], ['front'], ['south']] },
+    },
+  ],
+  victory: {
+    cities: ['Benghazi', 'Tobruk', 'Alexandria'],
+    text: {
+      axis: 'The Axis wins by taking Cairo, or by holding 2 of the 3 victory cities (Benghazi, Tobruk, Alexandria) at the end.',
+      allies: 'The Allies win by taking Tripoli, or by holding all 3 victory cities at the end.',
+    },
+    atEnd: (held) => (held.axis >= 2 ? 'axis' : held.allies >= 3 ? 'allies' : null),
+    capture: { Cairo: 'axis', Tripoli: 'allies' },
+  },
+  styles: {
+    historical: {
+      label: 'Historical',
+      income: { axis: [[1, 110]], allies: [[1, 100], [9, 120]] }, // American supplies reach Egypt later in the war
+      materials: { axis: 12, allies: 12 },
+      research: {
+        axis: ['motorised', 'artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'aircraft', 'mediumTankL2', 'fortifications'],
+        allies: ['artillery', 'lightTanks', 'mediumTanks', 'antiTank', 'motorised', 'aircraft', 'shipyards', 'fortifications'],
+      },
+      winter: null,
+      armies: {
+        axis: [
+          [0, 1, 'infantry:3 militia:2'],
+          [1, 1, 'infantry:1 bomber:1 interceptor:1'],
+          [1, 2, 'infantry:3 artillery:1 antitank:1'], // Italian divisions guarding Tripolitania
+          [2, 3, 'infantry:2 militia:2'],
+          [4, 1, 'infantry:3 lightTank:2 mediumTank:3 motorised:2 artillery:1'],
+          [5, 1, 'infantry:3 artillery:1'],
+          [6, 1, 'infantry:2 lightTank:1 motorised:1'],
+          [5, 2, 'infantry:2 militia:2'],
+          [6, 2, 'infantry:2 lightTank:1'],
+          [4, 4, 'militia:2'],
+        ],
+        allies: [
+          [7, 1, 'infantry:4 artillery:2 antitank:1'],
+          [7, 2, 'infantry:2 lightTank:1'],
+          [8, 1, 'infantry:2 mediumTank:2 lightTank:1'],
+          [8, 2, 'motorised:2 lightTank:1'],
+          [11, 1, 'infantry:2 artillery:1'],
+          [13, 1, 'infantry:2'],
+          [14, 1, 'infantry:2 interceptor:2'],
+          [14, 2, 'infantry:3 artillery:1'],
+          [8, 4, 'militia:1 motorised:1'],
+        ],
+      },
+      reinforcements: [
+        { round: 3, side: 'allies', at: 'Alexandria', troops: 'infantry:3 artillery:1', text: 'Commonwealth divisions land at Alexandria' },
+        { round: 4, side: 'axis', at: 'Tripoli', troops: 'mediumTank:2 motorised:1', text: 'Another panzer division lands at Tripoli' },
+        { round: 6, side: 'allies', at: 'Cairo', troops: 'mediumTank:3', text: 'New British tanks reach Egypt' },
+        { round: 8, side: 'axis', at: 'Tripoli', troops: 'mediumTank:2 infantry:2 artillery:1', text: 'Convoys get through to Tripoli' },
+        { round: 9, side: 'allies', at: 'Cairo', research: ['heavyTanks'], troops: 'mediumTank:3 heavyTank:1', text: 'American tanks arrive in Egypt' },
+        { round: 11, side: 'allies', at: 'Alexandria', troops: 'infantry:3 artillery:2', text: 'The Eighth Army is reinforced' },
+      ],
+    },
+    balanced: {
+      label: 'Balanced',
+      income: { axis: [[1, 115]], allies: [[1, 100]] },
+      materials: { axis: 12, allies: 12 },
+      research: null, // same as historical
+      winter: null,
+      armies: null, // same as historical
+      reinforcements: [
+        { round: 3, side: 'allies', at: 'Alexandria', troops: 'infantry:3 artillery:1', text: 'Commonwealth divisions land at Alexandria' },
+        { round: 4, side: 'axis', at: 'Tripoli', troops: 'mediumTank:2 motorised:1', text: 'Another panzer division lands at Tripoli' },
+        { round: 6, side: 'allies', at: 'Cairo', troops: 'mediumTank:2', text: 'New British tanks reach Egypt' },
+        { round: 8, side: 'axis', at: 'Tripoli', troops: 'mediumTank:2 infantry:2', text: 'Convoys get through to Tripoli' },
+        { round: 9, side: 'allies', at: 'Cairo', troops: 'mediumTank:2 infantry:2', text: 'More tanks reach Egypt' },
+      ],
+    },
+  },
+  economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
+};
+
+const SCENARIOS = { eastFront41: EAST_FRONT_41, france40: FRANCE_40, northAfrica41: AFRICA_41 };
 
 // ---------------------------------------------------------------- helpers
 
@@ -428,6 +568,7 @@ function setupScenario(state, id, style) {
   const at = (c, r) => tiles.find((t) => t.c === c && t.r === r);
   for (const [c, r, name, flags] of sc.cities) Object.assign(at(c, r), { name, ...(flags.ind ? { industry: true } : {}), ...(flags.vic ? { victory: true } : {}) });
   for (const [c, r] of sc.forts || []) at(c, r).fort = true; // fortified line
+  for (const [c, r, lvl] of sc.bunkers || []) at(c, r).bunker = lvl; // bunkers already built
 
   // Players: side, nation and region.
   sc.sides.forEach((side, idx) => {

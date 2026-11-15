@@ -502,3 +502,24 @@ Total War lobby → **Scenario: France, 1940** (Balanced or Historical). Same sc
 - **Historical:** Germany 140% income, a strong panzer group in front of the Ardennes, levelled tanks and infantry; Allies 90% income, many units but spread thin, a weak Sedan. **Balanced:** Germany 120%, Allies 105% with level-2 infantry and stronger reserves.
 - **Bot-vs-bot results:** Balanced — 1v1 3–5 (Germany–Allies), 2v1 3–5, 2v2 4–4, 3v2 11–5 (16 games); Historical — 1v1 6–2, 2v2 7–1.
 - Scenario engine changes: sides have their own icon and their own region splits; the region marked `main` holds the side's capital; split-side players are named after their region (e.g. France, Britain).
+
+## 🛡 Bunkers (added 15 November 2026, every Total War game)
+- New research **Fortifications** (5 materials, no prerequisites). It lets you build **bunkers** on land you hold, during Talk & Build: tap the tile → 🛡 *Build a bunker*.
+- Levels: **1 → 2 → 3**, costing **5 / 8 / 12** materials (any mix). Each level cuts the damage the tile's **defenders** take by **15%** (level 3: they take 55%). Settings: `bunkerCost1-3`, `bunkerPct`.
+- Bunkers only help whoever **defends** that tile. When the tile is captured the bunker loses **1 level** (`bunkerLostOnCapture`) and the new holder keeps the rest.
+- Bunkers stack with a scenario's fortified line (the Maginot Line: 50% × the bunker's %).
+- Shown on the map as 🛡1 / 🛡2 / 🛡3 and in the tile menu.
+- Bots research Fortifications (cautious early, balanced mid-plan, warlike late) and build up to 1 bunker a round (2 in scenarios) when they have money to spare: capital first, then victory and industrial cities, then the exposed tile with the most units.
+
+## ⚔ Historical scenario: North Africa, 1941 (added 15 November 2026)
+- 🟫 **Axis** (Italy & the Afrika Korps) vs 🟦 **Allies** (Britain & the Commonwealth). 14 rounds. Splits — Axis: Italy (Tripoli), Afrika Korps (Benghazi), the desert (Jalo); Allies: Britain in Egypt (Cairo), the Western Desert Force (Tobruk), the desert (Siwa). With 2 players on a side: the capital region, and everything else.
+- **Map:** a 16-hex-long coast from Tripoli to Suez, the Gulf of Sirte, open desert (almost all 🌾 plains — tank country). The **Qattara Depression** (no hexes) narrows the front at El Alamein. 16 named cities. ⚙ industry: Tripoli, Alexandria, Cairo, Suez.
+- **Starting bunkers:** the fortress of **Tobruk** (level 2) and the line at **El Alamein** (level 1).
+- **Victory:** the Axis wins by taking **Cairo**, the Allies by taking **Tripoli**. Otherwise after round 14 the Axis needs 2 of the 3 ★ victory cities (Benghazi, Tobruk, Alexandria), the Allies all 3; else points.
+- **Reinforcements** (Historical): Commonwealth divisions at Alexandria (round 3), a panzer division at Tripoli (4), British tanks at Cairo (6), Axis convoys at Tripoli (8), American tanks and heavy-tank research for the Allies (9), Eighth Army reserves (11). Historical: Allied income rises from 100% to 120% in round 9 (American supplies); the Axis has 110%. Balanced: Axis 115%, Allies 100%, smaller reinforcements.
+- **Bot-vs-bot (balanced 1v1, 20 games):** 9–11. Historical 1v1 favours the Allies, 4–16 — as the campaign ended.
+
+## Scenario fixes and re-balancing (15 November 2026)
+- **A regional HQ falling no longer surrenders its whole region** (only the side's main capital counts — and taking that wins the war). Before, the Allies could take Benghazi in round 2 and get the whole Afrika Korps with it.
+- France 1940 Balanced re-tuned now that bots build bunkers: Germany 115% income, the Allies 130% (20 bot games 1v1: 10–10; 2v2: 6–6; Historical 1v1: 7–5 to Germany).
+- Bot-vs-bot results vary a lot between runs (the bots make random choices); treat any single 8–10 game result as ± 2–3 games.

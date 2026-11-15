@@ -199,9 +199,9 @@ function myTroops(g) {
 
 /** Total War research plans, in order, by personality. */
 const RESEARCH_PLAN = {
-  warlike: ['artillery', 'lightTanks', 'mediumTanks', 'aircraft', 'motorised', 'heavyTanks', 'selfPropelled', 'mechanised', 'antiAir', 'shipyards', 'antiTank', 'tankDestroyers', 'bazookas'],
-  balanced: ['artillery', 'motorised', 'lightTanks', 'mediumTanks', 'aircraft', 'selfPropelled', 'mechanised', 'antiTank', 'tankDestroyers', 'antiAir', 'heavyTanks', 'bazookas'],
-  cautious: ['motorised', 'antiTank', 'artillery', 'lightTanks', 'mediumTanks', 'tankDestroyers', 'aircraft', 'mechanised', 'antiAir', 'selfPropelled', 'bazookas'],
+  warlike: ['artillery', 'lightTanks', 'mediumTanks', 'aircraft', 'motorised', 'heavyTanks', 'selfPropelled', 'mechanised', 'antiAir', 'shipyards', 'antiTank', 'tankDestroyers', 'fortifications', 'bazookas'],
+  balanced: ['artillery', 'motorised', 'lightTanks', 'mediumTanks', 'fortifications', 'aircraft', 'selfPropelled', 'mechanised', 'antiTank', 'tankDestroyers', 'antiAir', 'heavyTanks', 'bazookas'],
+  cautious: ['motorised', 'antiTank', 'fortifications', 'artillery', 'lightTanks', 'mediumTanks', 'tankDestroyers', 'aircraft', 'mechanised', 'antiAir', 'selfPropelled', 'bazookas'],
 };
 function researchIdea(g, me, P) {
   if (!me.research || me.research.current) return null;
@@ -481,6 +481,8 @@ function buildStep(g, me, P, mem, fresh) {
     if (r && fresh(r.key)) return r;
     const up = upgradeIdea(g, me, P);
     if (up && fresh(up.key)) return up;
+    const bk = bunkerIdea(g, me, P, mem);
+    if (bk && fresh(bk.key)) return bk;
   }
 
   // 2. Build a wall only if we expect to need it by the end of the game, at most a
@@ -599,6 +601,31 @@ function frontier(g) {
     .filter((x) => x.threat > 0)
     .sort((a, b) => b.threat - a.threat)
     .map((x) => x.t.id);
+}
+
+/**
+ * Bunkers (after researching Fortifications): our capital first, then victory and
+ * industrial cities, then the exposed tile with the most units. A couple a round at
+ * most, and only with money to spare.
+ */
+function bunkerIdea(g, me, P, mem) {
+  if (!g.tw || !(me.research.done || []).includes('fortifications')) return null;
+  if (mem.bunkerRound !== g.round) {
+    mem.bunkerRound = g.round;
+    mem.bunkersThisRound = 0;
+  }
+  if (mem.bunkersThisRound >= (g.scenario ? 2 : 1)) return null;
+  const cfg = g.settings.totalwar;
+  const cost = (t) => cfg[`bunkerCost${(t.bunker || 0) + 1}`];
+  const mine = g.board.tiles.filter((t) => t.kind === 'land' && t.controller === g.you && (t.bunker || 0) < 3);
+  const score = (t) =>
+    (t.id === me.homeTile ? 10 : 0) + (t.victory ? 6 : 0) + (t.industry ? 3 : 0) + (exposed(g, t.id) ? 4 + Math.min(4, unitsOn(t, g.you) / 2) : -20) - (t.bunker || 0) * 3;
+  const best = mine.filter((t) => score(t) > 0).sort((a, b) => score(b) - score(a))[0];
+  if (!best) return null;
+  const spare = total(me.materials) - reserve(g, me, 2);
+  if (spare < cost(best) + (P === PERSONALITIES.cautious ? 2 : 6)) return null;
+  mem.bunkersThisRound++;
+  return { key: `bunker-${g.round}-${best.id}-${best.bunker || 0}`, action: { type: 'buildBunker', tile: best.id, materials: payFromLargest(me, cost(best)) } };
 }
 
 /** Scenarios: how many units to keep in our capital (more when the enemy is close). */

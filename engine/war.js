@@ -1986,10 +1986,35 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
 }
 
 /** The land battle. `sup` = side with air superiority; its bombers fly over the battle, other planes wait. */
-/** Scenario fortifications: % of damage defenders on this tile take (or null). */
+/**
+ * % of the damage the defenders of tile T take: a scenario's fortified line, times
+ * (100 - bunkerPct x bunker level). null = full damage.
+ */
 function fortPct(s, T) {
+  if (!T || T.kind !== 'land') return null;
   const sc = SCEN.scenarioOf(s);
-  return T && T.fort && sc && sc.fortPct ? sc.fortPct : null;
+  let pct = T.fort && sc && sc.fortPct ? sc.fortPct : 100;
+  if (T.bunker) pct = (pct * Math.max(0, 100 - (TWS(s).bunkerPct ?? 15) * T.bunker)) / 100;
+  return pct < 100 ? pct : null;
+}
+
+/** { tile, materials } — build a bunker on your tile, or raise it a level (research Fortifications). */
+function buildBunker(s, actor, { tile, materials } = {}) {
+  requireBuild(s);
+  if (!TW(s)) fail('Bunkers are part of Total War.');
+  const p = me(s, actor);
+  if (!researchOf(p).done.includes('fortifications')) fail('Research Fortifications first.');
+  const T = getTile(s, tile);
+  if (T.kind !== 'land' || T.controller !== actor) fail('Build bunkers on land you hold.');
+  const level = (T.bunker || 0) + 1;
+  if (level > 3) fail('That bunker is already at the top level (3).');
+  const cost = TWS(s)[`bunkerCost${level}`];
+  const bag = cleanBag(materials);
+  if (bagTotal(bag) !== cost) fail(`A level-${level} bunker costs ${cost} materials (any mix).`);
+  if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
+  subBag(p.materials, bag);
+  T.bunker = level;
+  addLog(s, `🛡 ${p.name} ${level === 1 ? 'builds a bunker' : `strengthens the bunker to level ${level}`} on ${tileName(s, T)}: defenders there take ${100 - (TWS(s).bunkerPct ?? 15) * level}% damage.`);
 }
 
 /** Scenario winter, as battles need it (or null). */
@@ -2048,6 +2073,7 @@ function conquerTW(s, taker, D, T, troops) {
   const cfg = TWS(s);
   const name = tileName(s, T);
   T.controller = taker;
+  if (T.bunker) T.bunker = Math.max(0, T.bunker - (cfg.bunkerLostOnCapture ?? 1)) || undefined; // shelled in the fighting
   clearTile(s, T, 'retreat'); // anyone left there falls back
   addTroops(T, taker, troops);
   const A = s.players[taker];
@@ -2062,7 +2088,8 @@ function conquerTW(s, taker, D, T, troops) {
   A.stats.warSpoils = (A.stats.warSpoils || 0) + cfg.warSpoils;
   addLog(s, `🏴 ${A.name} takes ${name}${T.role === 'capital' ? ' — A CAPITAL!' : '.'} Loot: ${describeBag(loot)}; war spoils: ${cfg.warSpoils} ${res}.`, { kind: 'good' });
   // A player's own capital falls: the rest of their land surrenders with it.
-  if (T.role === 'capital' && T.owner === D && cfg.capitalTakesAll !== false) {
+  // (Scenarios: only a side's main capital counts — and taking it wins the war; a regional HQ falling doesn't surrender the region.)
+  if (T.role === 'capital' && T.owner === D && cfg.capitalTakesAll !== false && !s.scenario) {
     const rest = s.board.tiles.filter((t) => t.kind === 'land' && t !== T && t.controller === D);
     let lost = 0;
     for (const t of rest) {
@@ -2624,7 +2651,7 @@ function settleGenerals(s, b, T, src) {
   }
 }
 
-const handlers = { choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
+const handlers = { buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
 
 
 

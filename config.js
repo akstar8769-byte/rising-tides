@@ -177,6 +177,12 @@ const DEFAULTS = {
     bomber: { cost: 8, upkeep: 2, hp: 16, attack: 6, speed: 7, range: 0, vsArmorPct: 160, vsAirPct: 20, vsSoftPct: 130 },
     // Generals: everyone starts with one; appoint more or promote an Elite ★★★ unit.
     generalCost: 10,             // materials to appoint a general
+    // Bunkers (research Fortifications): build them on your own tiles during Talk & Build.
+    bunkerCost1: 5,              // materials (any mix) for a level-1 bunker
+    bunkerCost2: 8,              // ...to raise it to level 2
+    bunkerCost3: 12,             // ...to level 3 (the most)
+    bunkerPct: 15,               // each level cuts the damage the tile's defenders take by this % (level 3 = 45% less)
+    bunkerLostOnCapture: 1,      // levels a bunker loses when its tile is captured (the new holder keeps the rest)
     generalMax: 3,               // most generals a player may have
     generalAuraRadius: 6,        // units this close to their general get the bonus (battlefield squares)
     generalAuraPct: 15,          // ...+this % damage and toughness
@@ -199,7 +205,7 @@ const DEFAULTS = {
     cruiser: { cost: 9, upkeep: 2, hp: 32, attack: 3, speed: 5, range: 6, vsArmorPct: 0, vsAirPct: 0 },
     battleship: { cost: 13, upkeep: 3, hp: 55, attack: 5, speed: 3.5, range: 10, vsArmorPct: 0, vsAirPct: 0 },
     // Research: materials (any mix) to research each technology; it is ready next round.
-    research: { tankDestroyers: 7, bazookas: 8, artillery: 5, selfPropelled: 7, lightTanks: 6, mediumTanks: 8, heavyTanks: 10, motorised: 5, mechanised: 7, aircraft: 8, antiTank: 4, antiAir: 4, shipyards: 5, cruisers: 7, battleships: 10 },
+    research: { tankDestroyers: 7, bazookas: 8, artillery: 5, selfPropelled: 7, lightTanks: 6, mediumTanks: 8, heavyTanks: 10, motorised: 5, mechanised: 7, aircraft: 8, antiTank: 4, antiAir: 4, fortifications: 5, shipyards: 5, cruisers: 7, battleships: 10 },
     // Unit levels (research "Light tank level 2" etc.): every level above 1 adds these
     // percentages to EVERY unit of that type. Types with levels: infantry lines,
     // artillery, tanks, aircraft and ships (engine/arsenal.js LEVELED).
@@ -449,7 +455,7 @@ const OPTIONS = {
   'base.boardLayout': ['base37', 'standard19'],
   'totalwar.boardLayout': ['oceans', 'continent', 'random', 'sea37', 'standard19'],
   'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
-  'totalwar.scenario': ['none', 'eastFront41', 'france40'],
+  'totalwar.scenario': ['none', 'eastFront41', 'france40', 'northAfrica41'],
   'totalwar.scenarioStyle': ['balanced', 'historical'],
 };
 
@@ -505,7 +511,7 @@ LABELS['totalwar.transportRange'] = 'Transport: how far ships carry troops (sea 
 LIMITS['totalwar.transportPerShip'] = [1, 20];
 LIMITS['totalwar.transportRange'] = [1, 20];
 LABELS['totalwar.convoyIntercept'] = 'Oceans board: enemy warships fire on troops crossing the sea';
-LABELS['totalwar.scenario'] = 'Historical scenario (none = the normal game; eastFront41 = Eastern Front 1941: Germany vs USSR; france40 = France 1940: Germany vs the Allies; 2-5 players on two sides — replaces the board)';
+LABELS['totalwar.scenario'] = 'Historical scenario (none = the normal game; eastFront41 = Eastern Front 1941: Germany vs USSR; france40 = France 1940: Germany vs the Allies; northAfrica41 = North Africa 1941: the Axis vs the Allies; 2-5 players on two sides — replaces the board)';
 LABELS['totalwar.scenarioStyle'] = 'Scenario style (historical = forces and timings as in the real campaign; balanced = either side can win)';
 LABELS['totalwar.scenarioAttacks'] = 'Scenarios: attacks per side per round (shared between the side\'s players)';
 LIMITS['totalwar.scenarioAttacks'] = [1, 12];
@@ -525,6 +531,16 @@ LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
 LABELS['totalwar.artilleryMeleeAttackPct'] = 'Artillery in close combat: damage dealt (%)';
 LABELS['totalwar.artilleryMeleeDamageTakenPct'] = 'Artillery in close combat: damage taken (%)';
 LABELS['totalwar.generalCost'] = 'Generals: cost to appoint';
+LABELS['totalwar.bunkerCost1'] = 'Bunkers: cost of level 1';
+LABELS['totalwar.bunkerCost2'] = 'Bunkers: cost of level 2';
+LABELS['totalwar.bunkerCost3'] = 'Bunkers: cost of level 3';
+LABELS['totalwar.bunkerPct'] = 'Bunkers: % less damage to defenders per level';
+LABELS['totalwar.bunkerLostOnCapture'] = 'Bunkers: levels lost when the tile is captured';
+LIMITS['totalwar.bunkerCost1'] = [0, 60];
+LIMITS['totalwar.bunkerCost2'] = [0, 60];
+LIMITS['totalwar.bunkerCost3'] = [0, 60];
+LIMITS['totalwar.bunkerPct'] = [0, 30];
+LIMITS['totalwar.bunkerLostOnCapture'] = [0, 3];
 LABELS['totalwar.generalMax'] = 'Generals: most per player';
 LABELS['totalwar.generalAuraRadius'] = 'Generals: aura radius (squares)';
 LABELS['totalwar.generalAuraPct'] = 'Generals: aura bonus to damage and toughness (%)';
