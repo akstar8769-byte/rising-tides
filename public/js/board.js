@@ -136,6 +136,7 @@ export function renderBoard(game, opts = {}) {
         ${marks ? `<text x="${x + 30}" y="${y - 26}" class="marks">${marks}</text>` : ''}`;
     }
     if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
+    if (game.supply && game.supply.cut[t.id] != null) inner += `<g class="supply-mark"><title>Out of supply${game.supply.cut[t.id] ? ` for ${game.supply.cut[t.id]} round${game.supply.cut[t.id] === 1 ? '' : 's'}` : ''}: fights at ${game.supply.pct}%, no recruiting${game.supply.cut[t.id] >= game.supply.after ? ', losing a unit every round' : ''}</title><circle cx="${x + 30}" cy="${y - 22}" r="11"/><text x="${x + 30}" y="${y - 17}">⚠</text></g>`;
     if (t.bunker) inner += `<g class="bunker-mark"><title>Bunker level ${t.bunker}: defenders take less damage</title><rect x="${x - 44}" y="${y + 14}" width="28" height="18" rx="5"/><text x="${x - 30}" y="${y + 28}">🛡${t.bunker}</text></g>`;
     if (t.fort) inner += `<g class="fort-mark"><title>Fortified line: defenders take less damage</title><text x="${x - 30}" y="${y + 6}">🛡</text></g>`;
     // Scenario cities: name label, ⚙ industry, ★ victory city.
@@ -160,7 +161,7 @@ export function renderBoard(game, opts = {}) {
 
   const factoryLegend = game.factories ? '<span>🌿 sustainable factory · 🏭 unsustainable factory (ring = owner)</span>' : '';
   const legendExtra = war
-    ? `${game.board.seaLanes ? '<span>🐟 fishing ground (income for its holder)</span><span>⚓ blockaded (enemy ships offshore)</span>' : ''}${game.mode === 'totalwar' ? '<span>🌾 plains · 🌳 woods · 🏔 hills · 〰 river (battlefield)</span>' : ''}<span>⚑P2 = occupied by P2</span><span>⚔ units${game.stationed ? ' on that tile' : ''}</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
+    ? `${game.board.seaLanes ? '<span>🐟 fishing ground (income for its holder)</span><span>⚓ blockaded (enemy ships offshore)</span>' : ''}${game.mode === 'totalwar' ? '<span>🌾 plains · 🌳 woods · 🏔 hills · 〰 river (battlefield)</span>' : ''}${game.supply ? '<span>⚠ out of supply (weaker; loses units if cut off too long)</span>' : ''}<span>⚑P2 = occupied by P2</span><span>⚔ units${game.stationed ? ' on that tile' : ''}</span><span>🩹 Damaged</span><span>⛔ sanctioned</span>${game.mode === 'empire' ? '<span>⛓ puppet · 👑 overlord</span>' : ''}`
     : '';
   const box = [Math.round(minX), Math.round(minY), Math.round(w), Math.round(h)];
   const vb = opts.view ? viewBoxFor(box, opts.view) : box;

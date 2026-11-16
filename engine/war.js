@@ -402,6 +402,7 @@ function recruit(s, actor, { count = 1, materials, tile, unit = 'militia' } = {}
       T.controller = actor;
     } else if (T.kind !== 'land') fail('Only ships can go to sea.');
     else if (T.controller !== actor) fail('Recruit onto a tile you control.');
+    else if (!inSupply(s, T)) fail(`${tileName(s, T)} is out of supply: recruit on a tile in supply (near your capital, an industrial city or a port).`);
     addTroops(T, actor, { ...zeroTroops(), [unit]: count });
     where = ` on ${tileName(s, T)}`;
   }
@@ -608,6 +609,8 @@ function upkeep(s) {
       addLog(s, `Army emissions: ${parts.join(', ')}. Flood +${rise} to ${s.flood}.`, { kind: 'flood' });
     }
   }
+  // Supply lines: units cut off for too long start to be lost.
+  if (TW(s)) supplyAttrition(s);
   // Scenarios: reinforcements (and winter news) arrive after this round's upkeep is paid.
   if (TW(s) && s.scenario) {
     SCEN.roundStart(s, addTroops);
@@ -1161,6 +1164,11 @@ function resolveClash(s, { a, b }) {
 function decorateView(v, s, seat) {
   const w = W(s);
   if (s.scenario) v.scenario = SCEN.view(s, seat);
+  if (supplyOn(s)) {
+    // Out-of-supply land tiles (public): tile id -> rounds cut off so far (0 = cut off this round).
+    const supplied = suppliedTiles(s);
+    v.supply = { range: SCEN.supplyRangeOf(s), pct: TWS(s).supplyCombatPct ?? 75, after: TWS(s).supplyAttritionRounds ?? 2, cut: Object.fromEntries(s.board.tiles.filter((t) => t.kind === 'land' && t.controller != null && !supplied.has(t.id)).map((t) => [t.id, t.cut || 0])) };
+  }
   v.war = {
     accordBroken: s.accordBroken,
     accordBrokeRound: s.accordBrokeRound,
@@ -1229,6 +1237,7 @@ function decorateView(v, s, seat) {
     if (TW(s) && mine) v.seaTiles = s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller === seat || t.controller == null)).map((t) => t.id);
     if (TW(s) && LANES(s)) v.blockaded = s.board.tiles.filter((t) => blockaded(s, t)).map((t) => t.id);
     if (TW(s) && mine) v.bombardTargets = bombardTargets(s, seat);
+    if (TW(s) && mine) v.raidTargets = raidTargets(s, seat);
     if (TW(s)) v.generals = (s.generals || []).map((g) => ({ ...g, traitName: TRAITS[g.trait], ...(g.seat === seat && g.tile ? { moves: generalMoves(s, g) } : {}) }));
   }
 }
@@ -1966,7 +1975,7 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
   const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
   const knows = (seat, id) => ((s.players[seat].research && s.players[seat].research.done) || []).includes(id);
   const tech = { A: { bazooka: knows(attacker, 'bazookas') }, D: { bazooka: knows(defender, 'bazookas') } };
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s), fort: fortPct(s, T) };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s), fort: fortPct(s, T), supply: supplyPcts(s, src, T) };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -1987,6 +1996,143 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
 }
 
 /** The land battle. `sup` = side with air superiority; its bombers fly over the battle, other planes wait. */
+// ===========================================================================
+// SUPPLY LINES (Total War): a tile is in supply if it links, through land held by its
+// holder's side, to a supply source within supplyRange hexes. Sources: the side's
+// capitals/HQs, industrial cities, and ports (coastal cities — any coastal tile outside
+// scenarios — next to a sea hex the side's ships hold).
+// ===========================================================================
+function supplyOn(s) {
+  if (!TW(s)) return false;
+  const mode = TWS(s).supplyLines || 'scenarios';
+  return mode === 'always' || (mode === 'scenarios' && !!s.scenario);
+}
+/** Seats fighting on the same side as `seat` (scenario teammates), including `seat`. */
+function teamOf(s, seat) {
+  return [seat, ...SCEN.alliesOf(s, seat)];
+}
+/** Set of land tile ids that are in supply right now (for whoever holds them). */
+function suppliedTiles(s) {
+  const out = new Set();
+  const range = SCEN.supplyRangeOf(s);
+  const done = new Set();
+  for (const p of s.players) {
+    if (done.has(p.seat)) continue;
+    const side = new Set(teamOf(s, p.seat));
+    side.forEach((x) => done.add(x));
+    const land = s.board.tiles.filter((t) => t.kind === 'land' && side.has(t.controller));
+    const homes = new Set([...side].map((x) => s.players[x].homeTile));
+    const ownSea = s.board.tiles.filter((t) => t.kind === 'sea' && side.has(t.controller) && unitsAt(t, t.controller) > 0);
+    const port = (t) => (s.scenario ? !!t.name : true) && ownSea.some((sea) => areAdjacent(sea, t));
+    const sources = land.filter((t) => homes.has(t.id) || t.industry || port(t));
+    const dist = new Map(sources.map((t) => [t.id, 0]));
+    const queue = [...sources];
+    while (queue.length) {
+      const t = queue.shift();
+      const d = dist.get(t.id);
+      if (d >= range) continue;
+      for (const n of land) if (!dist.has(n.id) && areAdjacent(t, n)) (dist.set(n.id, d + 1), queue.push(n));
+    }
+    for (const id of dist.keys()) out.add(id);
+  }
+  return out;
+}
+/** Is land tile T in supply? (Always true when supply lines are off.) */
+function inSupply(s, T, supplied = null) {
+  if (!supplyOn(s) || !T || T.kind !== 'land') return true;
+  return (supplied || suppliedTiles(s)).has(T.id);
+}
+/** Start of a round: units on tiles cut off for supplyAttritionRounds rounds lose 1 unit per stack. */
+function supplyAttrition(s) {
+  if (!supplyOn(s)) return;
+  const supplied = suppliedTiles(s);
+  const after = TWS(s).supplyAttritionRounds ?? 2;
+  const lost = {};
+  for (const t of s.board.tiles) {
+    if (t.kind !== 'land' || t.controller == null) continue;
+    if (supplied.has(t.id)) {
+      delete t.cut;
+      continue;
+    }
+    t.cut = (t.cut || 0) + 1;
+    const seat = t.controller;
+    if (t.cut > after && unitsAt(t, seat) > 0) {
+      takeCheapest(t, seat, 1);
+      s.players[seat].stats.unitsLost += 1;
+      (lost[seat] = lost[seat] || []).push(t.id);
+    }
+  }
+  syncUnits(s);
+  for (const [seat, ids] of Object.entries(lost)) addLog(s, `⚠ Out of supply: ${s.players[seat].name} loses ${ids.length} unit${ids.length === 1 ? '' : 's'} (${ids.join(', ')}).`, { kind: 'bad' });
+}
+
+// ===========================================================================
+// BOMBING RAIDS (Total War): during Talk & Build, the bombers on one of your tiles strike
+// an enemy tile within bomberRange hexes. Anti-air guns and fighters there may shoot some
+// down first; each bomber that gets through may knock the bunker down a level (or, with no
+// bunker, destroy a unit). Each tile's bombers fly one raid a round.
+// ===========================================================================
+const hexDistance = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+function raidTargets(s, seat) {
+  const out = {};
+  if (!TW(s) || inTruce(s)) return out;
+  const friends = new Set([...teamOf(s, seat), ...puppetsOf(s, seat)]);
+  for (const F of s.board.tiles) {
+    if (F.kind !== 'land' || F.controller !== seat || !(troopsAt(F, seat).bomber > 0) || F.raidedRound === s.round) continue;
+    const list = s.board.tiles
+      .filter((t) => t.kind === 'land' && t.controller != null && !friends.has(t.controller) && hexDistance(F, t) <= (TWS(s).bomberRange ?? 3) && !diplomacy.blockedBy(s, seat, 'attack', t.controller))
+      .map((t) => t.id);
+    if (list.length) out[F.id] = list;
+  }
+  return out;
+}
+function airRaid(s, actor, { from, target } = {}) {
+  requireBuild(s);
+  if (!TW(s)) fail('Bombing raids are part of Total War.');
+  const p = me(s, actor);
+  const F = getTile(s, from);
+  const T = getTile(s, target);
+  if (F.controller !== actor || !(troopsAt(F, actor).bomber > 0)) fail('Fly from one of your tiles with bombers on it.');
+  if (F.raidedRound === s.round) fail('Those bombers have already flown this round.');
+  if (!(raidTargets(s, actor)[F.id] || []).includes(T.id)) fail(`Bombers can strike an enemy tile up to ${TWS(s).bomberRange ?? 3} hexes away.`);
+  const cfg = TWS(s);
+  const D = T.controller;
+  diplomacy.checkMove(s, actor, 'attack', D);
+  diplomacy.onHostile(s, actor, D);
+  F.raidedRound = s.round;
+  const rand = seededRand(s);
+  const mine = troopsAt(F, actor);
+  const theirs = troopsAt(T, D);
+  // Air defence: each anti-air gun and fighter on the target fires once.
+  let bombers = mine.bomber;
+  let shotDown = 0;
+  const guns = (theirs.antiair || 0) + (theirs.interceptor || 0);
+  for (let i = 0; i < guns && bombers > 0; i++) if (rand() < (cfg.airDefencePct ?? 25) / 100) (bombers--, shotDown++);
+  mine.bomber -= shotDown;
+  setTroops(F, actor, mine);
+  p.stats.unitsLost += shotDown;
+  // The bombers that get through.
+  let levels = 0;
+  const killed = [];
+  for (let i = 0; i < bombers; i++) {
+    if (T.bunker) {
+      if (rand() < (cfg.bomberBunkerPct ?? 35) / 100) (T.bunker -= 1, levels++);
+      if (!T.bunker) delete T.bunker;
+    } else if (rand() < ((cfg.bomberUnitPct ?? 25) / 100) * ((fortPct(s, T) ?? 100) / 100)) {
+      const k = loseOne(theirs, rand);
+      if (k) killed.push(k);
+    }
+  }
+  setTroops(T, D, theirs);
+  s.players[D].stats.unitsLost += killed.length;
+  syncUnits(s);
+  const parts = [];
+  if (shotDown) parts.push(`${shotDown} bomber${shotDown === 1 ? '' : 's'} shot down`);
+  if (levels) parts.push(`the bunker knocked down ${levels} level${levels === 1 ? '' : 's'}${T.bunker ? ` (now ${T.bunker})` : ' — destroyed'}`);
+  if (killed.length) parts.push(`${describeTroops(countOf(killed))} destroyed`);
+  addLog(s, `✈ ${p.name}'s bombers raid ${tileName(s, T)}: ${parts.length ? parts.join('; ') : 'no damage'}.`, { kind: 'battle' });
+}
+
 /**
  * % of the damage the defenders of tile T take: a scenario's fortified line, times
  * (100 - bunkerPct x bunker level). null = full damage.
@@ -2016,6 +2162,16 @@ function buildBunker(s, actor, { tile, materials } = {}) {
   subBag(p.materials, bag);
   T.bunker = level;
   addLog(s, `🛡 ${p.name} ${level === 1 ? 'builds a bunker' : `strengthens the bunker to level ${level}`} on ${tileName(s, T)}: defenders there take ${100 - (TWS(s).bunkerPct ?? 15) * level}% damage.`);
+}
+
+/** Battle strength % for each side from supply: the attackers' starting tile and the defended tile. */
+function supplyPcts(s, src, T) {
+  if (!supplyOn(s) || !T || T.kind !== 'land') return null;
+  const supplied = suppliedTiles(s);
+  const pct = TWS(s).supplyCombatPct ?? 75;
+  const A = src && src.kind === 'land' && !supplied.has(src.id) ? pct : 100;
+  const D = supplied.has(T.id) ? 100 : pct;
+  return A === 100 && D === 100 ? null : { A, D };
 }
 
 /** Scenario winter, as battles need it (or null). */
@@ -2142,7 +2298,7 @@ function finishAirTW(s, b) {
   const win = b.winner === 'A' ? A : D;
   addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
   const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
-  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s), fort: fortPct(s, T) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s), fort: fortPct(s, T), supply: supplyPcts(s, src, T) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
   addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
 }
 
@@ -2663,7 +2819,7 @@ function settleGenerals(s, b, T, src) {
   }
 }
 
-const handlers = { buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
+const handlers = { airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
 
 
 

@@ -147,7 +147,7 @@ test('taking the enemy capital wins the war at once, for the whole side', () => 
 });
 
 test('at the end: victory cities, else points per side', () => {
-  const s = game(2);
+  const s = game(2, 'historical'); // Historical: Germany needs 2 of the 3
   // USSR holds all 3 victory cities at the start.
   let o = war.scoreTotalWar(s, 'rounds');
   assert.equal(o.scenario.side, 'soviet');
@@ -467,4 +467,16 @@ test('bots pull their armies back when their capital is threatened', () => {
   assert.ok(moves.some((m) => m.to === paris.id), `troops marched to Paris: ${JSON.stringify(moves)}`);
   const held = Object.values(city(g, 'Paris').troops[1]).reduce((a, n) => a + n, 0);
   assert.ok(held >= 8, `Paris now has ${held} defenders`);
+});
+
+test('Balanced Eastern Front: longer supply reach, and Germany wins at the end with any 1 victory city', () => {
+  const b = game(2, 'balanced');
+  assert.equal(SCEN.supplyRangeOf(b), 9);
+  assert.equal(SCEN.supplyRangeOf(game(2, 'historical')), b.settings.totalwar.supplyRange);
+  assert.match(SCEN.view(b, 0).sides[0].goal, /at least 1/);
+  city(b, 'Leningrad').controller = 0;
+  assert.equal(war.scoreTotalWar(b, 'rounds').scenario.side, 'axis');
+  const h = game(2, 'historical');
+  city(h, 'Leningrad').controller = 0;
+  assert.notEqual(war.scoreTotalWar(h, 'rounds').scenario.why.includes('holds 1'), true, 'Historical still needs 2 of 3');
 });

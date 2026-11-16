@@ -198,7 +198,7 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
   if (scenario) {
     const sc = SCEN.SCENARIOS[scenario];
     addLog(state, `Scenario: ${sc.name} (${sc.styles[state.scenario.style].label}). ${sc.sides.map((side) => `${side.name}: ${state.players.filter((p) => p.side === side.id).map((p) => `${p.name} (${p.nation})`).join(', ')}`).join(' vs ')}.`, { kind: 'round' });
-    for (const side of sc.sides) addLog(state, `🎯 ${sc.victory.text[side.id]}`, { kind: 'round' });
+    for (const side of sc.sides) addLog(state, `🎯 ${(sc.styles[state.scenario.style].victoryText || {})[side.id] || sc.victory.text[side.id]}`, { kind: 'round' });
     addLog(state, `Round 1 begins. ${state.players[0].name} moves first. Talk & build, then press Ready.`, { kind: 'round' });
     return state;
   }

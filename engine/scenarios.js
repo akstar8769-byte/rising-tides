@@ -163,6 +163,10 @@ const EAST_FRONT_41 = {
     balanced: {
       label: 'Balanced',
       income: { axis: [[1, 165]], soviet: [[1, 80], [7, 100]] },
+      supplyRange: 9, // Balanced: Germany can keep an army in supply as far as Moscow
+      // Balanced: a stalemate isn't a Soviet win — Germany only needs to hold one victory city.
+      atEnd: (held) => (held.axis >= 1 ? 'axis' : held.soviet >= 3 ? 'soviet' : null),
+      victoryText: { axis: 'Germany wins by taking Moscow, or by holding at least 1 of the 3 victory cities (Leningrad, Moscow, Stalingrad) at the end.' },
       materials: { axis: 12, soviet: 10 },
       research: null, // same as historical
       winter: { from: 7, to: 8, tankSpeedPct: 70, attackPct: 90 },
@@ -737,6 +741,11 @@ function sideAttacks(s, sideId) {
   if (steps) return steps.filter(([from]) => s.round >= from).pop()[1];
   return s.settings.totalwar.scenarioAttacks ?? 4;
 }
+/** Supply range in hexes: the scenario style's own, or the lobby setting. */
+function supplyRangeOf(s) {
+  const st = styleOf(s);
+  return (st && st.supplyRange) || s.settings.totalwar.supplyRange || 6;
+}
 /** % of damage defenders in the scenario's fortified line take (the style may override it). */
 function fortPctOf(s) {
   const sc = scenarioOf(s);
@@ -964,7 +973,7 @@ function decide(s, reason, results) {
   const sc = scenarioOf(s);
   if (s.scenario.winner) return { side: s.scenario.winner, why: s.scenario.why };
   const held = victoryHeld(s);
-  const onCities = sc.victory.atEnd(held);
+  const onCities = (styleOf(s).atEnd || sc.victory.atEnd)(held);
   if (onCities) return { side: onCities, why: `${sc.sides.find((x) => x.id === onCities).name} holds ${held[onCities]} of the ${sc.victory.cities.length} victory cities.` };
   // Points: each side's players added together.
   const pts = Object.fromEntries(sc.sides.map((x) => [x.id, 0]));
@@ -986,7 +995,7 @@ function view(s, seat) {
     name: sc.name,
     style: s.scenario.style,
     styleLabel: st.label,
-    sides: sc.sides.map((x) => ({ id: x.id, name: x.name, icon: x.icon || '⬛', seats: sideSeats(s, x.id), goal: sc.victory.text[x.id] })),
+    sides: sc.sides.map((x) => ({ id: x.id, name: x.name, icon: x.icon || '⬛', seats: sideSeats(s, x.id), goal: (styleOf(s).victoryText && styleOf(s).victoryText[x.id]) || sc.victory.text[x.id] })),
     fortPct: fortPctOf(s),
     // Cities whose capture wins the war at once, and for which side.
     decisive: { ...sc.victory.capture },
@@ -1001,4 +1010,4 @@ function view(s, seat) {
   };
 }
 
-module.exports = { fortPctOf, sideAttacks, attacksFor, SCENARIOS, setupScenario, roundStart, income, captureWins, victoryHeld, decide, view, winterNow, alliesOf, sideIndex, scenarioOf };
+module.exports = { supplyRangeOf, fortPctOf, sideAttacks, attacksFor, SCENARIOS, setupScenario, roundStart, income, captureWins, victoryHeld, decide, view, winterNow, alliesOf, sideIndex, scenarioOf };

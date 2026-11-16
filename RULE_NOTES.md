@@ -575,3 +575,20 @@ Britain's navy is why Germany could never cross the Channel — so every scenari
 - **Scenarios: taking the enemy's main capital** (Paris, Cairo, Moscow, Berlin, Tripoli, London) still wins the war at once — and now **the whole losing side's land surrenders with it**, every player on that side (their troops there lay down their arms). Regional HQs still don't surrender their region.
 - **Bots pull back to defend** (every Total War game): when enemy units within 2 hexes of their capital — or, in a scenario, a city whose loss ends the war — outnumber its garrison, they march armies back to it (biggest stack first), and keep enough there to match the threat (threat + 2, at least 8). Other moves no longer pull those troops away again.
 - Effect in bot-vs-bot games: in Historical France, Paris now falls in 2 of 8 games (was 15 of 16) — Germany still wins all 8, mostly on Brussels + Calais or points. Balanced (8 games each): Eastern Front 6–2 Germany, France 6–2 Germany, North Africa 3–5, Normandy 6–2 Allies.
+
+## ⚠ Supply lines and ✈ bombing raids (added 16 November 2026)
+**Supply lines** (`supplyLines`: on in historical scenarios by default; `always` or `off` in the lobby):
+- **Supply sources:** your capital / HQ, ⚙ industrial cities, and **ports** — coastal cities (any coastal tile outside scenarios) next to a sea hex your side's ships hold.
+- A land tile is **in supply** if it links to a source through land your side holds, within **6 hexes** (`supplyRange`). Teammates share supply.
+- **Out of supply** (⚠ on the map, details in the tile menu): units fight at **75%** in battle (`supplyCombatPct`) — attackers if the tile they attack from is cut off, defenders if their tile is; you **can't recruit** there; after **2 rounds** cut off (`supplyAttritionRounds`) each stack there loses **1 unit a round** (the cheapest).
+- So encircling an enemy spearhead on the map now hurts it, deep thrusts need a port or an industrial city along the way, and navies can supply (or starve) coastal armies.
+
+**Bombing raids** (every Total War game): during Talk & Build, tap an enemy tile → ✈ *Bombing raid* — the bombers on one of your tiles within **3 hexes** (`bomberRange`) strike it. Each tile's bombers fly once a round.
+- Each **anti-air gun and fighter** on the target fires first: **25%** each to shoot a bomber down (`airDefencePct`).
+- Each bomber that gets through: **35%** to knock the target's **bunker down a level** (`bomberBunkerPct`); with no bunker, **25%** to destroy a unit (`bomberUnitPct`; less in a fortified line).
+- Soften Tobruk, the Atlantic Wall or a bunkered capital before the assault — or put anti-air there to make raids costly.
+
+**Bots:** fly raids at bunkered tiles next to their front (or big enemy stacks), don't recruit on cut-off tiles, and count supply when judging a battle.
+**Bot-vs-bot after the change** (Balanced, 6 games each): Eastern Front 0–6 (Germany–USSR: German armies outrun their supply in Russia's depth), France 3–3, North Africa 1–5, Normandy 2–4. In one Historical Eastern Front game the bots flew 56 raids and lost units to supply 16 times.
+- **Eastern Front re-balanced for supply (Balanced style):** supply reaches **9 hexes** (scenario styles can now set their own `supplyRange`) so Germany can fight at Moscow in supply, and **Germany wins at the end by holding any 1 victory city** (Historical still needs 2 of 3; styles can now override the end-of-game rule and its text). Before: 0–6 Germany–USSR; after: **8–7** (15 bot games — Germany 8 on holding a victory city; USSR 5 holding all 3, 2 by taking Berlin).
+- **Historical Eastern Front with supply** (12 bot games): USSR 11–1. Minsk, Kiev fall rounds 2–4, Riga ~4, Smolensk ~7; Leningrad falls in 8/12 but is usually retaken; Moscow and Stalingrad never fall. Supply from Berlin, Silesia and Ploiești reaches about as far as Smolensk — taking a port (Riga, with ships off it) or an industrial city (Kharkov, Leningrad) is how Germany pushes its supply forward.

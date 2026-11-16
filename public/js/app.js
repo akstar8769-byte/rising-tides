@@ -346,6 +346,11 @@ const actions = {
     act({ type: 'bombard', from: ds.from, target: ds.target });
     render();
   },
+  airRaid: (ds) => {
+    store.ui.tileMenu = null;
+    act({ type: 'airRaid', from: ds.from, target: ds.target });
+    render();
+  },
   tutorial: () => startTutorial(),
   genMovePick: (ds) => {
     store.ui.genMove = +ds.id;

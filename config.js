@@ -177,6 +177,17 @@ const DEFAULTS = {
     bomber: { cost: 8, upkeep: 2, hp: 16, attack: 6, speed: 7, range: 0, vsArmorPct: 160, vsAirPct: 20, vsSoftPct: 130 },
     // Generals: everyone starts with one; appoint more or promote an Elite ★★★ unit.
     generalCost: 10,             // materials to appoint a general
+    // Supply lines: armies far from a supply source (capital/HQ, industrial city, or a port your
+    // ships hold) weaken. 'scenarios' = on in historical scenarios only; 'always'; 'off'.
+    supplyLines: 'scenarios',
+    supplyRange: 6,              // hexes of your own land a supply source reaches
+    supplyCombatPct: 75,         // units out of supply fight at this % in battle
+    supplyAttritionRounds: 2,    // after this many rounds cut off, each stack loses 1 unit a round
+    // Bombing raids (Talk & Build): bombers strike an enemy tile within range before the attack.
+    bomberRange: 3,              // hexes a bombing raid can reach
+    bomberBunkerPct: 35,         // chance each bomber that gets through knocks the target's bunker down a level
+    bomberUnitPct: 25,           // ...or, with no bunker, destroys a unit there
+    airDefencePct: 25,           // chance each anti-air gun or fighter on the target shoots down a bomber
     // Bunkers (research Fortifications): build them on your own tiles during Talk & Build.
     bunkerCost1: 5,              // materials (any mix) for a level-1 bunker
     bunkerCost2: 8,              // ...to raise it to level 2
@@ -457,6 +468,7 @@ const OPTIONS = {
   'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
   'totalwar.scenario': ['none', 'eastFront41', 'france40', 'northAfrica41', 'normandy44'],
   'totalwar.scenarioStyle': ['balanced', 'historical'],
+  'totalwar.supplyLines': ['scenarios', 'always', 'off'],
 };
 
 // Total War units, research and formations: labels and limits are generated.
@@ -531,6 +543,21 @@ LABELS['totalwar.airBattleSeconds'] = 'Air battle time limit (seconds)';
 LABELS['totalwar.artilleryMeleeAttackPct'] = 'Artillery in close combat: damage dealt (%)';
 LABELS['totalwar.artilleryMeleeDamageTakenPct'] = 'Artillery in close combat: damage taken (%)';
 LABELS['totalwar.generalCost'] = 'Generals: cost to appoint';
+LABELS['totalwar.supplyLines'] = 'Supply lines (scenarios = only in historical scenarios; always; off)';
+LABELS['totalwar.supplyRange'] = 'Supply: hexes a supply source reaches';
+LABELS['totalwar.supplyCombatPct'] = 'Supply: % strength in battle when out of supply';
+LABELS['totalwar.supplyAttritionRounds'] = 'Supply: rounds cut off before units start to be lost';
+LABELS['totalwar.bomberRange'] = 'Bombing raids: range in hexes';
+LABELS['totalwar.bomberBunkerPct'] = 'Bombing raids: % chance per bomber to knock a bunker down a level';
+LABELS['totalwar.bomberUnitPct'] = 'Bombing raids: % chance per bomber to destroy a unit (no bunker)';
+LABELS['totalwar.airDefencePct'] = 'Bombing raids: % chance each anti-air gun / fighter shoots a bomber down';
+LIMITS['totalwar.supplyRange'] = [1, 30];
+LIMITS['totalwar.supplyCombatPct'] = [10, 100];
+LIMITS['totalwar.supplyAttritionRounds'] = [1, 20];
+LIMITS['totalwar.bomberRange'] = [1, 10];
+LIMITS['totalwar.bomberBunkerPct'] = [0, 100];
+LIMITS['totalwar.bomberUnitPct'] = [0, 100];
+LIMITS['totalwar.airDefencePct'] = [0, 100];
 LABELS['totalwar.bunkerCost1'] = 'Bunkers: cost of level 1';
 LABELS['totalwar.bunkerCost2'] = 'Bunkers: cost of level 2';
 LABELS['totalwar.bunkerCost3'] = 'Bunkers: cost of level 3';

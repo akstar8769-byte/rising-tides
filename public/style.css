@@ -864,3 +864,5 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .board .fort-mark text { font-size: 16px; text-anchor: middle; pointer-events: none; }
 .board .bunker-mark rect { fill: #4a4a4a; stroke: #f3c623; stroke-width: 1.5; }
 .board .bunker-mark text { fill: #fff; font-size: 12px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.board .supply-mark circle { fill: #ffd54a; stroke: #7a4b00; stroke-width: 1.5; }
+.board .supply-mark text { font-size: 13px; text-anchor: middle; pointer-events: none; }

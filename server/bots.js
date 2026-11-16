@@ -376,6 +376,21 @@ function generalIdea(g, me, P) {
   return null;
 }
 
+/**
+ * Bombing raids: hit the most heavily bunkered enemy tile in range that borders our land
+ * (one we may attack soon); with no bunkers about, a big enemy stack next to us.
+ */
+function raidIdea(g, me) {
+  for (const [from, list] of Object.entries(g.raidTargets || {})) {
+    const mine = new Set(g.board.tiles.filter((t) => t.kind === 'land' && t.controller === g.you).map((t) => t.id));
+    const near = (t) => g.board.tiles.some((o) => mine.has(o.id) && adjacent(o, t));
+    const score = (t) => (near(t) ? 10 : 0) + (t.bunker || 0) * 5 + (t.victory ? 3 : 0) + Math.min(5, unitsOn(t, t.controller) / 3);
+    const best = list.map((id) => g.board.tiles.find((t) => t.id === id)).filter((t) => t.bunker || (near(t) && unitsOn(t, t.controller) >= 4)).sort((a, b) => score(b) - score(a))[0];
+    if (best) return { key: `raid-${g.round}-${from}`, action: { type: 'airRaid', from, target: best.id } };
+  }
+  return null;
+}
+
 /** Shell an enemy coast from our cruisers / battleships: the most units there, from players we'd hit. */
 function bombardIdea(g, me, P) {
   const opts = Object.entries(g.bombardTargets || {});
@@ -531,7 +546,8 @@ function buildStep(g, me, P, mem, fresh) {
     if (unit && hasLand && me.units < target && wallsOk && total(me.materials) - unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
       const action = { type: 'recruit', count: 1, materials: payFromLargest(me, unitCost) };
       if (g.tw) action.unit = unit;
-      if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land') || me.homeTile;
+      const cut = (id) => g.supply && g.supply.cut[id] != null;
+      if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land' && !cut(id)) || me.homeTile;
       // Scenarios: losing the capital loses the war — keep a real garrison there first.
       if (g.scenario && shortKeyTile(g, me)) action.tile = shortKeyTile(g, me).id;
       return { key: `recruit-${me.units}`, action };
@@ -544,6 +560,8 @@ function buildStep(g, me, P, mem, fresh) {
       if (fm && fresh(fm.key)) return fm;
       const bb = g.tw ? bombardIdea(g, me, P) : null;
       if (bb && fresh(bb.key)) return bb;
+      const ar = g.tw ? raidIdea(g, me) : null;
+      if (ar && fresh(ar.key)) return ar;
       const gi = g.tw ? generalIdea(g, me, P) : null;
       if (gi && fresh(gi.key)) return gi;
     }
@@ -944,7 +962,9 @@ function pickTarget(g, me, P, used = null) {
       const theirs = strength(g, (t.troops || {})[t.controller], t.controller, t.vet && t.vet[t.controller]);
       const need = (P === PERSONALITIES.warlike ? 1.0 : P === PERSONALITIES.cautious ? 1.6 : 1.25) / Math.sqrt(grit(g));
       // Bunkers and fortified lines make the defenders that much tougher to beat.
-      winnable = ours * terrainFit(troops, t.terrain) >= (theirs * need * 100) / defencePct(g, t);
+      // Out of supply: that side fights at the reduced strength.
+      const sup = (id) => (g.supply && g.supply.cut[id] != null ? g.supply.pct / 100 : 1);
+      winnable = ours * sup(from) * terrainFit(troops, t.terrain) >= (theirs * sup(t.id) * need * 100) / defencePct(g, t);
     }
     let score;
     if (t.controller == null) score = g.scenario && t.kind === 'sea' ? 0.5 : 2; // open tile: free claim (empty sea is worth little in a scenario)
