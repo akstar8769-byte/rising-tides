@@ -189,8 +189,14 @@ function tileMenu(store) {
   const b = BIOME[t.biome];
   const w = 280;
   const left = Math.max(8, Math.min(m.x - w / 2, (typeof innerWidth === 'number' ? innerWidth : 1000) - w - 8));
-  const top = Math.max(8, Math.min(m.y + 6, (typeof innerHeight === 'number' ? innerHeight : 800) - 300));
-  return `<div class="tile-menu" style="left:${left}px;top:${top}px;width:${w}px" role="dialog" aria-label="${esc(tileLabel(g, t.id))}">
+  // Open below the tap in the top half of the screen, above it in the bottom half, and never
+  // taller than the room there (it scrolls instead) — so every button can be reached.
+  const H = typeof innerHeight === 'number' ? innerHeight : 800;
+  const DOCK = 84; // the bottom bar
+  const below = m.y < H / 2;
+  const top = Math.max(8, m.y + 6);
+  const place = below ? `top:${top}px;max-height:${Math.max(160, H - DOCK - top - 8)}px` : `bottom:${Math.max(DOCK, H - m.y + 6)}px;max-height:${Math.max(160, Math.min(m.y, H - DOCK) - 14)}px`;
+  return `<div class="tile-menu" style="left:${left}px;${place};width:${w}px;overflow-y:auto" role="dialog" aria-label="${esc(tileLabel(g, t.id))}">
     <div class="tm-head"><b>${esc(tileLabel(g, t.id))}</b><button class="icon-btn" data-act="closeTileMenu" aria-label="Close">✕</button></div>
     <p class="small muted">${t.fish ? '🐟 Fishing ground — whoever holds it with ships earns income every round' : t.kind === 'sea' ? (g.board.seaLanes ? '🌊 Open sea — ships move hex by hex; a chain of your ships lets troops cross' : '🌊 Sea bay — ships only') : b ? `${b.glyph} ${b.label}${b.res ? ` — makes ${b.res === 'sandbag' ? 'sandbags' : b.res}` : ''}${g.mode === 'totalwar' && TERRAIN[t.terrain] ? `<br>${TERRAIN[t.terrain].glyph} <b>${TERRAIN[t.terrain].label}</b> — ${TERRAIN[t.terrain].note}` : ''}${g.supply && t.kind === 'land' && g.supply.cut[t.id] != null && t.controller != null ? `<br><b class="warn">⚠ Out of supply</b>${g.supply.cut[t.id] ? ` for ${g.supply.cut[t.id]} round${g.supply.cut[t.id] === 1 ? '' : 's'}` : ''} — fights at ${g.supply.pct}%, can't recruit here${g.supply.cut[t.id] >= g.supply.after ? ', <b>loses a unit every round</b>' : `, starts losing units after ${g.supply.after} rounds`}` : ''}${t.bunker ? `<br>🛡 <b>Bunker level ${t.bunker}</b> — defenders here take ${100 - g.settings.totalwar.bunkerPct * t.bunker}% damage` : ''}${t.fort ? `<br>🛡 <b>Fortified</b> — defenders here take only ${(g.scenario && g.scenario.fortPct) || 50}% of the damage` : ''}${t.name ? `<br>🏙 <b>${esc(t.name)}</b>${t.industry ? ' — ⚙ industrial city: +3 materials a round' : ' — city: +1 material a round'}${t.victory ? ' · ★ victory city' : ''}` : ''}` : ''}${(g.blockaded || []).includes(t.id) ? ' · <b class="warn">⚓ Blockaded: no income</b>' : ''}${t.factory ? ` · ${t.factory.kind === 'sustainable' ? '🌿' : '🏭'} ${esc(g.players[t.factory.owner].name)}'s factory` : ''}</p>
     ${units ? `<ul class="plain tm-units">${units}</ul>` : g.stationed && t.kind !== 'village' ? '<p class="small muted">No units here.</p>' : ''}
