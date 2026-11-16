@@ -8,7 +8,7 @@ import { renderLobby } from './lobby.js';
 import { renderGame } from './game.js';
 import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
-import { payLargest } from './war-ui.js';
+import { payLargest, upkeepWarning } from './war-ui.js';
 import { installMapControls, justDragged, zoomAt } from './mapview.js';
 import { initTutorial, afterRender as tutorialAfterRender, startTutorial } from './tutorial.js';
 import { addShells, refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation } from './battle-ui.js';
@@ -362,6 +362,8 @@ const actions = {
     const g = store.data.game;
     const t = g.board.tiles.find((x) => x.id === ds.tile);
     const pay = payLargest(g.players[g.you].materials, g.settings.totalwar[`bunkerCost${(t.bunker || 0) + 1}`]);
+    const warn = pay && upkeepWarning(g, g.settings.totalwar[`bunkerCost${(t.bunker || 0) + 1}`]);
+    if (warn && !confirm(warn)) return;
     store.ui.tileMenu = null;
     if (pay) act({ type: 'buildBunker', tile: ds.tile, materials: pay });
     render();
@@ -369,6 +371,8 @@ const actions = {
   trainGeneral: (ds) => {
     const g = store.data.game;
     const pay = payLargest(g.players[g.you].materials, g.settings.totalwar.generalCost);
+    const warn = pay && upkeepWarning(g, g.settings.totalwar.generalCost);
+    if (warn && !confirm(warn)) return;
     store.ui.tileMenu = null;
     if (pay) act({ type: 'trainGeneral', tile: ds.tile, materials: pay });
     render();
@@ -564,6 +568,13 @@ const actions = {
   // War / Empire
   recruit: () => {
     const r = store.ui.recruit;
+    const g0 = store.data.game;
+    if (g0.tw) {
+      const unit = r.unit || 'infantry';
+      const cost = Object.values(r.mix || {}).reduce((a, n) => a + n, 0);
+      const warn = upkeepWarning(g0, cost, ((g0.settings.totalwar[unit] || {}).upkeep || 0) * (r.count || 1));
+      if (warn && !confirm(warn)) return;
+    }
     const msg = { type: 'recruit', count: r.count, materials: r.mix };
     if (store.data.game.tw) msg.unit = r.unit || 'infantry';
     if (store.data.game.stationed) msg.tile = r.tile || store.data.game.players[store.data.game.you].homeTile;
@@ -597,6 +608,8 @@ const actions = {
     const g = store.data.game;
     const t = g.tw.techs.find((x) => x.id === ds.tech);
     const pay = payLargest(g.players[g.you].materials, t.cost);
+    const warn = pay && upkeepWarning(g, t.cost);
+    if (warn && !confirm(warn)) return;
     if (pay) act({ type: 'research', tech: t.id, materials: pay });
   },
   upgradeUnits: () => {
@@ -605,6 +618,9 @@ const actions = {
     const each = Math.max(1, g.tw.units.find((u) => u.type === to).cost - g.tw.units.find((u) => u.type === from).cost);
     const count = store.ui.upgrade.count || 1;
     const pay = payLargest(g.players[g.you].materials, each * count);
+    const up = (k) => (g.settings.totalwar[k] || {}).upkeep || 0;
+    const warn = pay && upkeepWarning(g, each * count, (up(to) - up(from)) * count);
+    if (warn && !confirm(warn)) return;
     if (pay) act({ type: 'upgradeUnits', tile, from, to, count, materials: pay });
   },
   battleFormation: (ds) => act({ type: 'battleFormation', battle: +ds.id, formation: ds.formation === 'none' ? null : ds.formation }),

@@ -7,6 +7,33 @@ const BUILD = ['talk', 'trade'];
 const j = (o) => esc(JSON.stringify(o));
 
 /** "Ben's capital (C1)", "Open Quarry tile (I5) held by Ana" */
+/**
+ * Total War: next round's upkeep against what you'll have to pay it with, if you spend
+ * `cost` more materials and add `addPoints` upkeep points (new or upgraded units).
+ * Upkeep is paid at the start of next round, before you collect income again — so during
+ * Talk & Build this round's income still counts; during Trade & Build it's already in.
+ * Returns { due, have, short } (short > 0 means units would be disbanded), or null.
+ */
+export function upkeepForecast(g, cost = 0, addPoints = 0) {
+  if (!g.tw || !g.stationed || g.phase === 'ended') return null;
+  const rounds = g.settings.war.rounds;
+  if (g.round >= rounds && g.phase !== 'talk' && g.phase !== 'choose') return null; // no upkeep after the last round
+  const tw = g.settings.totalwar;
+  const me = g.players[g.you];
+  let points = addPoints;
+  for (const t of g.board.tiles) for (const [k, n] of Object.entries((t.troops || {})[g.you] || {})) points += n * ((tw[k] && tw[k].upkeep) || 0);
+  const due = Math.floor(points / tw.upkeepPointsPerMaterial) + (me.garrisonDue || 0);
+  const income = ['talk', 'choose'].includes(g.phase) && me.production ? bagTotal(me.production.passive) : 0;
+  const have = bagTotal(me.materials) - cost + income;
+  return { due, have, short: Math.max(0, due - have), income };
+}
+/** The confirm text if spending this would leave next round's upkeep unpaid, else null. */
+export function upkeepWarning(g, cost = 0, addPoints = 0) {
+  const f = upkeepForecast(g, cost, addPoints);
+  if (!f || !f.short) return null;
+  return `⚠ Next round's upkeep will be ${f.due} materials, but after this you'll only have about ${f.have}${f.income ? ` (counting this round's income of ${f.income})` : ''}.\n\nYou'd be ${f.short} short, so some of your units would be disbanded at the start of next round (from your biggest stack).\n\nDo it anyway?`;
+}
+
 export function tileLabel(g, id) {
   const t = g.board.tiles.find((x) => x.id === id);
   if (!t) return id;
@@ -114,7 +141,7 @@ export function warMyPanel(store) {
       ${g.tw ? generalSummary(g) : ''}
       ${me.production ? `<span class="small">Tile income every round: ${bagInline(me.production.passive)}${me.production.fishing ? ` (incl. ${me.production.fishing} fishing ground${me.production.fishing === 1 ? '' : 's'} 🐟)` : ''}</span>` : ''}
       ${me.production && me.production.blockaded && me.production.blockaded.length ? `<span class="small warn">⚓ Blockaded, earning nothing: ${me.production.blockaded.join(', ')} — drive the enemy ships off or bring your own.</span>` : ''}
-      <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}</span>
+      <span class="muted small">Upkeep next round: ${me.upkeepDue} material${me.upkeepDue === 1 ? '' : 's'}${me.garrisonDue ? ` + garrison ${me.garrisonDue}` : ''}${(() => { const f = upkeepForecast(g); return f ? (f.short ? ` — <b class="warn">⚠ you'll have only about ${f.have}: units will be disbanded unless you earn or trade for ${f.short} more</b>` : ` — you'll have about ${f.have} ✓`) : ''; })()}</span>
       ${w.armyFloodPerUnits > 0 ? `<span class="small ${me.armyFloodDue ? 'warn' : 'muted'}">🏭 Army emissions next upkeep: Flood +${me.armyFloodDue} (1 per ${w.armyFloodPerUnits} units)</span>` : ''}</div>
     ${warTabs(store, g, [
       { id: 'recruit', label: '🪖 Recruit', html: `<details class="tool">
