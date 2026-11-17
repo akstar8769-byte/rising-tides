@@ -12,13 +12,13 @@
 
 const MAP = [
   '............OO.WWWW.QQQ.RRRRRR', // 0  Narvik · Kiruna · Murmansk
-  '...........OOO.WWW.QQQQ.RRRRRR', // 1
+  '..U........OOO.WWW.QQQQ.RRRRRR', // 1  the Highlands
   '..U........OO..WW..QQQ..RRRRRR', // 2  Scotland · Oslo · Helsinki · Leningrad
   '.UU.......OO..WWW..XXRRRRRRRRR', // 3  Stockholm · Riga
-  'IUUU.....D........XXRRRRRRRRRR', // 4  Ireland · Copenhagen · the Baltic Sea
-  'IUUU....NGGGGGGGXXRRRRRRRRRRRR', // 5  Liverpool · Amsterdam · Hamburg · Königsberg · Moscow
-  '.UU....BBGGGGGZZZZRRRRRRRRRRRR', // 6  Brussels · Berlin · Minsk
-  '..UU...FBGGGGGGZZZZRRRRRRRRRRR', // 7  London · the Channel · Lille · the Ruhr · Warsaw
+  'I.UU.....D........XXRRRRRRRRRR', // 4  Ireland · Copenhagen · the Baltic Sea
+  'I.UU....NGGGGGGGXXRRRRRRRRRRRR', // 5  Liverpool · Amsterdam · Hamburg · Königsberg · Moscow
+  '..UU...BBGGGGGZZZZRRRRRRRRRRRR', // 6  Brussels · Berlin · Minsk
+  '..U....FBGGGGGGZZZZRRRRRRRRRRR', // 7  London · the Channel · Lille · the Ruhr · Warsaw
   '....FFFFFGGGGGGZZZZRRRRRRRRRRR', // 8  Brest · Paris · Kraków
   '....FFFFFSGGGGHHAARRRRRRRRRRRR', // 9  Bern · Munich · Prague · Kiev · Kharkov
   '...FFFFFFTTGGYHHAAARRRRRRRRRRR', // 10 Lyon · Milan · Vienna · Budapest · Ploiești · Stalingrad
@@ -34,13 +34,13 @@ const MAP = [
 ];
 const TERRAIN = [
   '............hh.wwww.www.wwwwww',
-  '...........hhh.www.wwww.wwwwww',
+  '..h........hhh.www.wwww.wwwwww',
   '..h........hh..ww..www..wwwwww',
   '.hp.......hh..www..wwwwwwwwwww',
-  'pppp.....p........wwwwwwwwwwww',
-  'pppp....pppppppppwrrrwwwwwwwww',
-  '.pp....wppppppprrrrrpppppppppp',
-  '..pp...pwpppppprrppppppppppppp',
+  'p.pp.....p........wwwwwwwwwwww',
+  'p.pp....pppppppppwrrrwwwwwwwww',
+  '..pp...wppppppprrrrrpppppppppp',
+  '..p....pwpppppprrppppppppppppp',
   '....ppppppphhppppppppppppppppp',
   '....pppphhhhhhhhhhpppppppppppp',
   '...ppphhhhhhhhhhhhpppppppppppr',
@@ -126,7 +126,7 @@ const FACTION_FIT = { allies: ['democracy', 'nonaligned'], axis: ['fascism', 'no
 
 /** Cities: [col, row, name, flags] — ind: industrial (+3), vp: victory points, oil: an oil field. */
 const CITIES = [
-  [3, 7, 'London', { ind: true, vp: 5 }],
+  [2, 7, 'London', { ind: true, vp: 5 }],
   [2, 2, 'Glasgow', { ind: true }],
   [2, 5, 'Liverpool', { ind: true }],
   [0, 5, 'Dublin', {}],
@@ -219,7 +219,7 @@ const ARMIES = {
     [6, 18, 'infantry:2'],
   ],
   UK: [
-    [3, 7, 'infantry:3 interceptor:3 bomber:1'],
+    [2, 7, 'infantry:3 interceptor:3 bomber:1'],
     [2, 5, 'infantry:2'],
     [2, 2, 'infantry:1'],
     [24, 18, 'infantry:2 lightTank:1'],
@@ -292,7 +292,8 @@ const RESEARCH = {
  * option. Option effects: war (nation ids; `alone` keeps factions out), join (faction),
  * materials (+/-), pop ({ideology: +n}), popGov (+n for the government), units (infantry at
  * the capital), news (headline). Events with `effects` and no options just happen
- * (`faction`: to every member). `when(h)` gets helpers: h.atWar(a, b), h.out(id), h.me.
+ * (`faction`: to every member; `nation`: to that nation). `when(h)` gets helpers: h.atWar(a, b),
+ * h.out(id), h.invaded(id) (enemy troops on its land), h.me.
  */
 /** The front page of the first newspaper. */
 const OPENING = ['Germany invades Poland', 'Britain and France declare war on Germany'];
@@ -346,6 +347,7 @@ const EVENTS = [
   { id: 'continuationWar', nation: 'FIN', round: 8, until: 16, when: (h) => h.atWar('GER', 'USSR') && !h.out('USSR'), title: 'The Continuation War', text: 'Germany attacks the Soviet Union: a chance to win back what Finland lost.', options: [
     { label: 'Join the Axis', hist: true, join: 'axis', news: 'Finland joins the war against the Soviet Union' },
     { label: 'Stay out', materials: 3, news: 'Finland stays out of the war' } ] },
+  { id: 'frenchMobilisation', nation: 'FRA', round: 1, until: 24, when: (h) => h.invaded('FRA'), title: 'La patrie en danger', text: 'The enemy is on French soil: the reserves are called up.', effects: { units: 6 }, news: 'France mobilises its reserves to defend Paris' },
   { id: 'america', faction: 'allies', round: 10, title: 'America enters the war', text: 'After Pearl Harbor the United States joins the Allies: supplies pour across the Atlantic.', effects: { materials: 8 }, news: 'America enters the war! Every Allied nation receives American supplies' },
 ];
 
@@ -367,7 +369,8 @@ function dateOf(round) {
  * Historical war plans for bot nations. Each period (rounds `from`–`to`) names the cities
  * the nation drives towards (`attack`, only those held by an enemy count), the cities it
  * must hold (`defend`), cities it leaves alone (`avoid`), `strict` (only attacks near the
- * plan's targets, or to win back its own land), and whether it sits on the defensive (`passive`: no attacks except
+ * plan's targets, or to win back its own land), `rally` (a city its armies fall back on once
+ * the enemy invades or masses on the border), and whether it sits on the defensive (`passive`: no attacks except
  * to win back its own land). Bots mass their armies on the front nearest the plan's targets.
  */
 const WAR_PLANS = {
@@ -392,7 +395,7 @@ const WAR_PLANS = {
     { from: 18, to: 24, attack: ['Minsk', 'Warsaw', 'Königsberg', 'Bucharest', 'Budapest', 'Berlin'] },
   ],
   FRA: [
-    { from: 1, to: 24, passive: true, defend: ['Paris'] },
+    { from: 1, to: 24, passive: true, defend: ['Paris'], rally: 'Paris' },
   ],
   UK: [
     { from: 1, to: 24, defend: ['London', 'Alexandria', 'Cairo'] },

@@ -7,6 +7,7 @@ import { renderLanding } from './landing.js';
 import { skinText } from './ui.js';
 import { renderLobby } from './lobby.js';
 import { renderGame } from './game.js';
+import { mainBoard } from './board.js';
 import { renderEnd } from './end.js';
 import { onState as diceOnState } from './dice.js';
 import { payLargest, upkeepWarning } from './war-ui.js';
@@ -251,6 +252,91 @@ root.addEventListener('click', (e) => {
   if (key) panelOpen.set(key, !det.open);
 });
 
+/**
+ * The main map is kept between renders: the page leaves a slot for it, and we put back the
+ * same <svg>, replacing only the tiles whose markup changed (a 600-hex campaign board took
+ * ~200 ms to rebuild every time a unit moved).
+ */
+let boardEl = null;
+let boardParts = [];
+const svgNS = (html) => {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  return tpl.content.firstElementChild;
+};
+/** Bring the kept board up to date with the latest render (only changed tiles are replaced). */
+function updateBoard() {
+  const { open, parts } = mainBoard;
+  if (!boardEl || boardParts.length !== parts.length) {
+    boardEl = svgNS(`${open}${parts.join('')}</svg>`);
+  } else {
+    // The viewBox may also have been moved by dragging the map: always match the new tag.
+    const fresh = svgNS(`${open}</svg>`);
+    for (const a of fresh.attributes) if (boardEl.getAttribute(a.name) !== a.value) boardEl.setAttribute(a.name, a.value);
+    const kids = boardEl.children;
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i] === boardParts[i]) continue;
+      const g = svgNS(`<svg>${parts[i]}</svg>`).firstElementChild;
+      if (g && kids[i]) kids[i].replaceWith(g);
+    }
+  }
+  boardParts = parts;
+}
+
+/** Copy element attributes from `from` onto `to`. */
+function syncAttrs(to, from) {
+  for (const a of [...to.attributes]) if (!from.hasAttribute(a.name)) to.removeAttribute(a.name);
+  for (const a of from.attributes) if (to.getAttribute(a.name) !== a.value) to.setAttribute(a.name, a.value);
+}
+
+/**
+ * Update `oldP`'s children to match `newP`'s, keeping unchanged elements and the board in
+ * place: the board never leaves the page, so the browser doesn't restyle its ~5,000 elements.
+ */
+function morphChildren(oldP, newP) {
+  const olds = [...oldP.children];
+  const news = [...newP.children];
+  for (let i = 0; i < news.length; i++) {
+    const n = news[i];
+    const o = olds[i];
+    if (!o) {
+      oldP.appendChild(n);
+      continue;
+    }
+    if (n.matches('svg.board-slot')) {
+      updateBoard();
+      if (o !== boardEl) o.replaceWith(boardEl);
+      continue;
+    }
+    if (o.tagName === n.tagName && n.querySelector('svg.board-slot')) {
+      syncAttrs(o, n);
+      morphChildren(o, n);
+      continue;
+    }
+    if (!o.isEqualNode(n)) o.replaceWith(n);
+  }
+  for (let i = news.length; i < olds.length; i++) olds[i].remove();
+}
+
+/** The game screen: patched in place around the kept board when possible. */
+function renderGamePage(html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const fresh = tpl.content;
+  const hasSlot = !!fresh.querySelector('svg.board-slot');
+  if (hasSlot && boardEl && boardEl.isConnected && root.children.length === 1 && fresh.children.length === 1 && root.firstElementChild.tagName === fresh.firstElementChild.tagName) {
+    syncAttrs(root.firstElementChild, fresh.firstElementChild);
+    morphChildren(root.firstElementChild, fresh.firstElementChild);
+    return;
+  }
+  root.replaceChildren(fresh);
+  const slot = root.querySelector('svg.board-slot');
+  if (slot) {
+    updateBoard();
+    slot.replaceWith(boardEl);
+  }
+}
+
 export function render() {
   // Remember which text box had focus so redrawing doesn't interrupt typing.
   const active = document.activeElement;
@@ -261,7 +347,7 @@ export function render() {
   if (!d) root.innerHTML = renderLanding(store);
   else if (!d.game) root.innerHTML = renderLobby(store);
   else if (d.game.phase === 'ended') root.innerHTML = renderEnd(store);
-  else root.innerHTML = renderGame(store);
+  else renderGamePage(renderGame(store));
 
   for (const det of root.querySelectorAll('details')) {
     const key = panelKey(det);

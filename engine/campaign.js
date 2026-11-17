@@ -238,7 +238,29 @@ function eventHelpers(s, seat) {
     const y = seatOfNation(s, b);
     return x >= 0 && y >= 0 && atWar(s, x, y);
   };
-  return { atWar: war, out, me: s.players[seat] };
+  const invadedBy = (id) => {
+    const x = seatOfNation(s, id);
+    return x >= 0 && invaded(s, x);
+  };
+  return { atWar: war, out, invaded: invadedBy, me: s.players[seat] };
+}
+
+/** Enemy troops hold some of this nation's own land. */
+function invaded(s, seat) {
+  return s.board.tiles.some((t) => t.kind === 'land' && t.owner === seat && t.controller != null && t.controller !== seat && atWar(s, seat, t.controller));
+}
+/** Enemy land units massed right on this nation's border (at least `n`). */
+function threatened(s, seat, n = 8) {
+  const home = s.board.tiles.filter((t) => t.kind === 'land' && t.owner === seat && t.controller === seat);
+  let units = 0;
+  const seen = new Set();
+  for (const t of s.board.tiles) {
+    if (t.kind !== 'land' || t.controller == null || t.controller === seat || seen.has(t.id) || !atWar(s, seat, t.controller)) continue;
+    if (!home.some((h) => Math.abs(h.q - t.q) + Math.abs(h.r - t.r) + Math.abs(h.q + h.r - t.q - t.r) === 2)) continue;
+    seen.add(t.id);
+    units += (t.units || {})[t.controller] || 0;
+  }
+  return units >= n;
 }
 
 /** Fire this round's events: humans get a decision, bots take the historical option. */
@@ -260,6 +282,12 @@ function runEvents(s) {
     if (seat < 0 || s.players[seat].out) continue;
     if (e.when && !e.when(eventHelpers(s, seat))) continue;
     fired.push(key);
+    // An event that just happens to this nation (no choice).
+    if (!e.options) {
+      applyEffects(s, seat, e.effects || {});
+      addLog(s, `📰 ${e.news || e.title}.`, { kind: 'round', event: 'news' });
+      continue;
+    }
     offerEvent(s, seat, e);
   }
   // Unrest: a government with little support faces protests every few rounds.
@@ -691,8 +719,10 @@ function planFor(s, seat) {
     defend: [...new Set(phases.flatMap((x) => x.defend || []))],
     avoid: [...new Set(phases.flatMap((x) => x.avoid || []))],
     strict: phases.some((x) => x.strict),
+    // Reactive defence: once invaded (or with an enemy army on the border), rally to a city.
+    rally: (phases.find((x) => x.rally && (invaded(s, seat) || threatened(s, seat))) || {}).rally || null,
     passive: phases.some((x) => x.passive) && !phases.some((x) => (x.attack || []).length),
   };
 }
 
-module.exports = { landOil, fuelPoints, fuelNeed, oilImports, fuelStrength, payFuel, doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };
+module.exports = { invaded, threatened, landOil, fuelPoints, fuelNeed, oilImports, fuelStrength, payFuel, doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };

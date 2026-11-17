@@ -385,3 +385,52 @@ test('Soviet industry beyond the Urals: +6 materials a round from December 1941'
   s.round = 10;
   assert.equal(CAMP.doctrine(s, ussr).materials, 6);
 });
+
+test('Britain is an island: no land border with Ireland or France', () => {
+  const s = europe();
+  const uk = seat('UK');
+  const home = s.board.tiles.filter((t) => t.kind === 'land' && t.owner === uk && t.r < 9);
+  assert.ok(home.length >= 10);
+  for (const t of home) for (const o of s.board.tiles) if (o.kind === 'land' && o.owner !== uk && areAdjacent(o, t)) assert.fail(`${t.id} touches ${o.id}`);
+  assert.equal(city(s, 'London').owner, uk);
+});
+
+test('France fights back: invaded, it mobilises and its bot rallies the army on Paris', () => {
+  const bots = require('../server/bots');
+  let s = europe();
+  const fra = seat('FRA');
+  const ger = seat('GER');
+  assert.equal(CAMP.planFor(s, fra).rally, null, 'no rally in peacetime on the border');
+  // German troops take Lille.
+  const lille = city(s, 'Lille');
+  lille.controller = ger;
+  lille.troops = { [ger]: { infantry: 4 } };
+  lille.units = { [ger]: 4 };
+  assert.ok(CAMP.invaded(s, fra));
+  assert.equal(CAMP.planFor(s, fra).rally, 'Paris');
+  // The reserves are called up once.
+  const paris = city(s, 'Paris');
+  const before = paris.units[fra] || 0;
+  CAMP.runEvents(s);
+  assert.equal(paris.units[fra], before + 6);
+  CAMP.runEvents(s);
+  assert.equal(paris.units[fra], before + 6, 'only once');
+  // The French bot's first army move is towards Paris.
+  s.phase = 'trade';
+  const mem = { personality: 'cautious', tried: new Set(), phaseKey: null, failures: 0 };
+  let move = null;
+  for (let i = 0; i < 40 && !move; i++) {
+    const idea = bots.decide(engine.viewFor(s, fra), mem);
+    if (!idea) break;
+    try {
+      s = engine.applyAction(s, fra, idea.action);
+    } catch (e) {
+      mem.tried.add(idea.key);
+      continue;
+    }
+    if (idea.action.type === 'moveUnits') move = idea;
+  }
+  assert.ok(move && move.key.startsWith('rally-'), move && move.key);
+  const to = s.board.tiles.find((t) => t.id === move.action.to);
+  assert.ok(to.id === paris.id || areAdjacent(to, paris), `${to.id} is at Paris`);
+});

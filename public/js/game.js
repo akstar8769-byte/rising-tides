@@ -42,7 +42,7 @@ export function renderGame(store) {
   </div>
   ${newspaper(store)}
   <main class="map ${ui.legend ? 'show-legend' : ''}">
-    ${renderBoard(g, { ...boardOptions(store), view: mapView(store) })}
+    ${renderBoard(g, { ...boardOptions(store), view: mapView(store), main: true })}
     ${rivals(store)}
     <div class="map-zoom" role="group" aria-label="Zoom">
       <button data-act="zoom" data-f="1.4" aria-label="Zoom in">＋</button>

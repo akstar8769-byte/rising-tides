@@ -735,6 +735,31 @@ function planTargets(g) {
   if (!PLAN_CACHE.has(g)) PLAN_CACHE.set(g, g.board.tiles.filter((t) => t.name && g.scenario.plan.attack.includes(t.name) && isEnemy(g, t.controller)));
   return PLAN_CACHE.get(g);
 }
+/**
+ * Campaigns, invaded: armies fall back on the plan's rally city — the city itself up to a
+ * strong garrison, then the hexes around it — leaving one unit on each front tile.
+ */
+function rallyIdea(g, me, withUnits) {
+  const name = campaign(g) && g.scenario.plan && g.scenario.plan.rally;
+  if (!name) return null;
+  const R = g.board.tiles.find((t) => t.name === name && t.controller === g.you);
+  if (!R) return null;
+  const ring = [R, ...nb(g, R).filter((t) => t.kind === 'land' && t.controller === g.you)];
+  const inRing = new Set(ring.map((t) => t.id));
+  for (const t of withUnits) {
+    if (inRing.has(t.id)) continue;
+    const reach = walkable(g, t.id);
+    if (!reach.has(R.id)) continue;
+    // Fill the city first, then the weakest hex around it.
+    const to = unitsOn(R, g.you) < 16 ? R : ring.filter((x) => reach.has(x.id)).sort((a, b) => unitsOn(a, g.you) - unitsOn(b, g.you))[0];
+    const keep = exposed(g, t.id) ? 1 : 0;
+    const n = unitsOn(t, g.you) - keep;
+    if (!to || n < 1) continue;
+    return { key: `rally-${g.round}-${t.id}-${to.id}`, action: { type: 'moveUnits', from: t.id, to: to.id, count: n } };
+  }
+  return null;
+}
+
 /** Hexes from tile t to the nearest of the plan's targets. */
 const planDist = (t, targets) => targets.reduce((a, p) => Math.min(a, hexDist(t, p)), Infinity);
 
@@ -850,6 +875,9 @@ function moveIdea(g, me, P) {
     // (never from below the garrison a threatened capital needs)
     if (emptyFront && unitsOn(big, g.you) - (keyTile(g, me, big) && threatNear(g, big) ? garrisonWanted(g, me, big) : 0) >= 2) return { key: `move-${big.id}-${emptyFront}`, action: { type: 'moveUnits', from: big.id, to: emptyFront, count: 1 } };
   }
+  // Campaigns: invaded — rally the army on the plan's city (e.g. France on Paris).
+  const rally = rallyIdea(g, me, withUnits);
+  if (rally) return rally;
   // Campaigns: mass on the war plan's front.
   const massed = concentrateIdea(g, me, withUnits);
   if (massed) return massed;
@@ -860,8 +888,8 @@ function moveIdea(g, me, P) {
   const spare = unitsOn(cap, g.you) - (g.scenario || threatNear(g, cap) ? garrisonWanted(g, me) : P === PERSONALITIES.warlike ? 0 : 1);
   if (dest && spare > 0) return { key: `move-${cap.id}-${dest}`, action: { type: 'moveUnits', from: cap.id, to: dest, count: spare } };
   // Scenarios: march armies sitting in the rear (reinforcements, a front that has moved
-  // on) up to the front line, ideally next to an enemy city.
-  if (g.scenario) {
+  // on) up to the front line, ideally next to an enemy city (not while rallying on a city).
+  if (g.scenario && !(campaign(g) && g.scenario.plan && g.scenario.plan.rally)) {
     const enemyNext = (t) => nb(g, t).filter((o) => o.kind === 'land' && isEnemy(g, o.controller));
     for (const t of withUnits) {
       if (exposed(g, t.id)) continue;

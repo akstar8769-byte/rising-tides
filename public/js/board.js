@@ -59,7 +59,15 @@ function factoryBadge(t, x, y) {
  * opts.highlight: tile ids to outline as possible targets (clickable)
  * opts.selected:  the currently chosen target
  */
+/**
+ * The main map's last render, split into the <svg> opening tag and one string per tile, so
+ * the page can update only the tiles that changed instead of rebuilding a 600-hex board.
+ */
+export const mainBoard = { open: '', parts: [] };
+
 export function renderBoard(game, opts = {}) {
+  // Big campaign maps: plain sea hexes and land hexes skip the decorations nobody reads at that size.
+  const big = game.board.tiles.length > 200;
   const war = !!game.war;
   const highlight = new Set(opts.highlight || []);
   const tiles = game.board.tiles;
@@ -96,8 +104,8 @@ export function renderBoard(game, opts = {}) {
       }
       return `<g class="${cls}"${act}><title>${t.fish ? 'Fishing ground' : 'Sea'} ${t.id}${hold ? ' — ' + esc(game.players[t.controller].name) + "'s fleet" : ''}${t.fish ? ' (earns its holder income)' : ''}</title>
         <polygon points="${hexPoints(x, y, SIZE - 2)}" fill="#1f4e79" stroke="${hold ? hold.color : '#ffffff'}" stroke-width="${hold ? 6 : 2}"/>
-        <text x="${x}" y="${y - 4}" class="glyph">${t.fish ? '🐟' : '🌊'}</text>
-        <text x="${x}" y="${y + 38}" class="tid" style="fill:#fff">${t.id}</text>
+        ${big && !t.fish ? '' : `<text x="${x}" y="${y - 4}" class="glyph">${t.fish ? '🐟' : '🌊'}</text>
+        <text x="${x}" y="${y + 38}" class="tid" style="fill:#fff">${t.id}</text>`}
         ${game.stationed ? unitBadge(t, x, y, game) : ''}${ring}</g>`;
     }
     const b = BIOME[t.biome];
@@ -135,7 +143,7 @@ export function renderBoard(game, opts = {}) {
         <text x="${x}" y="${y + 33}" class="tsub strong">${sub}</text>
         ${marks ? `<text x="${x + 30}" y="${y - 26}" class="marks">${marks}</text>` : ''}`;
     }
-    if (war && !isCapital) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
+    if (war && !isCapital && !big) inner += `<text x="${x}" y="${y + 38}" class="tid">${t.id}</text>`;
     if (game.supply && game.supply.cut[t.id] != null) inner += `<g class="supply-mark"><title>Out of supply${game.supply.cut[t.id] ? ` for ${game.supply.cut[t.id]} round${game.supply.cut[t.id] === 1 ? '' : 's'}` : ''}: fights at ${game.supply.pct}%, no recruiting${game.supply.cut[t.id] >= game.supply.after ? ', losing a unit every round' : ''}</title><circle cx="${x + 30}" cy="${y - 22}" r="11"/><text x="${x + 30}" y="${y - 17}">⚠</text></g>`;
     if (t.bunker) inner += `<g class="bunker-mark"><title>Bunker level ${t.bunker}: defenders take less damage</title><rect x="${x - 44}" y="${y + 14}" width="28" height="18" rx="5"/><text x="${x - 30}" y="${y + 28}">🛡${t.bunker}</text></g>`;
     if (t.fort) inner += `<g class="fort-mark"><title>Fortified line: defenders take less damage</title><text x="${x - 30}" y="${y + 6}">🛡</text></g>`;
@@ -165,7 +173,12 @@ export function renderBoard(game, opts = {}) {
     : '';
   const box = [Math.round(minX), Math.round(minY), Math.round(w), Math.round(h)];
   const vb = opts.view ? viewBoxFor(box, opts.view) : box;
-  return `<svg class="board" viewBox="${vb.map((n) => n.toFixed(1)).join(' ')}" data-box="${box.join(' ')}" role="img" aria-label="Game board">${parts.join('')}</svg>
+  const open = `<svg class="board" viewBox="${vb.map((n) => n.toFixed(1)).join(' ')}" data-box="${box.join(' ')}" role="img" aria-label="Game board">`;
+  if (opts.main) {
+    mainBoard.open = open;
+    mainBoard.parts = parts;
+  }
+  return `${opts.main ? '<svg class="board-slot"></svg>' : `${open}${parts.join('')}</svg>`}
   <div class="legend">${Object.values(BIOME)
     .filter((b) => !b.sea || tiles.some((t) => t.kind === 'sea'))
     .map((b) => `<span><i style="background:${b.color}"></i>${b.glyph} ${b.label}${b.sea ? ' (ships only)' : b.res ? ` (${b.res === 'sandbag' ? 'sandbags' : b.res})` : ' (any)'}</span>`)
