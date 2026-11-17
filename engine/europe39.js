@@ -17,7 +17,7 @@ const MAP = [
   '.UU.......OO..WWW..XXRRRRRRRRR', // 3  Stockholm · Riga
   'I.UU.....D........XXRRRRRRRRRR', // 4  Ireland · Copenhagen · the Baltic Sea
   'I.UU....NGGGGGGGXXRRRRRRRRRRRR', // 5  Liverpool · Amsterdam · Hamburg · Königsberg · Moscow
-  '..UU...BBGGGGGZZZZRRRRRRRRRRRR', // 6  Brussels · Berlin · Minsk
+  '..UUU..BBGGGGGZZZZRRRRRRRRRRRR', // 6  London  Brussels · Berlin · Minsk
   '..U....FBGGGGGGZZZZRRRRRRRRRRR', // 7  London · the Channel · Lille · the Ruhr · Warsaw
   '....FFFFFGGGGGGZZZZRRRRRRRRRRR', // 8  Brest · Paris · Kraków
   '....FFFFFSGGGGHHAARRRRRRRRRRRR', // 9  Bern · Munich · Prague · Kiev · Kharkov
@@ -39,7 +39,7 @@ const TERRAIN = [
   '.hp.......hh..www..wwwwwwwwwww',
   'p.pp.....p........wwwwwwwwwwww',
   'p.pp....pppppppppwrrrwwwwwwwww',
-  '..pp...wppppppprrrrrpppppppppp',
+  '..ppp..wppppppprrrrrpppppppppp',
   '..p....pwpppppprrppppppppppppp',
   '....ppppppphhppppppppppppppppp',
   '....pppphhhhhhhhhhpppppppppppp',
@@ -126,7 +126,7 @@ const FACTION_FIT = { allies: ['democracy', 'nonaligned'], axis: ['fascism', 'no
 
 /** Cities: [col, row, name, flags] — ind: industrial (+3), vp: victory points, oil: an oil field. */
 const CITIES = [
-  [2, 7, 'London', { ind: true, vp: 5 }],
+  [4, 6, 'London', { ind: true, vp: 5 }],
   [2, 2, 'Glasgow', { ind: true }],
   [2, 5, 'Liverpool', { ind: true }],
   [0, 5, 'Dublin', {}],
@@ -219,7 +219,7 @@ const ARMIES = {
     [6, 18, 'infantry:2'],
   ],
   UK: [
-    [2, 7, 'infantry:3 interceptor:3 bomber:1'],
+    [4, 6, 'infantry:3 interceptor:3 bomber:1'],
     [2, 5, 'infantry:2'],
     [2, 2, 'infantry:1'],
     [24, 18, 'infantry:2 lightTank:1'],
