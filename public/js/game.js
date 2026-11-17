@@ -311,6 +311,7 @@ function hostMenu(store) {
   return `<div class="host-menu">
     ${d.paused ? '<button class="btn small" data-act="host" data-op="resume">▶ Resume</button>' : '<button class="btn small" data-act="host" data-op="pause">⏸ Pause</button>'}
     ${skips}
+    <button class="btn small" data-act="saveGame" title="Download the whole game as a file, to carry on later">💾 Save game</button>
     <button class="btn small danger" data-act="host" data-op="endGame">End game</button>
     <p class="hint">Skip: marks a player Ready, plays Sustainable for them (puppets: their command), or picks their loot at random.</p>
   </div>`;

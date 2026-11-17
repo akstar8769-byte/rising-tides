@@ -111,3 +111,57 @@ test('server: pause blocks actions; host can skip a player', async () => {
     await srv.close();
   }
 });
+
+test('server: War and War + Empire are hidden from the lobby', async () => {
+  const srv = await startServer(0);
+  const a = client(srv.port);
+  try {
+    const meta = await new Promise((res) => a.once('meta', res));
+    assert.deepEqual(meta.modes.sort(), ['base', 'totalwar']);
+    await a.call('createRoom', { name: 'Ana' });
+    assert.match((await a.call('lobby', { op: 'setMode', mode: 'war' })).error, /no longer offered/);
+  } finally {
+    a.close();
+    await srv.close();
+  }
+});
+
+test('server: the host can save a game and load it into a new room to carry on', async () => {
+  const srv = await startServer(0);
+  const a = client(srv.port);
+  const a2 = client(srv.port);
+  try {
+    await a.call('createRoom', { name: 'Ana' });
+    assert.ok((await a.call('lobby', { op: 'setMode', mode: 'totalwar' })).ok);
+    assert.ok((await a.call('lobby', { op: 'setSetting', path: 'totalwar.scenario', value: 'eastFront41' })).ok);
+    assert.ok((await a.call('lobby', { op: 'addBot' })).ok);
+    assert.ok((await a.call('startGame')).ok);
+    await tick();
+    assert.ok((await a.call('action', { type: 'ready' })).ok);
+    await tick();
+    const saved = await a.call('saveGame');
+    assert.equal(saved.save.format, 'rising-tides-save');
+    assert.equal(saved.save.state.scenario.id, 'eastFront41');
+    const round = saved.save.state.round;
+
+    // A new room: the seats must match the save before it loads.
+    await a2.call('createRoom', { name: 'Zed' });
+    assert.match((await a2.call('loadGame', { save: saved.save })).error, /has 2 players/);
+    assert.ok((await a2.call('lobby', { op: 'addBot' })).ok);
+    assert.match((await a2.call('loadGame', { save: { format: 'nope' } })).error, /isn't a Rising Tides save/);
+    const loaded = await a2.call('loadGame', { save: JSON.parse(JSON.stringify(saved.save)) });
+    assert.ok(loaded.ok, loaded.error);
+    await tick();
+    const g = a2.last.game;
+    assert.equal(g.round, round);
+    assert.equal(g.scenario.name, 'Eastern Front, 1941');
+    assert.equal(g.players[0].name, 'Zed', 'the new host takes over seat 1');
+    assert.equal(g.board.tiles.find((t) => t.name === 'Moscow').controller, 1);
+    // ...and play carries on.
+    assert.ok((await a2.call('action', { type: 'ready' })).ok);
+  } finally {
+    a.close();
+    a2.close();
+    await srv.close();
+  }
+});

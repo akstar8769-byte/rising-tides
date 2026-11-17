@@ -196,9 +196,9 @@ test('server: one human plus bots can play a whole game', async () => {
     assert.ok((await call('lobby', { op: 'addBot' })).ok);
     assert.ok((await call('lobby', { op: 'addBot' })).ok);
     assert.ok((await call('lobby', { op: 'setBotPersonality', seat: 2, personality: 'warlike' })).ok);
-    await call('lobby', { op: 'setMode', mode: 'war' });
+    await call('lobby', { op: 'setMode', mode: 'totalwar' }); // (War mode is hidden from the lobby now)
     await call('lobby', { op: 'setSetting', path: 'general.botThinkMs', value: 0 });
-    await call('lobby', { op: 'setSetting', path: 'war.rounds', value: 3 });
+    await call('lobby', { op: 'setSetting', path: 'totalwar.rounds', value: 3 });
     await new Promise((r) => setTimeout(r, 50));
     assert.deepEqual(last.members.map((m) => m.bot), [null, 'balanced', 'warlike']);
     const joiner = io(`http://localhost:${srv.port}`, { transports: ['websocket'], forceNew: true });
@@ -220,6 +220,9 @@ test('server: one human plus bots can play a whole game', async () => {
         const mix = { wood: 0, stone: 0, sandbag: 0 };
         for (let i = 0; i < prod.free; i++) mix[prod.allowed[i % prod.allowed.length]]++;
         await call('action', { type: 'choose', action: 'sustainable', mix });
+      } else if (g.phase === 'battle') {
+        // Let the computer fight our battles.
+        for (const b of g.battles || []) if (b.status === 'live' && (b.attacker === g.you || b.defender === g.you)) await call('action', { type: 'battleAuto', battle: b.id, on: true });
       } else if (g.phase === 'loot') {
         await call('action', { type: 'pickLoot', materials: g.players[g.pendingLoot.target].materials ? pickAny(g) : {} });
       } else if (!me.ready) await call('action', { type: 'ready' });

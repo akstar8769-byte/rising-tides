@@ -41,6 +41,23 @@ const total = (b) => (b ? b.wood + b.stone + b.sandbag : 0);
 const empty = () => ({ wood: 0, stone: 0, sandbag: 0 });
 const has = (have, need) => MATS.every((m) => have[m] >= need[m]);
 const adjacent = (a, b) => DIRS.some(([dq, dr]) => a.q + dq === b.q && a.r + dr === b.r);
+// Neighbour index for the board a bot is looking at (worked out once per view).
+const NB_CACHE = new WeakMap();
+function nb(g, t) {
+  let m = NB_CACHE.get(g.board);
+  if (!m) {
+    const byQR = new Map(g.board.tiles.map((x) => [x.q + ',' + x.r, x]));
+    m = new Map();
+    for (const x of g.board.tiles) m.set(x.id, DIRS.map(([dq, dr]) => byQR.get(x.q + dq + ',' + (x.r + dr))).filter(Boolean));
+    NB_CACHE.set(g.board, m);
+  }
+  return m.get(t.id) || [];
+}
+const tileById = (g, id) => {
+  let m = NB_CACHE.get(g.board.tiles);
+  if (!m) NB_CACHE.set(g.board.tiles, (m = new Map(g.board.tiles.map((t) => [t.id, t]))));
+  return m.get(id);
+};
 const unitsOn = (t, seat) => (t.units && t.units[seat]) || 0;
 const chance = (p) => Math.random() < p;
 
@@ -296,7 +313,7 @@ function landmass(g, start) {
   const queue = [start];
   while (queue.length) {
     const t = queue.shift();
-    for (const n of g.board.tiles) if (n.kind === 'land' && !seen.has(n.id) && adjacent(t, n)) { seen.add(n.id); queue.push(n); }
+    for (const n of nb(g, t)) if (n.kind === 'land' && !seen.has(n.id)) { seen.add(n.id); queue.push(n); }
   }
   return seen;
 }
@@ -383,7 +400,7 @@ function generalIdea(g, me, P) {
 function raidIdea(g, me) {
   for (const [from, list] of Object.entries(g.raidTargets || {})) {
     const mine = new Set(g.board.tiles.filter((t) => t.kind === 'land' && t.controller === g.you).map((t) => t.id));
-    const near = (t) => g.board.tiles.some((o) => mine.has(o.id) && adjacent(o, t));
+    const near = (t) => nb(g, t).some((o) => mine.has(o.id));
     const score = (t) => (near(t) ? 10 : 0) + (t.bunker || 0) * 5 + (t.victory ? 3 : 0) + Math.min(5, unitsOn(t, t.controller) / 3);
     const best = list.map((id) => g.board.tiles.find((t) => t.id === id)).filter((t) => t.bunker || (near(t) && unitsOn(t, t.controller) >= 4)).sort((a, b) => score(b) - score(a))[0];
     if (best) return { key: `raid-${g.round}-${from}`, action: { type: 'airRaid', from, target: best.id } };
@@ -616,7 +633,7 @@ function frontier(g) {
   const land = g.board.tiles.filter((t) => t.kind === 'land');
   return land
     .filter((t) => t.controller === g.you)
-    .map((t) => ({ t, threat: land.filter((o) => adjacent(o, t) && o.controller !== g.you).length }))
+    .map((t) => ({ t, threat: nb(g, t).filter((o) => o.kind === 'land' && o.controller !== g.you).length }))
     .filter((x) => x.threat > 0)
     .sort((a, b) => b.threat - a.threat)
     .map((x) => x.t.id);
@@ -682,25 +699,21 @@ function sideSeats(g) {
 
 /** Is this tile of ours next to land held by someone we could be attacked by? */
 function exposed(g, id) {
-  const t = g.board.tiles.find((x) => x.id === id);
-  const allies = new Set(g.scenario ? g.scenario.sides.find((x) => x.seats.includes(g.you)).seats : [g.you]);
-  return HEX_DIRS.some(([dq, dr]) => g.board.tiles.some((n) => n.q === t.q + dq && n.r === t.r + dr && n.kind === 'land' && n.controller != null && !allies.has(n.controller)));
+  const t = tileById(g, id);
+  const allies = sideSeats(g);
+  return nb(g, t).some((n) => n.kind === 'land' && n.controller != null && !allies.has(n.controller));
 }
 
 /** Our tiles that units on tile `id` can walk to over our own land (no sea crossing). */
 const HEX_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 function walkable(g, id) {
   const stand = new Set(g.standTiles || []);
-  const byQR = new Map(g.board.tiles.map((t) => [`${t.q},${t.r}`, t]));
-  const start = g.board.tiles.find((t) => t.id === id);
+  const start = tileById(g, id);
   const seen = new Set([id]);
   const todo = [start];
   while (todo.length) {
     const t = todo.pop();
-    for (const [dq, dr] of HEX_DIRS) {
-      const n = byQR.get(`${t.q + dq},${t.r + dr}`);
-      if (n && !seen.has(n.id) && n.kind === 'land' && stand.has(n.id)) (seen.add(n.id), todo.push(n));
-    }
+    for (const n of nb(g, t)) if (!seen.has(n.id) && n.kind === 'land' && stand.has(n.id)) (seen.add(n.id), todo.push(n));
   }
   return seen;
 }
@@ -766,7 +779,7 @@ function moveIdea(g, me, P) {
   // Scenarios: march armies sitting in the rear (reinforcements, a front that has moved
   // on) up to the front line, ideally next to an enemy city.
   if (g.scenario) {
-    const enemyNext = (t) => g.board.tiles.filter((o) => o.kind === 'land' && o.controller != null && !sideSeats(g).has(o.controller) && adjacent(o, t));
+    const enemyNext = (t) => nb(g, t).filter((o) => o.kind === 'land' && o.controller != null && !sideSeats(g).has(o.controller));
     for (const t of withUnits) {
       if (exposed(g, t.id)) continue;
       const keep = keyTile(g, me, t) ? garrisonWanted(g, me, t) : t.fort || t.bunker ? 4 : 0;

@@ -699,7 +699,7 @@ function styleOf(s) {
 /** A style, with anything it leaves out (null) taken from the historical style. */
 function withDefaults(sc, style) {
   const st = sc.styles[style] || sc.styles.balanced;
-  const h = sc.styles.historical;
+  const h = sc.styles.historical || st; // a scenario without a historical style uses its own
   return { ...st, research: st.research || h.research, armies: st.armies || h.armies, bunkers: st.bunkers || null, fleets: st.fleets || h.fleets || null };
 }
 /** The side (index 0 or 1) a seat plays: even seats the first side, odd seats the second. */

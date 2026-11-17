@@ -17,7 +17,8 @@ function startServer(port = process.env.PORT || 3000) {
   app.get('/health', (req, res) => res.send('ok')); // used by the free host to check we're alive
 
   const server = http.createServer(app);
-  const io = new Server(server);
+  // Saved games are loaded over the socket, so allow messages up to 20 MB.
+  const io = new Server(server, { maxHttpBufferSize: 20e6 });
   const rooms = attachRooms(io);
 
   return new Promise((resolve) => {

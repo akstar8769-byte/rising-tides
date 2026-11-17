@@ -32,6 +32,38 @@ const bots = require('./bots');
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O (look like 1 and 0)
 const MAX_PLAYERS = 5;
 const MIN_PLAYERS = 3;
+const SAVE_FORMAT = 'rising-tides-save';
+
+/** Check a save file sent by a host; returns its game state (or throws a friendly error). */
+function checkSave(save) {
+  const bad = (why) => {
+    const e = new Error(`That file isn't a Rising Tides save (${why}).`);
+    e.friendly = true;
+    return e;
+  };
+  if (!save || typeof save !== 'object' || save.format !== SAVE_FORMAT) throw bad('wrong format');
+  if (save.version !== 1) throw bad('made by a different version');
+  if (!engine.MODES.includes(save.mode)) throw bad('unknown game mode');
+  const st = save.state;
+  if (!st || !Array.isArray(st.players) || !st.board || !Array.isArray(st.board.tiles) || typeof st.phase !== 'string' || !Number.isInteger(st.round)) throw bad('the game data is incomplete');
+  if (st.players.length < 2 || st.players.length > MAX_PLAYERS) throw bad('wrong number of players');
+  if (st.mode !== save.mode) throw bad('mode mismatch');
+  if (!Array.isArray(save.seats) || save.seats.length !== st.players.length) throw bad('seat list mismatch');
+  // Fill in any settings added since the save was made.
+  save.settings = mergeDefaults(config.cloneDefaults(), save.settings || {});
+  st.settings = mergeDefaults(JSON.parse(JSON.stringify(save.settings)), st.settings || {});
+  return st;
+}
+/** Deep-merge `over` onto `base` (keys missing from `over` keep their defaults). */
+function mergeDefaults(base, over) {
+  for (const [k, v] of Object.entries(over)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object') mergeDefaults(base[k], v);
+    else base[k] = v;
+  }
+  return base;
+}
+// Modes the rules engine still supports but the lobby no longer offers (their puppet code lives on in Total War).
+const HIDDEN_MODES = ['war', 'empire'];
 const ROOM_IDLE_HOURS = 6; // rooms with nobody connected for this long are deleted
 
 function newCode(rooms) {
@@ -404,7 +436,7 @@ function attachRooms(io) {
       options: config.OPTIONS,
       decimals: config.DECIMALS,
       groupsForMode: config.GROUPS_FOR_MODE,
-      modes: engine.MODES,
+      modes: engine.MODES.filter((m) => !HIDDEN_MODES.includes(m)),
       builtModes: engine.BUILT_MODES,
       minPlayers: MIN_PLAYERS,
       maxPlayers: MAX_PLAYERS,
@@ -490,6 +522,7 @@ function attachRooms(io) {
         case 'setMode':
           if (!engine.MODES.includes(msg.mode)) throw friendly('Unknown mode.');
           if (!engine.BUILT_MODES.includes(msg.mode)) throw friendly('That mode is not built yet.');
+          if (HIDDEN_MODES.includes(msg.mode)) throw friendly('That mode is no longer offered.');
           room.mode = msg.mode;
           break;
         case 'setSetting':
@@ -587,6 +620,53 @@ function attachRooms(io) {
       room.record = null;
       room.paused = false;
       systemChat(room, 'The game has started. Good luck!');
+      broadcast(room);
+    });
+
+    // ---------------------------------------------------------- save / resume
+    // The host downloads the whole game as a file, and can load it into a new room later
+    // (games otherwise live only in the server's memory and vanish if it restarts).
+    handle(socket, 'saveGame', () => {
+      const { room, member } = requireRoom(socket);
+      requireHost(room, member);
+      if (!room.state) throw friendly('Start a game first.');
+      return {
+        save: {
+          format: SAVE_FORMAT,
+          version: 1,
+          savedAt: new Date().toISOString(),
+          mode: room.mode,
+          settings: room.settings,
+          seats: room.members.map((m) => ({ name: m.name, bot: m.bot ? m.bot.personality : null })),
+          state: room.state,
+        },
+      };
+    });
+
+    handle(socket, 'loadGame', ({ save }) => {
+      const { room, member } = requireRoom(socket);
+      requireHost(room, member);
+      if (room.state) throw friendly('Load a saved game from the lobby (end this game first).');
+      const st = checkSave(save);
+      const n = st.players.length;
+      if (room.members.length !== n) {
+        const want = save.seats.map((x) => `${x.name}${x.bot ? ' (bot)' : ''}`).join(', ');
+        throw friendly(`This save has ${n} players (${want}). Add or remove players or bots so the lobby has ${n} seats, in the order you want them, then load it again.`);
+      }
+      room.mode = save.mode;
+      room.settings = save.settings;
+      // Seats are taken in lobby order: each player takes over the seat at the same position.
+      room.members.forEach((m, i) => {
+        st.players[i].name = m.name;
+        st.players[i].bot = !!m.bot;
+        if (m.bot) Object.assign(m.bot, { tried: new Set(), phaseKey: null, failures: 0 });
+      });
+      room.state = st;
+      room.startedAt = Date.now();
+      room.endedAt = null;
+      room.record = null;
+      room.paused = false;
+      systemChat(room, `Loaded a saved game: round ${st.round}, saved ${String(save.savedAt).slice(0, 16).replace('T', ' ')}.`);
       broadcast(room);
     });
 

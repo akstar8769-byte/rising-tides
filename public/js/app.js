@@ -341,6 +341,22 @@ const actions = {
     else zoomAt(store, svg, +ds.f);
     render();
   },
+  saveGame: () => {
+    send('saveGame').then((r) => {
+      if (!r.save) return;
+      const g = r.save.state;
+      const what = (g.scenario && g.scenario.id) || g.mode;
+      const blob = new Blob([JSON.stringify(r.save)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `rising-tides-${what}-round${g.round}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      toast('💾 Game saved to your downloads. Load it from the lobby later to carry on.');
+    });
+  },
   bombard: (ds) => {
     store.ui.tileMenu = null;
     act({ type: 'bombard', from: ds.from, target: ds.target });
@@ -817,6 +833,19 @@ document.addEventListener('change', (e) => {
   if (el.dataset.setting) {
     const value = el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : Number(el.value);
     send('lobby', { op: 'setSetting', path: el.dataset.setting, value }).then((r) => r.error && render());
+  } else if (el.dataset.loadSave !== undefined && el.files && el.files[0]) {
+    // Load a saved game (host, in the lobby).
+    el.files[0].text().then((text) => {
+      let save;
+      try {
+        save = JSON.parse(text);
+      } catch (err) {
+        toast("That file isn't a saved game.", 'error');
+        return;
+      }
+      send('loadGame', { save }).then((r) => r.ok && toast('📂 Saved game loaded.'));
+    });
+    el.value = '';
   } else if (el.dataset.botSeat !== undefined) {
     send('lobby', { op: 'setBotPersonality', seat: +el.dataset.botSeat, personality: el.value });
   } else if (el.dataset.biomeMode !== undefined) {

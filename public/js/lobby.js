@@ -99,6 +99,7 @@ export function renderLobby(store) {
           ? `<div class="row wrap">
               <button class="btn" data-act="lobby" data-json="${j({ op: 'shuffleSeats' })}">Shuffle seats</button>
               <button class="btn" data-act="lobby" data-json="${j({ op: 'addBot' })}" ${n >= meta.maxPlayers ? 'disabled' : ''}>🤖 Add bot</button>
+              <label class="btn" title="Carry on a game you saved earlier: get the same number of players and bots in the lobby, in seat order, first">📂 Load saved game<input type="file" accept=".json,application/json" data-load-save hidden></label>
               ${
                 lobby.mode === 'totalwar'
                   ? `<label class="toggle">Bot difficulty:

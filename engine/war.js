@@ -50,7 +50,21 @@ function getAnyTile(s, id) {
   return t;
 }
 const domainOf = (k) => ARS.UNITS[k].domain;
-const isCoastal = (s, t) => t.kind === 'land' && s.board.tiles.some((x) => x.kind === 'sea' && areAdjacent(x, t));
+// Neighbour index: each tile's neighbouring tiles, worked out once per board (the map's
+// shape never changes; the tile objects are the board's own, so they stay live).
+const NB_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+const NB_CACHE = new WeakMap();
+function nbrs(s, t) {
+  let m = NB_CACHE.get(s.board);
+  if (!m) {
+    const byQR = new Map(s.board.tiles.map((x) => [x.q + ',' + x.r, x]));
+    m = new Map();
+    for (const x of s.board.tiles) m.set(x.id, NB_DIRS.map(([dq, dr]) => byQR.get(x.q + dq + ',' + (x.r + dr))).filter(Boolean));
+    NB_CACHE.set(s.board, m);
+  }
+  return m.get(t.id) || [];
+}
+const isCoastal = (s, t) => t.kind === 'land' && nbrs(s, t).some((x) => x.kind === 'sea');
 /** Sea bays this player's ships hold. */
 function seasHeld(s, seat) {
   return s.board.tiles.filter((t) => t.kind === 'sea' && t.controller === seat);
@@ -98,7 +112,7 @@ const touches = (group, t) => [...group].some((sea) => areAdjacent(sea, t));
 function transportFrom(s, seat, X) {
   if (!LANES(s) || !X || X.kind !== 'land') return null;
   const cfg = TWS(s);
-  const ships = s.board.tiles.filter((t) => t.kind === 'sea' && t.controller === seat && unitsAt(t, seat) > 0 && areAdjacent(t, X));
+  const ships = nbrs(s, X).filter((t) => t.kind === 'sea' && t.controller === seat && unitsAt(t, seat) > 0);
   if (!ships.length) return null;
   const capacity = ships.reduce((a, t) => a + unitsAt(t, seat), 0) * (cfg.transportPerShip ?? 3);
   const range = cfg.transportRange ?? 6;
@@ -113,8 +127,8 @@ function transportFrom(s, seat, X) {
     const t = queue.shift();
     const d = dist.get(t);
     if (d >= range) continue;
-    for (const n of s.board.tiles) {
-      if (n.kind !== 'sea' || dist.has(n) || !areAdjacent(t, n) || (n.controller != null && n.controller !== seat)) continue;
+    for (const n of nbrs(s, t)) {
+      if (n.kind !== 'sea' || dist.has(n) || (n.controller != null && n.controller !== seat)) continue;
       dist.set(n, d + 1);
       prev.set(n, t);
       queue.push(n);
@@ -151,8 +165,8 @@ function landingSeas(s, seat) {
 function blockaded(s, t) {
   if (!TW(s) || !LANES(s) || TWS(s).blockades === false || t.kind !== 'land' || t.controller == null || inTruce(s)) return false;
   let enemy = false;
-  for (const x of s.board.tiles) {
-    if (x.kind !== 'sea' || x.controller == null || !areAdjacent(x, t)) continue;
+  for (const x of nbrs(s, t)) {
+    if (x.kind !== 'sea' || x.controller == null) continue;
     if (x.controller === t.controller) return false;
     enemy = true;
   }
@@ -290,12 +304,14 @@ function attackTargets(s, seat) {
   const mine = controlled(s, seat);
   // Total War: amphibious attacks land on coasts next to a sea bay your ships hold.
   const amph = TW(s) && TWS(s).amphibious && mine.some((m) => isCoastal(s, m)) ? landingSeas(s, seat) : [];
+  const reach = new Set();
+  for (const m of [...mine, ...amph]) for (const n of nbrs(s, m)) reach.add(n.id);
   const land = s.board.tiles
     .filter(
       (t) =>
         t.kind === 'land' &&
         !forbidden.has(t.controller) &&
-        (mine.some((m) => areAdjacent(m, t)) || amph.some((sea) => areAdjacent(sea, t))) &&
+        reach.has(t.id) &&
         (t.controller != null || W(s).openTilesClaimable) &&
         !(t.controller != null && inTruce(s)) &&
         !(t.role === 'capital' && !capitalOpen(s, t)),
@@ -1216,7 +1232,7 @@ function decorateView(v, s, seat) {
       formations: battles.FORMATION_IDS.map((id) => ({ id, name: battles.FORMATIONS[id].name, desc: battles.FORMATIONS[id].desc, ...cfg.formations[id] })),
       mapW: battles.MAP_W,
       mapH: battles.MAP_H,
-      seas: meP ? s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller == null || t.controller === seat) && controlled(s, seat).some((m) => areAdjacent(m, t))).map((t) => t.id) : [],
+      seas: meP ? [...new Set(controlled(s, seat).flatMap((m) => nbrs(s, m)))].filter((t) => t.kind === 'sea' && (t.controller == null || t.controller === seat)).map((t) => t.id) : [],
     };
     for (const p of v.players) {
       p.upkeepDue = upkeepDue(s, s.players[p.seat]);
@@ -1231,7 +1247,8 @@ function decorateView(v, s, seat) {
       const c = effectiveCommand(s, mine);
       if (c.action === 'attack') targets.push(c.target);
     }
-    for (const id of targets) v.attackSources[id] = attackSources(s, seat, id);
+    const trMemo = new Map(); // one transport search per tile, shared by every target
+    for (const id of targets) v.attackSources[id] = attackSources(s, seat, id, trMemo);
     v.revoltSources = mine && mine.puppetOf != null ? controlled(s, seat).filter((t) => unitsAt(t, seat) > 0).map((t) => ({ tile: t.id, units: unitsAt(t, seat) })) : [];
     v.standTiles = mine ? s.board.tiles.filter((t) => canStand(s, seat, t)).map((t) => t.id) : [];
     if (TW(s) && mine) v.seaTiles = s.board.tiles.filter((t) => t.kind === 'sea' && (t.controller === seat || t.controller == null)).map((t) => t.id);
@@ -1468,7 +1485,7 @@ function removeFromLargest(s, seat, n) {
   }
 }
 /** Your tiles next to `targetId` that have units on them. */
-function attackSources(s, seat, targetId) {
+function attackSources(s, seat, targetId, memo = null) {
   const T = s.board.tiles.find((x) => x.id === targetId);
   if (!T) return [];
   if (T.kind === 'sea') {
@@ -1477,13 +1494,17 @@ function attackSources(s, seat, targetId) {
       .filter((t) => t !== T && unitsAt(t, seat) > 0 && (!LANES(s) || areAdjacent(t, T)))
       .map((t) => ({ tile: t.id, units: unitsAt(t, seat) }));
   }
-  const near = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && areAdjacent(t, T));
+  const near = nbrs(s, T).filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0);
   let amph = [];
   if (TW(s) && TWS(s).amphibious && LANES(s)) {
     // Troops board your ships off one of your coasts and sail to the target's coast.
     amph = s.board.tiles
       .filter((t) => t.kind === 'land' && t.controller === seat && unitsAt(t, seat) > 0 && !near.includes(t))
-      .map((t) => ({ t, tr: transportFrom(s, seat, t) }))
+      .map((t) => {
+        if (!memo) return { t, tr: transportFrom(s, seat, t) };
+        if (!memo.has(t.id)) memo.set(t.id, transportFrom(s, seat, t));
+        return { t, tr: memo.get(t.id) };
+      })
       .filter((x) => reaches(x.tr, T))
       .map((x) => ({ tile: x.t, capacity: x.tr.capacity }));
     return [...near.map((t) => ({ tile: t.id, units: unitsAt(t, seat) })), ...amph.map((x) => ({ tile: x.tile.id, units: unitsAt(x.tile, seat), amphibious: true, capacity: x.capacity }))];
@@ -1538,8 +1559,8 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
       let found = false;
       while (queue.length && !found) {
         const t = queue.shift();
-        for (const n of s.board.tiles) {
-          if (n.kind !== 'sea' || seen.has(n.id) || !areAdjacent(t, n) || (n.controller != null && n.controller !== actor)) continue;
+        for (const n of nbrs(s, t)) {
+          if (n.kind !== 'sea' || seen.has(n.id) || (n.controller != null && n.controller !== actor)) continue;
           if (n === B) found = true;
           seen.add(n.id);
           queue.push(n);
@@ -1595,7 +1616,7 @@ function landRoute(s, actor, A, B, viaSea) {
   while (queue.length) {
     const t = queue.shift();
     if (t === B) return true;
-    for (const n of s.board.tiles) {
+    for (const n of LANES(s) ? nbrs(s, t) : s.board.tiles) {
       if (seen.has(n.id)) continue;
       const linked = areAdjacent(t, n) || (!LANES(s) && ship(t) && ship(n));
       if (linked && (canStand(s, actor, n) || ship(n))) {
@@ -2023,7 +2044,9 @@ function suppliedTiles(s) {
     const land = s.board.tiles.filter((t) => t.kind === 'land' && side.has(t.controller));
     const homes = new Set([...side].map((x) => s.players[x].homeTile));
     const ownSea = s.board.tiles.filter((t) => t.kind === 'sea' && side.has(t.controller) && unitsAt(t, t.controller) > 0);
-    const port = (t) => (s.scenario ? !!t.name : true) && ownSea.some((sea) => areAdjacent(sea, t));
+    const ownSeaIds = new Set(ownSea.map((x) => x.id));
+    const landIds = new Set(land.map((x) => x.id));
+    const port = (t) => (s.scenario ? !!t.name : true) && nbrs(s, t).some((x) => ownSeaIds.has(x.id));
     const sources = land.filter((t) => homes.has(t.id) || t.industry || port(t));
     const dist = new Map(sources.map((t) => [t.id, 0]));
     const queue = [...sources];
@@ -2031,7 +2054,7 @@ function suppliedTiles(s) {
       const t = queue.shift();
       const d = dist.get(t.id);
       if (d >= range) continue;
-      for (const n of land) if (!dist.has(n.id) && areAdjacent(t, n)) (dist.set(n.id, d + 1), queue.push(n));
+      for (const n of nbrs(s, t)) if (landIds.has(n.id) && !dist.has(n.id)) (dist.set(n.id, d + 1), queue.push(n));
     }
     for (const id of dist.keys()) out.add(id);
   }
@@ -2766,14 +2789,16 @@ function generalMoves(s, g) {
   const queue = [A];
   while (queue.length) {
     const t = queue.shift();
-    for (const n of s.board.tiles) {
-      if (!seen.has(n.id) && areAdjacent(t, n) && canStand(s, g.seat, n)) (seen.add(n.id), queue.push(n));
+    for (const n of nbrs(s, t)) {
+      if (!seen.has(n.id) && canStand(s, g.seat, n)) (seen.add(n.id), queue.push(n));
     }
   }
-  // ...plus anything reachable by sea on our ships.
+  // ...plus anything reachable by sea on our ships (one transport search, not one per tile).
+  let trCache;
+  const tr = () => (trCache === undefined ? (trCache = transportFrom(s, g.seat, A)) : trCache);
   return s.board.tiles
     .filter((B) => B !== A && B.kind === 'land' && canStand(s, g.seat, B))
-    .filter((B) => seen.has(B.id) || (TWS(s).amphibious && landRoute(s, g.seat, A, B, true)))
+    .filter((B) => seen.has(B.id) || (TWS(s).amphibious && (LANES(s) ? reaches(tr(), B) : landRoute(s, g.seat, A, B, true))))
     .map((B) => B.id);
 }
 
