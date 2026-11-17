@@ -334,3 +334,54 @@ test('bots mass on the war plan: in 1940 German armies march west, towards Franc
   const to = s.board.tiles.find((t) => t.id === moved.to);
   assert.ok(dist(to) < dist(from), `${moved.from} -> ${moved.to} heads for Paris`);
 });
+
+// ---------------------------------------------------------------- oil
+test('oil: machines burn fuel; imports and oil fields pay for it; short of fuel, machines fight weaker', () => {
+  const s = europe();
+  const ger = seat('GER');
+  const need = CAMP.fuelNeed(s, ger);
+  assert.ok(need > 0, 'German tanks and planes need fuel');
+  assert.equal(CAMP.fuelNeed(s, seat('IRE')), 0, 'an army of infantry needs none');
+  assert.ok(CAMP.landOil(s, seat('USSR')) > 0 && CAMP.landOil(s, seat('ROM')) > 0, 'Baku and Ploiești');
+  assert.equal(CAMP.landOil(s, seat('GER')), 0);
+  // Fully fuelled.
+  s.players[ger].materials.stone = need;
+  CAMP.payFuel(s);
+  assert.equal(s.players[ger].fuelPct, 100);
+  assert.equal(CAMP.fuelStrength(s, ger), 100);
+  // No oil and no imports: machines fight at half strength.
+  for (const p of s.players) p.materials.stone = 0;
+  const imp = CAMP.oilImports(s, ger);
+  require('../engine/europe39').OIL.imports.GER = 0;
+  try {
+    CAMP.payFuel(s);
+    assert.equal(s.players[ger].fuelPct, 0);
+    assert.equal(CAMP.fuelStrength(s, ger), 50);
+    assert.ok(s.log.some((l) => /Germany is short of fuel/.test(l.text)));
+    assert.equal(engine.viewFor(s, ger).scenario.fuel.strength, 50);
+  } finally {
+    require('../engine/europe39').OIL.imports.GER = imp;
+  }
+});
+
+test('oil: bot allies in the same faction send spare oil to a partner who is short', () => {
+  const s = europe(['GER']);
+  const ger = seat('GER');
+  const rom = seat('ROM');
+  s.players[rom].faction = 'axis';
+  for (const p of s.players) p.materials.stone = 0;
+  s.players[rom].materials.stone = 30;
+  CAMP.payFuel(s);
+  assert.equal(s.players[ger].fuelPct, 100, 'Romanian oil keeps the Wehrmacht moving');
+  assert.ok(s.players[rom].materials.stone < 30 + CAMP.oilImports(s, rom));
+  assert.ok(s.log.some((l) => /Romania sends \d+ oil to Germany/.test(l.text)));
+});
+
+test('Soviet industry beyond the Urals: +6 materials a round from December 1941', () => {
+  const s = europe();
+  const ussr = seat('USSR');
+  s.round = 9;
+  assert.ok(!CAMP.doctrine(s, ussr).materials);
+  s.round = 10;
+  assert.equal(CAMP.doctrine(s, ussr).materials, 6);
+});

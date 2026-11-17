@@ -107,7 +107,7 @@ function hud(store) {
     <div class="hud-pills">
       ${
         g.scenario && g.scenario.kind === 'campaign'
-          ? `<button class="scen-pill paper-pill" data-act="openPaper" title="Read this round's newspaper">📰 ${esc(g.scenario.name)} · <b>${esc(g.scenario.date)}</b>${g.scenario.decisions.length ? ` <span class="pill-badge">${g.scenario.decisions.length}</span>` : ''}</button><span class="vic-pill" title="Victory points held by each faction (key cities)">★ ${Object.entries(g.scenario.vp).map(([f, v]) => `${esc(g.scenario.factions[f].name)} ${v}`).join(' · ')}</span>`
+          ? `${g.scenario.fuel && g.scenario.fuel.pct < 100 ? `<span class="winter-pill" title="Tanks, planes and ships fight at ${g.scenario.fuel.strength}%: not enough oil">⛽ Low fuel</span>` : ''}<button class="scen-pill paper-pill" data-act="openPaper" title="Read this round's newspaper">📰 ${esc(g.scenario.name)} · <b>${esc(g.scenario.date)}</b>${g.scenario.decisions.length ? ` <span class="pill-badge">${g.scenario.decisions.length}</span>` : ''}</button><span class="vic-pill" title="Victory points held by each faction (key cities)">★ ${Object.entries(g.scenario.vp).map(([f, v]) => `${esc(g.scenario.factions[f].name)} ${v}`).join(' · ')}</span>`
           : g.scenario
           ? `<span class="scen-pill" title="${esc(g.scenario.sides.map((x) => x.goal).join(' '))}">⚔ ${esc(g.scenario.name)} · ${esc(g.scenario.styleLabel)}</span>${g.scenario.winter ? `<span class="winter-pill" title="Tanks move at ${g.scenario.winter.tankSpeedPct}% speed; attackers fight at ${g.scenario.winter.attackPct}%">❄ Winter</span>` : ''}<span class="vic-pill" title="Victory cities held: ${esc(g.scenario.sides.map((x) => `${x.name} ${g.scenario.held[x.id]}`).join(', '))}">★ ${g.scenario.sides.map((x) => `${esc(x.name)} ${g.scenario.held[x.id]}`).join(' · ')}</span>`
           : `<button class="flood-pill ${dangerClass(g)}" data-act="drawer" data-id="flood" title="Flood / catastrophe threshold">🌊 ${g.flood}/${g.threshold}</button>`
@@ -408,12 +408,22 @@ function campaignCard(g) {
     <summary><b>🌍 ${esc(sc.name)} — ${esc(sc.date)}</b> <span class="muted small">you lead ${esc(me.name)}${me.faction ? ` (${esc(sc.factions[me.faction].name)})` : ' (neutral)'}</span></summary>
     ${sc.decisions.length ? `<p class="small decide-note">📰 <b>Waiting for your answer:</b> ${sc.decisions.map((x) => esc(x.title)).join(', ')}. <button class="btn small primary" data-act="openPaper">Open the newspaper</button></p>` : ''}
     <p class="small">${me.out ? '🏳 Your nation has capitulated.' : sc.atWar.length ? `⚔ At war with: ${sc.atWar.map(name).join(', ')}.` : '🕊 You are at peace. Tap a foreign tile to declare war.'} You may launch up to <b>${sc.attacksPerRound}</b> attack${sc.attacksPerRound === 1 ? '' : 's'} a round. A nation whose capital falls capitulates.</p>
+    ${fuelLine(sc)}
     ${sc.doctrine && sc.doctrine.active.length ? `<p class="small">${sc.doctrine.active.map((x) => `🎖 <b>${esc(x.name)}</b>: ${esc(x.text)} (until ${esc(x.until)}).`).join(' ')}</p>` : ''}
     <ul class="plain goals">${Object.keys(sc.factions).map(factionLine).join('')}</ul>
     <p class="small">★ Victory points come from key cities; the faction with the most at the end (mid-1945) wins.${out.length ? ` 🏳 Out of the war: ${out.map((n) => esc(n.name)).join(', ')}.` : ''}</p>
     ${sc.next.length ? `<p class="small">📰 Coming: ${sc.next.map((e) => `${esc(e.text)}`).join('; ')} (bots follow history; human players decide for themselves).</p>` : ''}
   </details>
   ${me.out || !me.pop ? '' : politicsCard(g)}`;
+}
+
+/** Campaigns: what the army's machines burn, where the oil comes from, and how last round went. */
+function fuelLine(sc) {
+  const F = sc.fuel;
+  if (!F) return '';
+  const source = [F.imports ? `${F.imports} imported${F.note ? ` (${esc(F.note)})` : ''}` : '', F.land ? `about ${F.land} from your oil fields` : ''].filter(Boolean).join(' + ') || 'none — capture oil fields (Ploiești, Baku) or trade for it';
+  const status = F.pct < 100 ? ` <b class="bad">Short of fuel last round: ${F.pct}% paid — your tanks, planes and ships fight at ${F.strength}%.</b>` : '';
+  return `<p class="small">⛽ <b>Fuel:</b> your tanks, motorised troops, planes and ships burn <b>${F.need} oil</b> a round, paid at the start of the next round. Oil each round: ${source}. Keep enough oil unspent.${status}</p>`;
 }
 
 /** Pick the most dramatic headline for the front page. */

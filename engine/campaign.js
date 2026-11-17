@@ -214,6 +214,11 @@ function roundStart(s) {
     for (const h of d.OPENING || []) addLog(s, `📰 ${h}!`, { kind: 'bad', event: 'news' });
   }
   runEvents(s);
+  // Doctrines that produce (e.g. Soviet industry beyond the Urals).
+  for (const p of s.players) {
+    const n = p.out ? 0 : doctrine(s, p.seat).materials || 0;
+    for (let i = 0; i < n; i++) p.materials[['wood', 'stone', 'sandbag'][i % 3]] += 1;
+  }
   addLog(s, `🗓 ${d.dateOf(s.round)}.`, { kind: 'round' });
   printPaper(s);
 }
@@ -566,6 +571,7 @@ function view(s, seat, cfg = {}) {
     paper: s.campaign.paper || null,
     plan: me && me.bot ? planFor(s, seat) : null,
     doctrine: me ? doctrine(s, seat) : null,
+    fuel: me && d.OIL ? { need: fuelNeed(s, seat), used: fuelPoints(s, seat), land: landOil(s, seat), imports: oilImports(s, seat), note: (d.OIL.importNote || {})[me.nation] || '', pct: me.fuelPct ?? 100, strength: fuelStrength(s, seat), perOil: d.OIL.perOil, points: d.OIL.points } : null,
     decisions: me ? (me.decisions || []).map((x) => ({ key: x.key, title: x.title, text: x.text, options: x.options.map((o) => ({ label: o.label, summary: o.summary, hist: !!o.hist })) })) : [],
   };
 }
@@ -583,6 +589,78 @@ function upgradeSave(s) {
   return s;
 }
 
+// ---------------------------------------------------------------- oil
+/** Fuel points this nation's machines burn a round. */
+function fuelPoints(s, seat) {
+  const pts = (dataOf(s).OIL || {}).points || {};
+  let n = 0;
+  for (const t of s.board.tiles) {
+    const c = t.troops && t.troops[seat];
+    if (c) for (const k in c) n += (c[k] || 0) * (pts[k] || 0);
+  }
+  return n;
+}
+/** Oil needed this round (rounded up). */
+function fuelNeed(s, seat) {
+  const O = dataOf(s).OIL;
+  return O ? Math.ceil(fuelPoints(s, seat) / O.perOil) : 0;
+}
+/** Oil a nation gets from imports each round. */
+function oilImports(s, seat) {
+  const O = dataOf(s).OIL;
+  return O ? O.imports[s.players[seat].nation] || 0 : 0;
+}
+/** Oil a nation's land makes a round (oil-field land: 1 per 2 hexes, +1 per oil city), roughly. */
+function landOil(s, seat) {
+  let hexes = 0;
+  let cities = 0;
+  for (const t of s.board.tiles) {
+    if (t.kind !== 'land' || t.controller !== seat || t.biome !== 'quarry') continue;
+    hexes += 1;
+    if (t.name) cities += 1;
+  }
+  return Math.floor(hexes / 2) + cities;
+}
+
+/** Machines' battle strength % for a nation, from the fuel it could pay for this round. */
+function fuelStrength(s, seat) {
+  const O = dataOf(s).OIL;
+  const p = s.players[seat];
+  if (!O || !p || p.fuelPct == null || p.fuelPct >= 100) return 100;
+  return Math.round(O.emptyPct + ((100 - O.emptyPct) * p.fuelPct) / 100);
+}
+/** Start of each round: imports arrive, then every nation pays its fuel in oil. */
+function payFuel(s) {
+  const O = dataOf(s).OIL;
+  if (!O) return;
+  for (const p of s.players) {
+    if (p.out) continue;
+    p.materials.stone += oilImports(s, p.seat);
+    const need = fuelNeed(s, p.seat);
+    const paid = Math.min(need, p.materials.stone);
+    p.materials.stone -= paid;
+    const before = p.fuelPct ?? 100;
+    let got = paid;
+    // Bot nations in the same faction send their spare oil (keeping 2) to a partner who is short.
+    if (got < need && p.faction) {
+      for (const q of s.players) {
+        if (got >= need) break;
+        if (q === p || q.out || !q.bot || q.faction !== p.faction) continue;
+        const spare = Math.max(0, q.materials.stone - fuelNeed(s, q.seat) - 2);
+        const give = Math.min(spare, need - got);
+        if (give > 0) {
+          q.materials.stone -= give;
+          got += give;
+          addLog(s, `⛽ ${nationName(s, q.seat)} sends ${give} oil to ${nationName(s, p.seat)}.`, { kind: 'round' });
+        }
+      }
+    }
+    p.fuelPct = need ? Math.round((100 * got) / need) : 100;
+    if (p.fuelPct < 100 && (before >= 100 || !p.bot)) addLog(s, `⛽ ${nationName(s, p.seat)} is short of fuel: ${got} of ${need} oil — tanks, planes and ships fight at ${fuelStrength(s, p.seat)}% this round.`, { kind: 'bad', seat: p.seat });
+    else if (p.fuelPct >= 100 && before < 100) addLog(s, `⛽ ${nationName(s, p.seat)} has fuel again.`, { kind: 'good', seat: p.seat });
+  }
+}
+
 /** Winter rounds: those starting in December (round 2 = Dec 1939, then every 4th). */
 const isWinter = (round) => round % 4 === 2;
 /** A nation's doctrine bonuses this round: { attack, defence (%), active: [{ name, text, until }] }. */
@@ -595,6 +673,7 @@ function doctrine(s, seat) {
     if (s.round < x.from || s.round > x.to || (x.winter && !isWinter(s.round))) continue;
     out.attack = Math.round((out.attack * (x.attack || 100)) / 100);
     out.defence = Math.round((out.defence * (x.defence || 100)) / 100);
+    out.materials = (out.materials || 0) + (x.materials || 0);
     out.active.push({ name: x.name, text: x.text, until: d.dateOf(x.to) });
   }
   return out;
@@ -616,4 +695,4 @@ function planFor(s, seat) {
   };
 }
 
-module.exports = { doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };
+module.exports = { landOil, fuelPoints, fuelNeed, oilImports, fuelStrength, payFuel, doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };

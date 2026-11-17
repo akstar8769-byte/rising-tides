@@ -415,11 +415,29 @@ const WAR_PLANS = {
 
 /**
  * National doctrines: battle strength (%) for whoever plays the nation, human or bot.
- * `winter`: only in winter rounds (December–February).
+ * `winter`: only in winter rounds (December–February). `materials`: extra materials each round.
  */
 const DOCTRINES = {
   GER: [{ from: 1, to: 9, attack: 130, name: 'Blitzkrieg', text: 'tanks and dive-bombers punch through: your attacks are 30% stronger' }],
-  USSR: [{ from: 9, to: 24, winter: true, defence: 125, name: 'General Winter', text: 'in winter your defenders are 25% stronger' }],
+  USSR: [
+    { from: 9, to: 24, winter: true, defence: 125, name: 'General Winter', text: 'in winter your defenders are 25% stronger' },
+    { from: 10, to: 24, materials: 6, name: 'Factories beyond the Urals', text: 'industry moved east keeps producing: +6 materials a round' },
+  ],
+};
+
+/**
+ * Oil. Tanks, motorised troops, planes and ships burn fuel: `points` per unit a round,
+ * 1 oil per `perOil` points, paid at the start of each round. Oil comes from oil-field land
+ * (Romania, the Caucasus) and from `imports` (overseas oil, synthetic fuel, trade) — oil
+ * a nation gets each round on top of its land. Short of fuel, machines fight at between
+ * `emptyPct` (no fuel at all) and 100%.
+ */
+const OIL = {
+  perOil: 4,
+  emptyPct: 50,
+  points: { motorised: 1, mechanised: 1, spArtillery: 1, lightTank: 1, mediumTank: 2, heavyTank: 3, tankDestroyer: 1, interceptor: 1, bomber: 2, destroyer: 1, cruiser: 2, battleship: 3 },
+  imports: { GER: 7, UK: 11, FRA: 6, ITA: 3, USSR: 3, SPA: 1, POR: 1, SWE: 1, TUR: 1, NED: 1, BEL: 1, POL: 1, YUG: 1, GRE: 1, NOR: 1, FIN: 1, HUN: 1, BUL: 1 },
+  importNote: { GER: 'synthetic fuel and Romanian oil', UK: 'oil from the Empire and America', FRA: 'oil from overseas', ITA: 'Italy has almost no oil of its own', USSR: 'on top of Baku and the Caucasus fields' },
 };
 
 const FACTIONS = {
@@ -428,4 +446,4 @@ const FACTIONS = {
   comintern: { name: 'Comintern', icon: '🟥' },
 };
 
-module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, DOCTRINES, WAR_PLANS, OPENING, EVENTS, UNREST, FACTIONS, dateOf };
+module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, OIL, DOCTRINES, WAR_PLANS, OPENING, EVENTS, UNREST, FACTIONS, dateOf };

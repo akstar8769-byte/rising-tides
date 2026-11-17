@@ -101,9 +101,11 @@ function pickFrom(g, me, from, n) {
  */
 function reserve(g, me, extraUnits = 0) {
   if (!g.war) return 0;
+  // Campaigns: the oil next round's fuel needs (beyond imports) isn't for spending.
+  const oil = me.oilKeep || 0;
   // Total War: at least the upkeep actually due next round (tanks cost more than militia).
   const upkeep = Math.max(Math.floor((me.units + extraUnits) / g.settings.war.upkeepUnitsPerMaterial), g.tw && me.upkeepDue != null ? me.upkeepDue : 0);
-  return upkeep + (me.garrisonDue || 0);
+  return upkeep + (me.garrisonDue || 0) + oil;
 }
 
 /**
@@ -131,7 +133,7 @@ function pickUnitType(g, me, P, roll = Math.random()) {
   const have = (list) => list.reduce((a, k) => a + (mine[k] || 0), 0);
   const counter = (list, need) => {
     if (have(list) >= need) return null;
-    const t = list.find((k) => unit(k) && unit(k).unlocked && budget >= unit(k).cost);
+    const t = list.find((k) => unit(k) && unit(k).unlocked && fuelOf(g, k) <= fuelRoom(g) && budget >= unit(k).cost);
     return t || null;
   };
   if (foe.armor >= 2 && roll < 0.6) {
@@ -146,7 +148,9 @@ function pickUnitType(g, me, P, roll = Math.random()) {
   const groups = UNIT_WISHES[name];
   const r = roll;
   const order = r < 0.45 ? [0, 1, 2, 3] : r < 0.75 ? [1, 0, 2, 3] : r < 0.9 ? [2, 0, 1, 3] : [3, 0, 1, 2];
-  const unlocked = (t) => unit(t) && unit(t).unlocked;
+  // Campaigns: only machines our oil income can fuel.
+  const room = fuelRoom(g);
+  const unlocked = (t) => unit(t) && unit(t).unlocked && fuelOf(g, t) <= room;
   let want = null;
   for (const gi of order) {
     want = groups[gi].find(unlocked);
@@ -281,11 +285,15 @@ function upgradeIdea(g, me, P) {
         if (from === 'militia' && (owned[u.type] || 0) >= 3) continue;
         const each = Math.max(1, u.cost - unit(from).cost);
         if (each > spare) continue;
+        // Campaigns: no upgrade into machines we can't fuel.
+        if (fuelOf(g, u.type) - fuelOf(g, from) > fuelRoom(g)) continue;
         if (!best || u.cost > best.u.cost) best = { u, each };
       }
       if (best) {
         // Upgrade several at once when we can afford it (hard/brutal bots modernise faster).
-        const count = Math.max(1, Math.min(n, Math.floor(spare / best.each), grit(g) > 1 || campaign(g) ? n : 2));
+        const extra = fuelOf(g, best.u.type) - fuelOf(g, from);
+        const fuelCap = extra > 0 ? Math.floor(fuelRoom(g) / extra) : n;
+        const count = Math.max(1, Math.min(n, fuelCap, Math.floor(spare / best.each), grit(g) > 1 || campaign(g) ? n : 2));
         return { key: `upgrade-${g.round}-${t.id}-${from}-${n}`, action: { type: 'upgradeUnits', tile: t.id, from, to: best.u.type, count, materials: payFromLargest(me, best.each * count) } };
       }
     }
@@ -335,7 +343,7 @@ function oceanShipIdea(g, me, P) {
   // Destroyers are cheap transports; gun ships only when the enemy has a navy to fight.
   const enemyShips = g.board.tiles.some((t) => t.kind === 'sea' && t.controller != null && t.controller !== g.you);
   const order = enemyShips ? ['battleship', 'cruiser', 'destroyer'] : ['destroyer', 'cruiser'];
-  const t = order.map((k) => g.tw.units.find((u) => u.type === k)).find((u) => u && u.unlocked && total(me.materials) - u.cost >= reserve(g, me, 1));
+  const t = order.map((k) => g.tw.units.find((u) => u.type === k)).find((u) => u && u.unlocked && fuelOf(g, u.type) <= fuelRoom(g) && total(me.materials) - u.cost >= reserve(g, me, 1));
   if (!t) return null;
   // Launch next to the fleet if we have one, so the chain stays joined.
   const fleet = ships(g);
@@ -456,9 +464,18 @@ function factoryIdea(g, me, P, mem) {
   return { key: `factory-${site}`, action: { type: 'buildFactory', tile: site, kind } };
 }
 
+/** Campaigns: fuel points of new machines we can still run on our oil income (Infinity elsewhere). */
+function fuelRoom(g) {
+  const F = campaign(g) && g.scenario.fuel;
+  if (!F) return Infinity;
+  return (F.imports + F.land) * F.perOil - F.used;
+}
+const fuelOf = (g, type) => (campaign(g) && g.scenario.fuel ? g.scenario.fuel.points[type] || 0 : 0);
+
 /** Pay n materials from the biggest piles. */
 function payFromLargest(me, n) {
   const left = { ...me.materials };
+  left.stone = Math.max(0, left.stone - (me.oilKeep || 0)); // campaigns: keep the fuel oil
   const pay = empty();
   for (let i = 0; i < n; i++) {
     const m = MATS.reduce((best, x) => (left[x] > left[best] ? x : best), MATS[0]);
@@ -480,6 +497,8 @@ function decide(g, mem) {
     mem.moves = 0;
   }
   const fresh = (key) => !mem.tried.has(key);
+  // Campaigns: oil to keep for next round's fuel.
+  if (me) me.oilKeep = campaign(g) && g.scenario.fuel ? Math.max(0, g.scenario.fuel.need - g.scenario.fuel.imports) : 0;
 
   if (g.phase === 'loot') {
     const L = g.pendingLoot;
@@ -1054,7 +1073,7 @@ function pickTarget(g, me, P, used = null) {
     if (score && t.controller != null && allianceEnemies(g).includes(t.controller)) score += 2; // our alliance's target
     if (score && troops) score += terrainFit(troops, t.terrain) - 1; // tanks hunt for open country
     // Scenarios: go for the cities that win the war and feed the enemy's army.
-    if (score && g.scenario) score += (t.victory ? 3 : 0) + (t.industry ? 2 : 0) + (t.name ? 1 : 0) + (t.role === 'capital' ? 2 : 0);
+    if (score && g.scenario) score += (t.victory ? 3 : 0) + (t.industry ? 2 : 0) + (t.name ? 1 : 0) + (t.role === 'capital' ? 2 : 0) + (t.oil ? 3 : 0);
     // Campaigns: follow the war plan — sit tight when it says so, push towards its targets.
     if (score && campaign(g) && g.scenario.plan) {
       if (g.scenario.plan.passive && t.owner !== g.you) score = 0;

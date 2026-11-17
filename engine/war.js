@@ -566,6 +566,9 @@ function upkeep(s) {
     p.plans = { withdraw: [], release: [] };
   }
 
+  // 1b. Campaigns: fuel for tanks, planes and ships, paid in oil before anything else.
+  if (CAMP.isCampaign(s) && s.round >= 2) CAMP.payFuel(s);
+
   // 2. Militia upkeep: 1 material per N units, rounded down
   if (s.round >= w.upkeepFromRound) {
     for (const p of s.players) {
@@ -2005,7 +2008,7 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
   const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
   const knows = (seat, id) => ((s.players[seat].research && s.players[seat].research.done) || []).includes(id);
   const tech = { A: { bazooka: knows(attacker, 'bazookas') }, D: { bazooka: knows(defender, 'bazookas') } };
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s), fort: fortPct(s, T), supply: battleEdge(s, src, T, attacker, defender) };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s), fort: fortPct(s, T), supply: battleEdge(s, src, T, attacker, defender), fuel: fuelPcts(s, attacker, defender) };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -2267,6 +2270,14 @@ function buildBunker(s, actor, { tile, materials } = {}) {
 }
 
 /** Battle strength % for each side from supply: the attackers' starting tile and the defended tile. */
+/** Campaigns: machines' strength % per side from fuel (null when both are fuelled). */
+function fuelPcts(s, attacker, defender) {
+  if (!CAMP.isCampaign(s)) return null;
+  const A = attacker != null ? CAMP.fuelStrength(s, attacker) : 100;
+  const D = defender != null ? CAMP.fuelStrength(s, defender) : 100;
+  return A === 100 && D === 100 ? null : { A, D };
+}
+
 /** Supply, plus campaign doctrines (Blitzkrieg, General Winter): battle strength % per side. */
 function battleEdge(s, src, T, attacker, defender) {
   const sp = supplyPcts(s, src, T);
@@ -2418,7 +2429,7 @@ function finishAirTW(s, b) {
   const win = b.winner === 'A' ? A : D;
   addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
   const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
-  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s), fort: fortPct(s, T), supply: battleEdge(s, src, T, b.attacker, b.defender) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s), fort: fortPct(s, T), supply: battleEdge(s, src, T, b.attacker, b.defender), fuel: fuelPcts(s, b.attacker, b.defender) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
   addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
 }
 
