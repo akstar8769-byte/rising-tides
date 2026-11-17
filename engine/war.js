@@ -197,7 +197,8 @@ function hasOccupiedTile(s, seat) {
 function capitalOpen(s, t) {
   const provs = s.board.tiles.filter((x) => x.owner === t.owner && x.role === 'province');
   const occupied = provs.filter((x) => x.controller !== t.owner).length;
-  return provs.length > 0 && occupied >= Math.min(W(s).capitalOpensAfter, provs.length);
+  // A nation that is just its capital (e.g. Denmark in a campaign) can be attacked there directly.
+  return provs.length === 0 || occupied >= Math.min(W(s).capitalOpensAfter, provs.length);
 }
 function aidEligible(s, p) {
   if (TW(s)) return false;
@@ -2004,7 +2005,7 @@ function beginBattleTW(s, { attacker, defender, T, src, sent, defenders, ranks =
   const levels = { A: ARS.levelsOf(s.players[attacker]), D: ARS.levelsOf(s.players[defender]) };
   const knows = (seat, id) => ((s.players[seat].research && s.players[seat].research.done) || []).includes(id);
   const tech = { A: { bazooka: knows(attacker, 'bazookas') }, D: { bazooka: knows(defender, 'bazookas') } };
-  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s), fort: fortPct(s, T), supply: supplyPcts(s, src, T) };
+  const common = { tile: T, from: src, attacker, defender, cfg, rand: seededRand(s), levels, ranks, tech, generals, weather: weatherNow(s), fort: fortPct(s, T), supply: battleEdge(s, src, T, attacker, defender) };
   if (T.kind === 'sea') {
     const b = battles.createBattle({ ...common, id: s.nextBattleId++, kind: 'sea', aTroops: sent, dTroops: defenders });
     s.battles.push(b);
@@ -2266,6 +2267,19 @@ function buildBunker(s, actor, { tile, materials } = {}) {
 }
 
 /** Battle strength % for each side from supply: the attackers' starting tile and the defended tile. */
+/** Supply, plus campaign doctrines (Blitzkrieg, General Winter): battle strength % per side. */
+function battleEdge(s, src, T, attacker, defender) {
+  const sp = supplyPcts(s, src, T);
+  if (!CAMP.isCampaign(s) || !T || T.kind !== 'land') return sp;
+  const a = attacker != null ? CAMP.doctrine(s, attacker).attack : 100;
+  const d = defender != null ? CAMP.doctrine(s, defender).defence : 100;
+  if (a === 100 && d === 100) return sp;
+  const out = sp ? { ...sp } : { A: 100, D: 100 };
+  out.A = Math.round((out.A * a) / 100);
+  out.D = Math.round((out.D * d) / 100);
+  return out;
+}
+
 function supplyPcts(s, src, T) {
   if (!supplyOn(s) || !T || T.kind !== 'land') return null;
   const supplied = suppliedTiles(s);
@@ -2404,7 +2418,7 @@ function finishAirTW(s, b) {
   const win = b.winner === 'A' ? A : D;
   addLog(s, `✈ ${win.name} wins the air battle over ${tileName(s, T)} — ${b.reason}. Air superiority: ${win.name}.`, { kind: 'battle', event: 'battleEnd', battle: b.id });
   const g = { ...b.pending, airLosers: { A: b.winner === 'A' ? zeroTroops() : aLeft, D: b.winner === 'D' ? zeroTroops() : dLeft } };
-  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s), fort: fortPct(s, T), supply: supplyPcts(s, src, T) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
+  const nb = startLandBattle(s, { tile: T, from: src, attacker: b.attacker, defender: b.defender, cfg: TWS(s), rand: seededRand(s), levels: b.levels, ranks: b.ranks0, tech: b.tech, generals: b.genPack, weather: weatherNow(s), fort: fortPct(s, T), supply: battleEdge(s, src, T, b.attacker, b.defender) }, g, b.winner, b.winner === 'A' ? aLeft : dLeft);
   addLog(s, `⚔ The land battle for ${tileName(s, T)} begins${battles.sum(nb.initial[b.winner]) ? '' : ''}.`, { kind: 'battle', event: 'battleStart', battle: nb.id });
 }
 

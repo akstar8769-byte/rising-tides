@@ -307,7 +307,7 @@ const EVENTS = [
   { id: 'weserubung', nation: 'GER', round: 3, title: 'Iron ore from the north', text: 'Swedish iron ore reaches Germany through Norway, and Britain wants to cut it off.', options: [
     { label: 'Occupy Denmark and Norway', hist: true, war: ['DEN', 'NOR'], news: 'Germany occupies Denmark and invades Norway' },
     { label: 'Leave Scandinavia alone', materials: 4, news: 'Germany leaves Scandinavia alone' } ] },
-  { id: 'caseYellow', nation: 'GER', round: 3, until: 6, when: (h) => h.atWar('GER', 'FRA'), title: 'Case Yellow', text: 'The generals propose going round the Maginot Line, through the Low Countries.', options: [
+  { id: 'caseYellow', nation: 'GER', round: 2, until: 6, when: (h) => h.atWar('GER', 'FRA'), title: 'Case Yellow', text: 'The generals propose going round the Maginot Line, through the Low Countries.', options: [
     { label: 'Strike through Belgium and the Netherlands', hist: true, war: ['NED', 'BEL'], news: 'Germany strikes west through the Low Countries' },
     { label: 'Hold the West Wall', units: 3, news: 'Germany digs in on the West Wall' } ] },
   { id: 'italyWar', nation: 'ITA', round: 4, until: 6, when: (h) => !h.out('FRA') && h.atWar('GER', 'FRA'), title: "Italy's hour", text: 'France is reeling. Mussolini wants a seat at the peace table.', options: [
@@ -363,10 +363,69 @@ function dateOf(round) {
   return `${MONTHS[m % 12]} ${START_YEAR + Math.floor(m / 12)}`;
 }
 
+/**
+ * Historical war plans for bot nations. Each period (rounds `from`–`to`) names the cities
+ * the nation drives towards (`attack`, only those held by an enemy count), the cities it
+ * must hold (`defend`), cities it leaves alone (`avoid`), `strict` (only attacks near the
+ * plan's targets, or to win back its own land), and whether it sits on the defensive (`passive`: no attacks except
+ * to win back its own land). Bots mass their armies on the front nearest the plan's targets.
+ */
+const WAR_PLANS = {
+  GER: [
+    { from: 1, to: 2, main: true, attack: ['Warsaw', 'Kraków'] },
+    { from: 3, to: 3, attack: ['Copenhagen', 'Oslo'] },
+    { from: 2, to: 7, main: true, attack: ['Amsterdam', 'Brussels', 'Lille', 'Paris'] },
+    { from: 6, to: 8, attack: ['Belgrade', 'Athens'] },
+    { from: 8, to: 24, main: true, attack: ['Minsk', 'Kiev', 'Leningrad', 'Moscow'] },
+    { from: 12, to: 24, attack: ['Kharkov', 'Rostov', 'Stalingrad', 'Baku'] },
+    { from: 1, to: 24, defend: ['Berlin'] },
+    { from: 5, to: 24, defend: ['Paris'] },
+    { from: 9, to: 24, defend: ['Warsaw'] },
+  ],
+  USSR: [
+    { from: 1, to: 3, avoid: ['Warsaw'] }, // eastern Poland only: Warsaw was Germany's
+    { from: 2, to: 4, attack: ['Helsinki'] },
+    { from: 4, to: 6, attack: ['Riga'] },
+    { from: 6, to: 13, passive: true }, // after Barbarossa: only win back Soviet land until the winter of 1942
+    { from: 8, to: 24, defend: ['Moscow', 'Leningrad', 'Stalingrad'] },
+    { from: 14, to: 18, attack: ['Rostov', 'Kharkov', 'Kiev', 'Minsk'], avoid: ['Warsaw', 'Königsberg'] },
+    { from: 18, to: 24, attack: ['Minsk', 'Warsaw', 'Königsberg', 'Bucharest', 'Budapest', 'Berlin'] },
+  ],
+  FRA: [
+    { from: 1, to: 24, passive: true, defend: ['Paris'] },
+  ],
+  UK: [
+    { from: 1, to: 24, defend: ['London', 'Alexandria', 'Cairo'] },
+    { from: 1, to: 13, passive: true },
+    { from: 6, to: 24, strict: true, attack: ['Benghazi', 'Tripoli'] },
+    { from: 18, to: 24, attack: ['Brest', 'Paris', 'Brussels', 'Ruhr', 'Berlin'] },
+  ],
+  ITA: [
+    { from: 4, to: 5, attack: ['Marseille', 'Lyon'] },
+    { from: 5, to: 9, attack: ['Athens'] },
+    { from: 5, to: 14, attack: ['Alexandria', 'Cairo'] },
+    { from: 4, to: 24, strict: true },
+    { from: 1, to: 24, defend: ['Rome'] },
+  ],
+  FIN: [{ from: 8, to: 24, attack: ['Leningrad'] }],
+  ROM: [{ from: 8, to: 24, attack: ['Kiev', 'Sevastopol', 'Rostov'] }],
+  HUN: [{ from: 8, to: 24, attack: ['Kiev'] }],
+  BUL: [{ from: 7, to: 9, attack: ['Athens'] }],
+};
+
+/**
+ * National doctrines: battle strength (%) for whoever plays the nation, human or bot.
+ * `winter`: only in winter rounds (December–February).
+ */
+const DOCTRINES = {
+  GER: [{ from: 1, to: 9, attack: 130, name: 'Blitzkrieg', text: 'tanks and dive-bombers punch through: your attacks are 30% stronger' }],
+  USSR: [{ from: 9, to: 24, winter: true, defence: 125, name: 'General Winter', text: 'in winter your defenders are 25% stronger' }],
+};
+
 const FACTIONS = {
   allies: { name: 'Allies', icon: '🟦' },
   axis: { name: 'Axis', icon: '⬛' },
   comintern: { name: 'Comintern', icon: '🟥' },
 };
 
-module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, OPENING, EVENTS, UNREST, FACTIONS, dateOf };
+module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, DOCTRINES, WAR_PLANS, OPENING, EVENTS, UNREST, FACTIONS, dateOf };

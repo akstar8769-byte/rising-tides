@@ -408,6 +408,7 @@ function campaignCard(g) {
     <summary><b>🌍 ${esc(sc.name)} — ${esc(sc.date)}</b> <span class="muted small">you lead ${esc(me.name)}${me.faction ? ` (${esc(sc.factions[me.faction].name)})` : ' (neutral)'}</span></summary>
     ${sc.decisions.length ? `<p class="small decide-note">📰 <b>Waiting for your answer:</b> ${sc.decisions.map((x) => esc(x.title)).join(', ')}. <button class="btn small primary" data-act="openPaper">Open the newspaper</button></p>` : ''}
     <p class="small">${me.out ? '🏳 Your nation has capitulated.' : sc.atWar.length ? `⚔ At war with: ${sc.atWar.map(name).join(', ')}.` : '🕊 You are at peace. Tap a foreign tile to declare war.'} You may launch up to <b>${sc.attacksPerRound}</b> attack${sc.attacksPerRound === 1 ? '' : 's'} a round. A nation whose capital falls capitulates.</p>
+    ${sc.doctrine && sc.doctrine.active.length ? `<p class="small">${sc.doctrine.active.map((x) => `🎖 <b>${esc(x.name)}</b>: ${esc(x.text)} (until ${esc(x.until)}).`).join(' ')}</p>` : ''}
     <ul class="plain goals">${Object.keys(sc.factions).map(factionLine).join('')}</ul>
     <p class="small">★ Victory points come from key cities; the faction with the most at the end (mid-1945) wins.${out.length ? ` 🏳 Out of the war: ${out.map((n) => esc(n.name)).join(', ')}.` : ''}</p>
     ${sc.next.length ? `<p class="small">📰 Coming: ${sc.next.map((e) => `${esc(e.text)}`).join('; ')} (bots follow history; human players decide for themselves).</p>` : ''}

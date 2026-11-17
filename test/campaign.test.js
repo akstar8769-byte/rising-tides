@@ -267,3 +267,70 @@ test('1941 in an all-bot game: Barbarossa, and the USSR makes peace with Poland 
   assert.ok(!CAMP.atWar(s, ussr, seat('POL')));
   assert.ok(!s.log.some((l) => /\(Germany\) declares war on/.test(l.text)), 'one headline per event, not one per target');
 });
+
+// ---------------------------------------------------------------- war plans & doctrines (Phase 5)
+test('war plans: what each bot nation is driving at, by period', () => {
+  const s = europe();
+  const ger = seat('GER');
+  s.round = 3;
+  const p3 = CAMP.planFor(s, ger);
+  assert.ok(p3.main.includes('Paris') && !p3.main.includes('Copenhagen'), 'the army masses for France, not Denmark');
+  assert.ok(p3.attack.includes('Copenhagen'), 'Denmark is still a target');
+  s.round = 9;
+  assert.ok(CAMP.planFor(s, ger).main.includes('Moscow'));
+  assert.ok(CAMP.planFor(s, seat('FRA')).passive, 'France sits behind the Maginot Line');
+  s.round = 7;
+  assert.ok(CAMP.planFor(s, seat('USSR')).passive, 'the USSR keeps the pact');
+  s.round = 15;
+  assert.ok(CAMP.planFor(s, seat('USSR')).avoid.includes('Warsaw'));
+  // Only bots carry a plan in their view.
+  const h = europe(['GER']);
+  assert.equal(engine.viewFor(h, ger).scenario.plan, null);
+  assert.ok(engine.viewFor(h, seat('UK')).scenario.plan);
+});
+
+test('doctrines: Blitzkrieg until autumn 1941, General Winter for the Soviets in winter', () => {
+  const s = europe(['GER']);
+  const ger = seat('GER');
+  const ussr = seat('USSR');
+  assert.equal(CAMP.doctrine(s, ger).attack, 130);
+  assert.equal(engine.viewFor(s, ger).scenario.doctrine.active[0].name, 'Blitzkrieg', 'humans get it too');
+  s.round = 10;
+  assert.equal(CAMP.doctrine(s, ger).attack, 100);
+  assert.equal(CAMP.doctrine(s, ussr).defence, 125, 'December 1941');
+  s.round = 11;
+  assert.equal(CAMP.doctrine(s, ussr).defence, 100, 'not in spring');
+  assert.equal(CAMP.doctrine(s, seat('UK')).attack, 100);
+});
+
+test('a nation that is only its capital (Denmark) can be attacked there', () => {
+  const s = europe(['GER']);
+  const ger = seat('GER');
+  s.campaign.wars.push([ger, seat('DEN')].sort((a, b) => a - b).join('-'));
+  assert.ok(engine.viewFor(s, ger).attackTargets.includes(city(s, 'Copenhagen').id));
+});
+
+test('bots mass on the war plan: in 1940 German armies march west, towards France', () => {
+  const bots = require('../server/bots');
+  const ger = seat('GER');
+  let s = toRound(europe(), 3);
+  const paris = city(s, 'Paris');
+  const dist = (t) => (Math.abs(t.q - paris.q) + Math.abs(t.r - paris.r) + Math.abs(t.q + t.r - paris.q - paris.r)) / 2;
+  const mem = { personality: 'balanced', tried: new Set(), phaseKey: null, failures: 0 };
+  let moved = null;
+  for (let i = 0; i < 60 && !moved; i++) {
+    const idea = bots.decide(engine.viewFor(s, ger), mem);
+    if (!idea) break;
+    try {
+      s = engine.applyAction(s, ger, idea.action);
+    } catch (e) {
+      mem.tried.add(idea.key);
+      continue;
+    }
+    if (idea.key.startsWith('plan-')) moved = idea.action;
+  }
+  assert.ok(moved, 'Germany made a war-plan move');
+  const from = s.board.tiles.find((t) => t.id === moved.from);
+  const to = s.board.tiles.find((t) => t.id === moved.to);
+  assert.ok(dist(to) < dist(from), `${moved.from} -> ${moved.to} heads for Paris`);
+});

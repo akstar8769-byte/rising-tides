@@ -477,6 +477,7 @@ function decide(g, mem) {
     mem.phaseKey = phaseKey;
     mem.tried = new Set();
     mem.failures = 0;
+    mem.moves = 0;
   }
   const fresh = (key) => !mem.tried.has(key);
 
@@ -576,8 +577,13 @@ function buildStep(g, me, P, mem, fresh) {
     }
     // 4. Stationed units: put units where they're useful.
     if (g.stationed) {
-      const mv = moveIdea(g, me, P);
-      if (mv && fresh(mv.key)) return mv;
+      // Each move at most once a phase, and a cap, so two rules can never pass troops back and forth for ever.
+      const mv = (mem.moves || 0) < 80 ? moveIdea(g, me, P) : null;
+      if (mv && fresh(mv.key)) {
+        mem.moves = (mem.moves || 0) + 1;
+        mem.tried.add(mv.key);
+        return mv;
+      }
       const fm = g.tw ? fleetMoveIdea(g, me, P) : null;
       if (fm && fresh(fm.key)) return fm;
       const bb = g.tw ? bombardIdea(g, me, P) : null;
@@ -672,6 +678,8 @@ function bunkerIdea(g, me, P, mem) {
 /** Scenarios: our tiles whose loss would lose the war (our capital, and any city the enemy wins by taking). */
 function keyTile(g, me, t) {
   if (t.id === me.homeTile) return true;
+  // Campaigns: the cities our war plan says to hold.
+  if (campaign(g) && g.scenario.plan && t.name && t.controller === g.you && g.scenario.plan.defend.includes(t.name)) return true;
   if (!g.scenario || !t.name || !g.scenario.decisive) return false;
   const winner = g.scenario.decisive[t.name];
   const mySide = g.scenario.sides.find((x) => x.seats.includes(g.you));
@@ -681,9 +689,11 @@ function keyTile(g, me, t) {
 /** Scenarios: how many units to keep in our capital (more when the enemy is close). */
 function garrisonWanted(g, me, tile = null) {
   const cap = tile || g.board.tiles.find((t) => t.id === me.homeTile);
+  // Campaigns: a city the war plan holds (not the capital) keeps a modest garrison, so it never swallows the army.
+  const planHeld = campaign(g) && cap && cap.id !== me.homeTile;
   if (g.tw && cap) {
     const threat = threatNear(g, cap);
-    if (threat) return Math.max(threat + 2, 8);
+    if (threat) return planHeld ? Math.min(Math.max(threat + 2, 4), 6) : Math.max(threat + 2, 8);
   }
   // Enemy land units nearby, or enemy ships offshore that could land troops.
   const enemyNear = g.board.tiles.some((t) => t.controller != null && isEnemy(g, t.controller) && (t.kind === 'land' || Object.values((t.troops || {})[t.controller] || {}).some((n) => n > 0)) && Math.max(Math.abs(t.q - cap.q), Math.abs(t.r - cap.r), Math.abs(t.q + t.r - cap.q - cap.r)) <= 2);
@@ -699,6 +709,44 @@ function shortKeyTile(g, me) {
 }
 /** A grand campaign (many bot nations)? */
 const campaign = (g) => !!(g.scenario && g.scenario.kind === 'campaign');
+/** Campaigns: the enemy-held cities our war plan drives towards (bot nations only). */
+const PLAN_CACHE = new WeakMap();
+function planTargets(g) {
+  if (!campaign(g) || !g.scenario.plan || !g.scenario.plan.attack.length) return [];
+  if (!PLAN_CACHE.has(g)) PLAN_CACHE.set(g, g.board.tiles.filter((t) => t.name && g.scenario.plan.attack.includes(t.name) && isEnemy(g, t.controller)));
+  return PLAN_CACHE.get(g);
+}
+/** Hexes from tile t to the nearest of the plan's targets. */
+const planDist = (t, targets) => targets.reduce((a, p) => Math.min(a, hexDist(t, p)), Infinity);
+
+/**
+ * Campaigns: mass the army on the front the war plan points at. Spare units elsewhere
+ * (above a capital's or held city's garrison, or 2 on a quiet front) march over our own
+ * land to the front-line tile nearest the plan's targets.
+ */
+function concentrateIdea(g, me, withUnits) {
+  if (!campaign(g) || !g.scenario.plan) return null;
+  const main = g.scenario.plan.main || [];
+  const targets = planTargets(g).filter((t) => main.includes(t.name));
+  if (!targets.length) return null;
+  for (const t of withUnits) {
+    const reach = walkable(g, t.id);
+    // The front tiles nearest the plan's targets; of those, the one with the fewest of our units,
+    // so the army forms several strong stacks (one per attack) rather than one.
+    const fronts = [...reach].filter((id) => exposed(g, id)).map((id) => tileById(g, id));
+    if (!fronts.length) continue;
+    const best = Math.min(...fronts.map((x) => planDist(x, targets)));
+    const to = fronts.filter((x) => planDist(x, targets) <= best).sort((a, b) => unitsOn(a, g.you) - unitsOn(b, g.you) || planDist(a, targets) - planDist(b, targets))[0];
+    if (!to || to.id === t.id || planDist(to, targets) + 2 >= planDist(t, targets)) continue;
+    // Don't strip one front stack to feed another.
+    if (planDist(t, targets) <= best + 2) continue;
+    const keep = keyTile(g, me, t) ? garrisonWanted(g, me, t) : exposed(g, t.id) ? 2 : t.fort || t.bunker ? 1 : 0;
+    let n = unitsOn(t, g.you) - keep;
+    if (n < 1) continue;
+    return { key: `plan-${g.round}-${t.id}-${to.id}`, action: { type: 'moveUnits', from: t.id, to: to.id, count: n } };
+  }
+  return null;
+}
 /** Is this seat an enemy? Campaigns: only nations we are at war with. Otherwise: not on our side. */
 function isEnemy(g, seat) {
   if (seat == null || seat === g.you) return false;
@@ -750,7 +798,8 @@ function defendIdea(g, me, withUnits) {
   for (const key of keys) {
     const threat = threatNear(g, key);
     const here = unitsOn(key, g.you);
-    const need = threat + 2 - here;
+    // Campaigns: a plan-held city (not the capital) only gets its modest garrison back.
+    const need = (campaign(g) && key.id !== me.homeTile ? Math.min(threat + 2, garrisonWanted(g, me, key)) : threat + 2) - here;
     if (threat === 0 || need <= 0) continue;
     const reach = walkable(g, key.id);
     for (const t of withUnits) {
@@ -782,10 +831,13 @@ function moveIdea(g, me, P) {
     // (never from below the garrison a threatened capital needs)
     if (emptyFront && unitsOn(big, g.you) - (keyTile(g, me, big) && threatNear(g, big) ? garrisonWanted(g, me, big) : 0) >= 2) return { key: `move-${big.id}-${emptyFront}`, action: { type: 'moveUnits', from: big.id, to: emptyFront, count: 1 } };
   }
-  // Push spare units from the capital to the most exposed frontier tile.
+  // Campaigns: mass on the war plan's front.
+  const massed = concentrateIdea(g, me, withUnits);
+  if (massed) return massed;
+  // Push spare units from the capital to the most exposed frontier tile (campaigns with a plan: done above).
   const cap = g.board.tiles.find((t) => t.id === me.homeTile);
   const fromCap = walkable(g, cap.id);
-  const dest = front.find((id) => id !== cap.id && fromCap.has(id));
+  const dest = planTargets(g).length ? null : front.find((id) => id !== cap.id && fromCap.has(id));
   const spare = unitsOn(cap, g.you) - (g.scenario || threatNear(g, cap) ? garrisonWanted(g, me) : P === PERSONALITIES.warlike ? 0 : 1);
   if (dest && spare > 0) return { key: `move-${cap.id}-${dest}`, action: { type: 'moveUnits', from: cap.id, to: dest, count: spare } };
   // Scenarios: march armies sitting in the rear (reinforcements, a front that has moved
@@ -989,7 +1041,9 @@ function pickTarget(g, me, P, used = null) {
       // Bunkers and fortified lines make the defenders that much tougher to beat.
       // Out of supply: that side fights at the reduced strength.
       const sup = (id) => (g.supply && g.supply.cut[id] != null ? g.supply.pct / 100 : 1);
-      winnable = ours * sup(from) * terrainFit(troops, t.terrain) >= (theirs * sup(t.id) * need * 100) / defencePct(g, t);
+      // Campaigns: our doctrine (e.g. Blitzkrieg) makes our attacks stronger.
+      const edge = campaign(g) && g.scenario.doctrine ? g.scenario.doctrine.attack / 100 : 1;
+      winnable = ours * edge * sup(from) * terrainFit(troops, t.terrain) >= (theirs * sup(t.id) * need * 100) / defencePct(g, t);
     }
     let score;
     if (t.controller == null) score = g.scenario && t.kind === 'sea' ? 0.5 : 2; // open tile: free claim (empty sea is worth little in a scenario)
@@ -1001,6 +1055,15 @@ function pickTarget(g, me, P, used = null) {
     if (score && troops) score += terrainFit(troops, t.terrain) - 1; // tanks hunt for open country
     // Scenarios: go for the cities that win the war and feed the enemy's army.
     if (score && g.scenario) score += (t.victory ? 3 : 0) + (t.industry ? 2 : 0) + (t.name ? 1 : 0) + (t.role === 'capital' ? 2 : 0);
+    // Campaigns: follow the war plan — sit tight when it says so, push towards its targets.
+    if (score && campaign(g) && g.scenario.plan) {
+      if (g.scenario.plan.passive && t.owner !== g.you) score = 0;
+      if (t.name && g.scenario.plan.avoid.includes(t.name)) score = 0;
+      // A strict plan: only attacks in the plan's theatre (or to win back our own land).
+      if (g.scenario.plan.strict && t.owner !== g.you && planDist(t, planTargets(g)) > 5) score = 0;
+      const targets = planTargets(g);
+      if (score && targets.length) score += Math.max(0, 8 - planDist(t, targets));
+    }
     if (score > bestScore) {
       bestScore = score;
       if (troops && !Object.keys(troops).length) troops = null;

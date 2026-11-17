@@ -564,6 +564,8 @@ function view(s, seat, cfg = {}) {
     decisive: {},
     next: (d.EVENTS || []).filter((e) => e.round > s.round && e.round <= s.round + 2 && !e.when).map((e) => ({ round: e.round, text: e.faction ? e.news : ((e.options.find((o) => o.hist) || e.options[0]).news || e.title) })),
     paper: s.campaign.paper || null,
+    plan: me && me.bot ? planFor(s, seat) : null,
+    doctrine: me ? doctrine(s, seat) : null,
     decisions: me ? (me.decisions || []).map((x) => ({ key: x.key, title: x.title, text: x.text, options: x.options.map((o) => ({ label: o.label, summary: o.summary, hist: !!o.hist })) })) : [],
   };
 }
@@ -581,4 +583,37 @@ function upgradeSave(s) {
   return s;
 }
 
-module.exports = { resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };
+/** Winter rounds: those starting in December (round 2 = Dec 1939, then every 4th). */
+const isWinter = (round) => round % 4 === 2;
+/** A nation's doctrine bonuses this round: { attack, defence (%), active: [{ name, text, until }] }. */
+function doctrine(s, seat) {
+  const d = dataOf(s);
+  const p = s.players[seat];
+  const out = { attack: 100, defence: 100, active: [] };
+  if (!p) return out;
+  for (const x of (d.DOCTRINES || {})[p.nation] || []) {
+    if (s.round < x.from || s.round > x.to || (x.winter && !isWinter(s.round))) continue;
+    out.attack = Math.round((out.attack * (x.attack || 100)) / 100);
+    out.defence = Math.round((out.defence * (x.defence || 100)) / 100);
+    out.active.push({ name: x.name, text: x.text, until: d.dateOf(x.to) });
+  }
+  return out;
+}
+
+/** A bot nation's war plan this round: { attack: [city names], defend: [...], passive }. */
+function planFor(s, seat) {
+  const d = dataOf(s);
+  const phases = ((d.WAR_PLANS || {})[s.players[seat].nation] || []).filter((x) => x.from <= s.round && s.round <= x.to);
+  if (!phases.length) return null;
+  return {
+    attack: [...new Set(phases.flatMap((x) => x.attack || []))],
+    // Where the army masses: the main thrust's targets if the plan names one, else all of them.
+    main: [...new Set((phases.some((x) => x.main) ? phases.filter((x) => x.main) : phases).flatMap((x) => x.attack || []))],
+    defend: [...new Set(phases.flatMap((x) => x.defend || []))],
+    avoid: [...new Set(phases.flatMap((x) => x.avoid || []))],
+    strict: phases.some((x) => x.strict),
+    passive: phases.some((x) => x.passive) && !phases.some((x) => (x.attack || []).length),
+  };
+}
+
+module.exports = { doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };
