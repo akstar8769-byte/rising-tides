@@ -286,27 +286,73 @@ const RESEARCH = {
  *   war: [attacker, defender]  — attacker declares war on defender (factions join in)
  *   join: [nation, faction]    — a nation joins a faction
  */
-const TIMELINE = [
-  { round: 1, war: ['GER', 'POL'], text: 'Germany invades Poland' },
-  { round: 1, war: ['USSR', 'POL'], alone: true, text: 'The Soviet Union invades eastern Poland' },
-  { round: 2, war: ['USSR', 'FIN'], alone: true, text: 'The Winter War: the Soviet Union attacks Finland' },
-  { round: 3, war: ['GER', 'DEN'], text: 'Germany occupies Denmark' },
-  { round: 3, war: ['GER', 'NOR'], text: 'Germany invades Norway' },
-  { round: 3, war: ['GER', 'NED'], text: 'Germany strikes west: the Netherlands' },
-  { round: 3, war: ['GER', 'BEL'], text: 'Germany strikes west: Belgium' },
-  { round: 4, join: ['ITA', 'axis'], text: 'Italy joins the Axis' },
-  { round: 4, war: ['ITA', 'FRA'], text: 'Italy declares war on France and Britain' },
-  { round: 4, war: ['USSR', 'BAL'], alone: true, text: 'The Soviet Union occupies the Baltic States' },
-  { round: 5, war: ['ITA', 'GRE'], text: 'Italy invades Greece' },
-  { round: 6, join: ['HUN', 'axis'], text: 'Hungary joins the Axis' },
-  { round: 6, join: ['ROM', 'axis'], text: 'Romania joins the Axis' },
-  { round: 7, join: ['BUL', 'axis'], text: 'Bulgaria joins the Axis' },
-  { round: 7, war: ['GER', 'YUG'], text: 'Germany invades Yugoslavia' },
-  { round: 7, war: ['GER', 'GRE'], text: 'Germany invades Greece' },
-  { round: 8, join: ['USSR', 'allies'], text: 'The Soviet Union joins the Allies' },
-  { round: 8, war: ['GER', 'USSR'], text: 'Operation Barbarossa: Germany invades the Soviet Union' },
-  { round: 8, join: ['FIN', 'axis'], text: 'Finland joins the war against the Soviet Union' },
+/**
+ * Historical events. Each fires once for a nation (from `round`, or the first round up to
+ * `until` when `when` holds). A human player decides; a bot takes the historical (`hist`)
+ * option. Option effects: war (nation ids; `alone` keeps factions out), join (faction),
+ * materials (+/-), pop ({ideology: +n}), popGov (+n for the government), units (infantry at
+ * the capital), news (headline). Events with `effects` and no options just happen
+ * (`faction`: to every member). `when(h)` gets helpers: h.atWar(a, b), h.out(id), h.me.
+ */
+/** The front page of the first newspaper. */
+const OPENING = ['Germany invades Poland', 'Britain and France declare war on Germany'];
+
+const EVENTS = [
+  { id: 'eastPoland', nation: 'USSR', round: 1, until: 3, when: (h) => h.atWar('GER', 'POL') && !h.out('POL'), title: 'The secret protocol', text: 'Germany invites the Soviet Union to take eastern Poland, as secretly agreed.', options: [
+    { label: 'Invade eastern Poland', hist: true, war: ['POL'], alone: true, news: 'The Soviet Union invades eastern Poland' },
+    { label: 'Stay out', materials: 4, news: 'The Soviet Union keeps out of Poland' } ] },
+  { id: 'winterWar', nation: 'USSR', round: 2, title: 'The Finnish border', text: 'Finland refuses to give up the land near Leningrad.', options: [
+    { label: 'Attack Finland', hist: true, war: ['FIN'], alone: true, news: 'The Winter War: the Soviet Union attacks Finland' },
+    { label: 'Negotiate', materials: 3, news: 'The Soviet Union and Finland keep talking' } ] },
+  { id: 'weserubung', nation: 'GER', round: 3, title: 'Iron ore from the north', text: 'Swedish iron ore reaches Germany through Norway, and Britain wants to cut it off.', options: [
+    { label: 'Occupy Denmark and Norway', hist: true, war: ['DEN', 'NOR'], news: 'Germany occupies Denmark and invades Norway' },
+    { label: 'Leave Scandinavia alone', materials: 4, news: 'Germany leaves Scandinavia alone' } ] },
+  { id: 'caseYellow', nation: 'GER', round: 3, until: 6, when: (h) => h.atWar('GER', 'FRA'), title: 'Case Yellow', text: 'The generals propose going round the Maginot Line, through the Low Countries.', options: [
+    { label: 'Strike through Belgium and the Netherlands', hist: true, war: ['NED', 'BEL'], news: 'Germany strikes west through the Low Countries' },
+    { label: 'Hold the West Wall', units: 3, news: 'Germany digs in on the West Wall' } ] },
+  { id: 'italyWar', nation: 'ITA', round: 4, until: 6, when: (h) => !h.out('FRA') && h.atWar('GER', 'FRA'), title: "Italy's hour", text: 'France is reeling. Mussolini wants a seat at the peace table.', options: [
+    { label: 'Join the Axis and declare war on France', hist: true, join: 'axis', war: ['FRA'], news: 'Italy joins the Axis and declares war on France and Britain' },
+    { label: 'Stay out of the war', materials: 6, news: 'Italy stays out of the war' } ] },
+  { id: 'balticUltimatum', nation: 'USSR', round: 4, title: 'The Baltic ultimatum', text: 'The Baltic States lie in the Soviet sphere under the pact with Germany.', options: [
+    { label: 'Occupy the Baltic States', hist: true, war: ['BAL'], alone: true, news: 'The Soviet Union occupies the Baltic States' },
+    { label: 'Respect their independence', materials: 3, news: 'The Soviet Union leaves the Baltic States be' } ] },
+  { id: 'greekUltimatum', nation: 'ITA', round: 5, until: 8, when: (h) => !h.atWar('ITA', 'GRE') && !h.out('GRE'), title: 'Ultimatum to Greece', text: 'Rome wants bases in Greece. Athens says no.', options: [
+    { label: 'Invade Greece', hist: true, war: ['GRE'], news: 'Italy invades Greece' },
+    { label: 'Let it go', materials: 3, news: 'Italy drops its demands on Greece' } ] },
+  { id: 'hendaye', nation: 'SPA', round: 5, title: 'The meeting at Hendaye', text: 'Germany asks Spain to join the war. Spain is exhausted by its own civil war.', options: [
+    { label: 'Join the Axis', join: 'axis', pop: { fascism: 10 }, news: 'Spain joins the Axis' },
+    { label: 'Stay neutral', hist: true, materials: 6, news: 'Spain stays neutral' } ] },
+  { id: 'tripartite', nation: 'HUN', round: 6, title: 'The Tripartite Pact', text: 'Germany invites Hungary to sign the Tripartite Pact and join the Axis.', options: [
+    { label: 'Sign the pact', hist: true, join: 'axis', news: 'Hungary joins the Axis' },
+    { label: 'Stay neutral', materials: 4, news: 'Hungary stays neutral' } ] },
+  { id: 'tripartite', nation: 'ROM', round: 6, title: 'The Tripartite Pact', text: 'Germany invites Romania to sign the Tripartite Pact and join the Axis.', options: [
+    { label: 'Sign the pact', hist: true, join: 'axis', news: 'Romania joins the Axis' },
+    { label: 'Stay neutral', materials: 4, news: 'Romania stays neutral' } ] },
+  { id: 'tripartite', nation: 'BUL', round: 7, title: 'The Tripartite Pact', text: 'German armies are at the Danube. Berlin wants Bulgaria in the Axis.', options: [
+    { label: 'Sign the pact', hist: true, join: 'axis', news: 'Bulgaria joins the Axis' },
+    { label: 'Stay neutral', materials: 4, news: 'Bulgaria stays neutral' } ] },
+  { id: 'belgradeCoup', nation: 'GER', round: 7, title: 'The Belgrade coup', text: 'A coup in Belgrade overthrows the pro-German government, and Britain lands troops in Greece.', options: [
+    { label: 'Invade Yugoslavia and Greece', hist: true, war: ['YUG', 'GRE'], news: 'Germany invades Yugoslavia and Greece' },
+    { label: 'Leave the Balkans alone', materials: 4, news: 'Germany stays out of the Balkans' } ] },
+  { id: 'lendLease', nation: 'UK', round: 7, title: 'Lend-Lease', text: 'America offers weapons and supplies, to be paid for after the war.', options: [
+    { label: 'Accept American aid', hist: true, materials: 12, pop: { democracy: 3 }, news: 'Britain accepts American Lend-Lease aid' },
+    { label: 'Raise more troops in the Empire', units: 4, news: 'Britain raises new divisions across the Empire' } ] },
+  { id: 'barbarossa', nation: 'GER', round: 8, title: 'Operation Barbarossa', text: 'The plan to invade the Soviet Union is ready. The pact with Stalin still stands.', options: [
+    { label: 'Invade the Soviet Union', hist: true, war: ['USSR'], news: 'Operation Barbarossa: Germany invades the Soviet Union' },
+    { label: 'Keep the pact', materials: 8, news: 'Germany keeps its pact with the Soviet Union' } ] },
+  { id: 'patrioticWar', nation: 'USSR', round: 2, until: 24, when: (h) => h.atWar('USSR', 'GER') && h.me.faction !== 'allies', title: 'The Great Patriotic War', text: 'Germany has invaded. Britain offers an alliance.', options: [
+    { label: 'Join the Allies', hist: true, join: 'allies', pop: { communism: 5 }, news: 'The Soviet Union joins the Allies' },
+    { label: 'Fight alone', units: 6, pop: { communism: 5 }, news: 'The Soviet Union fights on alone' } ] },
+  { id: 'continuationWar', nation: 'FIN', round: 8, until: 16, when: (h) => h.atWar('GER', 'USSR') && !h.out('USSR'), title: 'The Continuation War', text: 'Germany attacks the Soviet Union: a chance to win back what Finland lost.', options: [
+    { label: 'Join the Axis', hist: true, join: 'axis', news: 'Finland joins the war against the Soviet Union' },
+    { label: 'Stay out', materials: 3, news: 'Finland stays out of the war' } ] },
+  { id: 'america', faction: 'allies', round: 10, title: 'America enters the war', text: 'After Pearl Harbor the United States joins the Allies: supplies pour across the Atlantic.', effects: { materials: 8 }, news: 'America enters the war! Every Allied nation receives American supplies' },
 ];
+
+/** Every few rounds, a government with little support faces unrest (%N = the nation). */
+const UNREST = { id: 'unrest', below: 40, every: 4, title: 'Unrest at home', text: 'Support for the government is falling. There are strikes and protests.', options: [
+  { label: 'Crack down', materials: -3, popGov: 8, news: '%N cracks down on protests' },
+  { label: 'Make concessions', hist: true, popGov: 4, news: '%N makes concessions to the protesters' } ] };
 
 const START_YEAR = 1939;
 const START_MONTH = 8; // September (0 = January)
@@ -323,4 +369,4 @@ const FACTIONS = {
   comintern: { name: 'Comintern', icon: '🟥' },
 };
 
-module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, TIMELINE, FACTIONS, dateOf };
+module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, OPENING, EVENTS, UNREST, FACTIONS, dateOf };

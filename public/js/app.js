@@ -366,6 +366,19 @@ const actions = {
     act({ type: 'declareWar', target: +ds.seat });
     render();
   },
+  openPaper: () => {
+    store.ui.paperOpen = true;
+    render();
+  },
+  closePaper: () => {
+    const g = store.data.game;
+    store.ui.paperOpen = false;
+    if (g.scenario && g.scenario.paper) store.ui.paperSeen = g.scenario.paper.round;
+    render();
+  },
+  answerEvent: (ds) => {
+    act({ type: 'answerEvent', key: ds.key, option: +ds.option });
+  },
   propaganda: (ds) => {
     const g = store.data.game;
     const mats = { ...g.players[g.you].materials };

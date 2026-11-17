@@ -61,21 +61,92 @@ test('declaring war: factions defend their members; you cannot declare on your o
   assert.throws(() => act(s, seat('UK'), 'declareWar', { target: seat('FRA') }), /own faction/);
 });
 
-test('the historical timeline only moves bot nations; humans decide for themselves', () => {
-  const human = europe(['GER']);
-  const bot = europe();
-  const toRound = (s, r) => {
-    while (s.round < r) {
-      s.phase = 'trade';
-      for (const p of s.players) p.ready = false;
-      for (const p of s.players) if (!p.out) s = act(s, p.seat, 'ready');
+/** Skip to round r; humans answer each decision with option `pick` (0 = usually historical). */
+function toRound(s, r, pick = 1) {
+  while (s.round < r) {
+    s.phase = 'trade';
+    for (const p of s.players) p.ready = false;
+    for (const p of s.players) {
+      if (p.out) continue;
+      while ((s.players[p.seat].decisions || []).length) s = act(s, p.seat, 'answerEvent', { key: s.players[p.seat].decisions[0].key, option: pick });
+      s = act(s, p.seat, 'ready');
     }
-    return s;
-  };
-  const b = toRound(bot, 3);
-  assert.ok(CAMP.atWar(b, seat('GER'), seat('DEN')), 'bot Germany occupies Denmark in round 3');
-  const h = toRound(human, 3);
-  assert.ok(!CAMP.atWar(h, seat('GER'), seat('DEN')), "human Germany wasn't made to");
+  }
+  return s;
+}
+
+test('historical events: bots take the historical choice, humans decide for themselves', () => {
+  const ger = seat('GER');
+  const b = toRound(europe(), 3);
+  assert.ok(CAMP.atWar(b, ger, seat('DEN')), 'bot Germany occupies Denmark in round 3');
+  // A human Germany is asked instead, and can't end the round before answering.
+  let h = europe(['GER']);
+  assert.equal((h.players[ger].decisions || []).length, 0, 'nothing to decide in September 1939');
+  h = toRound(h, 3);
+  const asked = h.players[ger].decisions.map((x) => x.title);
+  assert.ok(asked.includes('Iron ore from the north'), asked.join());
+  assert.ok(!CAMP.atWar(h, ger, seat('DEN')), 'no war until Germany decides');
+  assert.throws(() => act(h, ger, 'ready'), /Answer the news first/);
+  const v = engine.viewFor(h, ger).scenario;
+  const ore = v.decisions.find((x) => x.title === 'Iron ore from the north');
+  assert.equal(ore.options.length, 2);
+  assert.match(ore.options[0].summary, /war with Denmark and Norway/);
+  assert.equal(engine.viewFor(h, seat('UK')).scenario.decisions.length, 0, 'others never see your decisions');
+  h = act(h, ger, 'answerEvent', { key: h.players[ger].decisions.find((x) => x.id === 'weserubung').key, option: 1 });
+  assert.ok(!CAMP.atWar(h, ger, seat('DEN')));
+  assert.ok(h.log.some((l) => /Germany leaves Scandinavia alone/.test(l.text)));
+});
+
+test('answering an event: war and joining a faction, with the right side brought in', () => {
+  const ger = seat('GER');
+  let s = toRound(europe(['GER']), 3);
+  const key = s.players[ger].decisions.find((x) => x.id === 'weserubung').key;
+  assert.throws(() => act(s, ger, 'answerEvent', { key: 'nope', option: 0 }), /no such decision/);
+  assert.throws(() => act(s, ger, 'answerEvent', { key, option: 5 }), /Pick one/);
+  s = act(s, ger, 'answerEvent', { key, option: 0 });
+  for (const id of ['DEN', 'NOR']) assert.ok(CAMP.atWar(s, ger, seat(id)), id);
+  assert.ok(!s.players[ger].decisions.some((x) => x.id === 'weserubung'));
+  // Italy (human) joins the Axis and attacks France in round 4.
+  const ita = seat('ITA');
+  s = toRound(europe(['ITA']), 4, 0);
+  const it = s.players[ita].decisions.find((x) => x.id === 'italyWar');
+  assert.ok(it, 'Italy is asked in round 4');
+  s = act(s, ita, 'answerEvent', { key: it.key, option: 0 });
+  assert.equal(s.players[ita].faction, 'axis');
+  assert.ok(CAMP.atWar(s, ita, seat('FRA')) && CAMP.atWar(s, ita, seat('UK')));
+});
+
+test('the newspaper: each round prints the headlines since the last edition', () => {
+  let s = europe();
+  const paper = engine.viewFor(s, 0).scenario.paper;
+  assert.equal(paper.date, 'Sep 1939');
+  assert.ok(paper.headlines.some((h) => /Germany invades Poland/.test(h)));
+  assert.ok(paper.headlines.every((h) => !h.startsWith('📰')));
+  s = toRound(s, 2);
+  const p2 = engine.viewFor(s, 0).scenario.paper;
+  assert.equal(p2.date, 'Dec 1939');
+  assert.ok(!p2.headlines.some((h) => /Germany invades Poland/.test(h)), 'old news is not repeated');
+  assert.ok(p2.headlines.some((h) => /Winter War/.test(h)));
+});
+
+test('America enters the war in round 10: every Allied nation gets supplies; unrest hits unpopular governments', () => {
+  let s = europe();
+  s.round = 9;
+  const uk = seat('UK');
+  const before = Object.values(s.players[uk].materials).reduce((a, b) => a + b, 0);
+  s.round = 10;
+  CAMP.runEvents(s);
+  assert.equal(Object.values(s.players[uk].materials).reduce((a, b) => a + b, 0), before + 8);
+  // Unrest: a human France whose government has only 35% support must respond.
+  const fra = seat('FRA');
+  let t = europe(['FRA']);
+  t.players[fra].pop = { democracy: 35, fascism: 25, communism: 25, nonaligned: 15 };
+  CAMP.runEvents(t);
+  assert.equal(t.players[fra].decisions[0].title, 'Unrest at home');
+  t = act(t, fra, 'answerEvent', { key: t.players[fra].decisions[0].key, option: 1 });
+  assert.equal(t.players[fra].pop.democracy, 39);
+  CAMP.runEvents(t);
+  assert.equal(t.players[fra].decisions.length, 0, 'not again so soon');
 });
 
 test('a nation whose capital falls capitulates: its land goes to the conqueror and it stops playing', () => {
@@ -186,4 +257,13 @@ test('democracies need a reason to declare war; others do not', () => {
   const s2 = europe(['UK']);
   s2.campaign.wars.push([seat('ITA'), seat('FRA')].sort((a, b) => a - b).join('-'));
   act(s2, seat('UK'), 'declareWar', { target: seat('ITA') });
+});
+
+test('1941 in an all-bot game: Barbarossa, and the USSR makes peace with Poland and joins the Allies', () => {
+  const s = toRound(europe(), 9);
+  const ussr = seat('USSR');
+  assert.ok(CAMP.atWar(s, seat('GER'), ussr));
+  assert.equal(s.players[ussr].faction, 'allies');
+  assert.ok(!CAMP.atWar(s, ussr, seat('POL')));
+  assert.ok(!s.log.some((l) => /\(Germany\) declares war on/.test(l.text)), 'one headline per event, not one per target');
 });

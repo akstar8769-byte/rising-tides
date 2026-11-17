@@ -623,3 +623,11 @@ Total War lobby → **Scenario: 🌍 Europe, 1939 (grand campaign)**.
 - **Factions accept only some governments:** Allies — democracies and non-aligned; Axis — fascists and non-aligned; Comintern — communists. A new government its faction won't accept leaves the faction; you can join any faction that accepts you and that you aren't at war with.
 - **Democracies need a reason for war:** they can only declare war on a nation already at war with their faction or with another democracy.
 - Bots never change government. Saves made after a civil war keep the breakaway nation (always a bot); older saves get 1939 governments when loaded.
+
+## 🌍 Europe 1939 — Phase 4: the newspaper and event decisions (17 November 2026)
+- **The Continental Herald:** at the start of every round a newspaper opens with the season's headlines since the last edition (wars, nations joining factions, capitulations, victory cities taken, civil wars, events), the most dramatic one as the front-page headline, and the faction standings. Reopen it from the 📰 date pill at the top.
+- **Historical events are now decisions.** The fixed timeline became 18 events (the secret protocol, the Winter War, Weserübung, Case Yellow, Italy's hour, the Baltic ultimatum, Greece, Hendaye, the Tripartite Pact ×3, the Belgrade coup, Lend-Lease, Barbarossa, the Great Patriotic War, the Continuation War, America enters the war). Each offers a historical choice and an alternative (usually materials or troops instead of war). **Bots take the historical choice; a human player decides** — in the newspaper, before they can end the round. Some events wait for a condition (Italy only acts once France is fighting Germany; the USSR is offered the Allies once Germany attacks it, whenever that happens).
+- Joining a faction through an event first makes peace with that faction's members (the USSR and the Polish government in exile, 1941).
+- **Unrest:** a government below 40% support faces protests at most every 4 rounds — crack down (−3 materials, +8% support) or make concessions (+4%).
+- **America enters the war** (December 1941): every Allied nation gets 8 materials.
+- A bot that takes over a human's seat answers waiting decisions with the historical choice.

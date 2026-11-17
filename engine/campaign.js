@@ -153,7 +153,7 @@ function canFight(s, a, b) {
  * `a` declares war on `b`. Factions defend their members: everyone in a's faction is
  * at war with everyone in b's faction (a nation outside any faction fights alone).
  */
-function declareWar(s, a, b, why = null, alone = false) {
+function declareWar(s, a, b, why = null, alone = false, quiet = false) {
   const pa = s.players[a];
   const pb = s.players[b];
   if (pa.out || pb.out || a === b) return false;
@@ -163,17 +163,17 @@ function declareWar(s, a, b, why = null, alone = false) {
   const before = s.campaign.wars.length;
   for (const x of side(a)) for (const y of side(b)) if (!atWar(s, x, y) && x !== y) s.campaign.wars.push(pairKey(x, y));
   if (s.campaign.wars.length === before) return false;
-  addLog(s, `📰 ${why || `${pa.name} (${nationName(s, a)}) declares war on ${pb.name} (${nationName(s, b)})`}!`, { kind: 'bad', event: 'war' });
+  if (!quiet) addLog(s, `📰 ${why || `${pa.name} (${nationName(s, a)}) declares war on ${pb.name} (${nationName(s, b)})`}!`, { kind: 'bad', event: 'war' });
   return true;
 }
-function joinFaction(s, seat, faction, why = null) {
+function joinFaction(s, seat, faction, why = null, quiet = false) {
   const p = s.players[seat];
   if (p.out || p.faction === faction) return false;
   // You can't join a faction you are at war with.
   if (s.players.some((q) => q.faction === faction && atWar(s, seat, q.seat))) return false;
   p.faction = faction;
   // Joining brings you into your new allies' wars against nations already fighting the faction.
-  addLog(s, `📰 ${why || `${nationName(s, seat)} joins the ${dataOf(s).FACTIONS[faction].name}`}.`, { kind: 'round', event: 'join' });
+  if (!quiet) addLog(s, `📰 ${why || `${nationName(s, seat)} joins the ${dataOf(s).FACTIONS[faction].name}`}.`, { kind: 'round', event: 'join' });
   return true;
 }
 function nationName(s, seat) {
@@ -188,6 +188,7 @@ function capitulate(s, seat, taker) {
   p.faction = null;
   s.campaign.wars = s.campaign.wars.filter((k) => !k.split('-').map(Number).includes(seat));
   p.ready = true;
+  p.decisions = [];
   if (s.phase === 'choose' && !p.choice) p.choice = outChoice();
   addLog(s, `🏳 ${nationName(s, seat)} capitulates to ${nationName(s, taker)}!`, { kind: 'bad', event: 'capitulation' });
 }
@@ -205,19 +206,162 @@ function attacksFor(s, seat, cfg = {}) {
 /** Start of a round: the historical timeline, for nations played by bots. */
 function roundStart(s) {
   const d = dataOf(s);
-  const seat = (nid) => d.NATIONS.findIndex((n) => n.id === nid);
-  for (const e of d.TIMELINE.filter((x) => x.round === s.round)) {
-    if (e.war) {
-      const [a, b] = e.war.map(seat);
-      if (s.players[a].bot) declareWar(s, a, b, e.text, !!e.alone);
-    } else if (e.join) {
-      const a = seat(e.join[0]);
-      if (s.players[a].bot) joinFaction(s, a, e.join[1], e.text);
-    }
-  }
   // Each government slowly gains support (up to 90%).
   for (const p of s.players) if (!p.out && p.pop && p.pop[p.gov] < 90) shiftPop(p, p.gov, 1);
+  // The opening headlines (the war as it stood when the game starts).
+  if (s.round === 1 && !s.campaign.opened) {
+    s.campaign.opened = true;
+    for (const h of d.OPENING || []) addLog(s, `📰 ${h}!`, { kind: 'bad', event: 'news' });
+  }
+  runEvents(s);
   addLog(s, `🗓 ${d.dateOf(s.round)}.`, { kind: 'round' });
+  printPaper(s);
+}
+
+// ---------------------------------------------------------------- events & the newspaper
+
+const seatOfNation = (s, nid) => s.players.findIndex((p) => p.nation === nid);
+
+/** Helpers for an event's `when` condition. */
+function eventHelpers(s, seat) {
+  const out = (id) => {
+    const x = seatOfNation(s, id);
+    return x < 0 || !!s.players[x].out;
+  };
+  const war = (a, b) => {
+    const x = seatOfNation(s, a);
+    const y = seatOfNation(s, b);
+    return x >= 0 && y >= 0 && atWar(s, x, y);
+  };
+  return { atWar: war, out, me: s.players[seat] };
+}
+
+/** Fire this round's events: humans get a decision, bots take the historical option. */
+function runEvents(s) {
+  const d = dataOf(s);
+  s.campaign.fired = s.campaign.fired || [];
+  const fired = s.campaign.fired;
+  for (const e of d.EVENTS || []) {
+    if (s.round < e.round || s.round > (e.until ?? e.round)) continue;
+    const key = `${e.id}:${e.nation || e.faction}`;
+    if (fired.includes(key)) continue;
+    if (e.faction) {
+      fired.push(key);
+      for (const p of s.players) if (p.faction === e.faction && !p.out) applyEffects(s, p.seat, e.effects || {});
+      addLog(s, `📰 ${e.news || e.title}.`, { kind: 'round', event: 'news' });
+      continue;
+    }
+    const seat = seatOfNation(s, e.nation);
+    if (seat < 0 || s.players[seat].out) continue;
+    if (e.when && !e.when(eventHelpers(s, seat))) continue;
+    fired.push(key);
+    offerEvent(s, seat, e);
+  }
+  // Unrest: a government with little support faces protests every few rounds.
+  const u = d.UNREST;
+  if (u) {
+    for (const p of [...s.players]) {
+      if (p.out || !p.pop || p.pop[p.gov] >= u.below) continue;
+      if (p.unrestRound && s.round - p.unrestRound < u.every) continue;
+      p.unrestRound = s.round;
+      offerEvent(s, p.seat, u);
+    }
+  }
+}
+
+/** Plain-words summary of an option's effects. */
+function describeOption(s, o) {
+  const d = dataOf(s);
+  const name = (id) => (d.NATIONS.find((n) => n.id === id) || { name: id }).name;
+  const bits = [];
+  if (o.join) bits.push(`joins the ${d.FACTIONS[o.join].name}`);
+  if (o.war) bits.push(`⚔ war with ${o.war.map(name).join(' and ')}${o.alone ? '' : ' (and their allies)'}`);
+  if (o.materials) bits.push(`${o.materials > 0 ? '+' : ''}${o.materials} materials`);
+  for (const [k, v] of Object.entries(o.pop || {})) bits.push(`+${v}% ${d.IDEOLOGIES[k].name}`);
+  if (o.popGov) bits.push(`+${o.popGov}% support for the government`);
+  if (o.units) bits.push(`+${o.units} infantry at the capital`);
+  return bits.join(' · ') || 'nothing changes';
+}
+
+function offerEvent(s, seat, e) {
+  const p = s.players[seat];
+  if (p.bot) {
+    const i = Math.max(0, e.options.findIndex((o) => o.hist));
+    return resolveOption(s, seat, e.options[i]);
+  }
+  p.decisions = p.decisions || [];
+  p.decisions.push({
+    key: `${e.id}:${s.round}`,
+    id: e.id,
+    title: e.title,
+    text: e.text,
+    options: e.options.map((o) => ({ ...structuredClone(o), summary: describeOption(s, o) })),
+  });
+  addLog(s, `📰 ${nationName(s, seat)} faces a decision: ${e.title}.`, { kind: 'round', event: 'decision', seat });
+}
+
+/** Carry out an event option for a nation. */
+function resolveOption(s, seat, o) {
+  const name = nationName(s, seat);
+  const news = (o.news || '').split('%N').join(name);
+  let told = false;
+  // Joining through an event makes peace with the new allies first (e.g. the USSR and Poland in 1941).
+  if (o.join) {
+    const friends = s.players.filter((q) => q.faction === o.join).map((q) => q.seat);
+    s.campaign.wars = s.campaign.wars.filter((k) => {
+      const [x, y] = k.split('-').map(Number);
+      return !((x === seat && friends.includes(y)) || (y === seat && friends.includes(x)));
+    });
+  }
+  if (o.join && joinFaction(s, seat, o.join, news || null, !!o.war)) told = !o.war;
+  for (const [i, id] of (o.war || []).entries()) {
+    const b = seatOfNation(s, id);
+    if (b >= 0 && b !== seat && declareWar(s, seat, b, news || null, !!o.alone, told) ) told = true;
+  }
+  applyEffects(s, seat, o);
+  if (!told && news) addLog(s, `📰 ${news}.`, { kind: 'round', event: 'news' });
+}
+
+/** Materials, popularity and troops from an event. */
+function applyEffects(s, seat, o) {
+  const p = s.players[seat];
+  const KINDS = ['wood', 'stone', 'sandbag'];
+  if (o.materials > 0) for (let i = 0; i < o.materials; i++) p.materials[KINDS[i % 3]] += 1;
+  if (o.materials < 0) {
+    for (let i = 0; i < -o.materials; i++) {
+      const k = KINDS.reduce((a, b) => (p.materials[b] > p.materials[a] ? b : a));
+      if (p.materials[k] > 0) p.materials[k] -= 1;
+    }
+  }
+  if (p.pop) {
+    for (const [k, v] of Object.entries(o.pop || {})) shiftPop(p, k, v);
+    if (o.popGov) shiftPop(p, p.gov, o.popGov);
+  }
+  if (o.units) {
+    const cap = s.board.tiles.find((t) => t.id === p.homeTile);
+    if (cap && cap.controller === seat) {
+      cap.troops = cap.troops || {};
+      cap.units = cap.units || {};
+      cap.troops[seat] = cap.troops[seat] || {};
+      cap.troops[seat].infantry = (cap.troops[seat].infantry || 0) + o.units;
+      cap.units[seat] = (cap.units[seat] || 0) + o.units;
+      p.units = (p.units || 0) + o.units;
+    }
+  }
+}
+
+/** The round's newspaper: the headlines since the last edition. */
+const HEADLINE_EVENTS = ['war', 'join', 'capitulation', 'news', 'capture'];
+function printPaper(s) {
+  const d = dataOf(s);
+  const from = s.campaign.newsSeq || 0;
+  const lines = [];
+  for (let i = s.log.length - 1; i >= 0 && s.log[i].id > from; i--) {
+    const l = s.log[i];
+    if (HEADLINE_EVENTS.includes(l.event)) lines.unshift((l.headline || l.text).replace(/^📰\s*/, ''));
+  }
+  s.campaign.paper = { round: s.round, date: d.dateOf(s.round), headlines: lines.slice(-14), vp: vpHeld(s) };
+  s.campaign.newsSeq = s.seq;
 }
 
 // ---------------------------------------------------------------- politics
@@ -418,7 +562,9 @@ function view(s, seat, cfg = {}) {
       ...s.players.filter((p) => !p.faction).map((p) => ({ id: `n:${p.nation}`, name: nationName(s, p.seat), icon: '⬜', seats: [p.seat] })),
     ],
     decisive: {},
-    next: d.TIMELINE.filter((e) => e.round > s.round && e.round <= s.round + 2).map((e) => ({ round: e.round, text: e.text })),
+    next: (d.EVENTS || []).filter((e) => e.round > s.round && e.round <= s.round + 2 && !e.when).map((e) => ({ round: e.round, text: e.faction ? e.news : ((e.options.find((o) => o.hist) || e.options[0]).news || e.title) })),
+    paper: s.campaign.paper || null,
+    decisions: me ? (me.decisions || []).map((x) => ({ key: x.key, title: x.title, text: x.text, options: x.options.map((o) => ({ label: o.label, summary: o.summary, hist: !!o.hist })) })) : [],
   };
 }
 
@@ -435,4 +581,4 @@ function upgradeSave(s) {
   return s;
 }
 
-module.exports = { upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };
+module.exports = { resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };

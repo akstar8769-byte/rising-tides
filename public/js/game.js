@@ -1,6 +1,6 @@
 // Main game screen: phase bar, Flood track, my panel, players, trading, log.
 // On phones one tab is shown at a time; on wide screens everything is visible.
-import { applyGameStyles, esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, TERRAIN, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
+import { applyGameStyles, skinText, esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, TERRAIN, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
 import { renderBoard, center } from './board.js';
 import { renderLog, renderChat } from './log.js';
 import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest, targetNote } from './war-ui.js';
@@ -40,6 +40,7 @@ export function renderGame(store) {
     ${d.paused ? '<div class="banner paused">⏸ The host has paused the game.</div>' : ''}
     ${floodBanner(g)}
   </div>
+  ${newspaper(store)}
   <main class="map ${ui.legend ? 'show-legend' : ''}">
     ${renderBoard(g, { ...boardOptions(store), view: mapView(store) })}
     ${rivals(store)}
@@ -106,7 +107,7 @@ function hud(store) {
     <div class="hud-pills">
       ${
         g.scenario && g.scenario.kind === 'campaign'
-          ? `<span class="scen-pill">🌍 ${esc(g.scenario.name)} · <b>${esc(g.scenario.date)}</b></span><span class="vic-pill" title="Victory points held by each faction (key cities)">★ ${Object.entries(g.scenario.vp).map(([f, v]) => `${esc(g.scenario.factions[f].name)} ${v}`).join(' · ')}</span>`
+          ? `<button class="scen-pill paper-pill" data-act="openPaper" title="Read this round's newspaper">📰 ${esc(g.scenario.name)} · <b>${esc(g.scenario.date)}</b>${g.scenario.decisions.length ? ` <span class="pill-badge">${g.scenario.decisions.length}</span>` : ''}</button><span class="vic-pill" title="Victory points held by each faction (key cities)">★ ${Object.entries(g.scenario.vp).map(([f, v]) => `${esc(g.scenario.factions[f].name)} ${v}`).join(' · ')}</span>`
           : g.scenario
           ? `<span class="scen-pill" title="${esc(g.scenario.sides.map((x) => x.goal).join(' '))}">⚔ ${esc(g.scenario.name)} · ${esc(g.scenario.styleLabel)}</span>${g.scenario.winter ? `<span class="winter-pill" title="Tanks move at ${g.scenario.winter.tankSpeedPct}% speed; attackers fight at ${g.scenario.winter.attackPct}%">❄ Winter</span>` : ''}<span class="vic-pill" title="Victory cities held: ${esc(g.scenario.sides.map((x) => `${x.name} ${g.scenario.held[x.id]}`).join(', '))}">★ ${g.scenario.sides.map((x) => `${esc(x.name)} ${g.scenario.held[x.id]}`).join(' · ')}</span>`
           : `<button class="flood-pill ${dangerClass(g)}" data-act="drawer" data-id="flood" title="Flood / catastrophe threshold">🌊 ${g.flood}/${g.threshold}</button>`
@@ -405,12 +406,58 @@ function campaignCard(g) {
   const out = sc.nations.filter((n) => n.out);
   return `<details class="scen-card" ${g.round === 1 ? 'open' : ''}>
     <summary><b>🌍 ${esc(sc.name)} — ${esc(sc.date)}</b> <span class="muted small">you lead ${esc(me.name)}${me.faction ? ` (${esc(sc.factions[me.faction].name)})` : ' (neutral)'}</span></summary>
+    ${sc.decisions.length ? `<p class="small decide-note">📰 <b>Waiting for your answer:</b> ${sc.decisions.map((x) => esc(x.title)).join(', ')}. <button class="btn small primary" data-act="openPaper">Open the newspaper</button></p>` : ''}
     <p class="small">${me.out ? '🏳 Your nation has capitulated.' : sc.atWar.length ? `⚔ At war with: ${sc.atWar.map(name).join(', ')}.` : '🕊 You are at peace. Tap a foreign tile to declare war.'} You may launch up to <b>${sc.attacksPerRound}</b> attack${sc.attacksPerRound === 1 ? '' : 's'} a round. A nation whose capital falls capitulates.</p>
     <ul class="plain goals">${Object.keys(sc.factions).map(factionLine).join('')}</ul>
     <p class="small">★ Victory points come from key cities; the faction with the most at the end (mid-1945) wins.${out.length ? ` 🏳 Out of the war: ${out.map((n) => esc(n.name)).join(', ')}.` : ''}</p>
-    ${sc.next.length ? `<p class="small">📰 Coming: ${sc.next.map((e) => `${esc(e.text)}`).join('; ')} (if those nations are bots).</p>` : ''}
+    ${sc.next.length ? `<p class="small">📰 Coming: ${sc.next.map((e) => `${esc(e.text)}`).join('; ')} (bots follow history; human players decide for themselves).</p>` : ''}
   </details>
   ${me.out || !me.pop ? '' : politicsCard(g)}`;
+}
+
+/** Pick the most dramatic headline for the front page. */
+function leadIndex(lines) {
+  const order = [/capitulates/i, /CIVIL WAR/, /enters the war/i, /invades|declares war|attacks|strikes/i, /takes /i];
+  for (const re of order) {
+    const i = lines.findIndex((l) => re.test(l));
+    if (i >= 0) return i;
+  }
+  return 0;
+}
+
+/** The round's newspaper (campaigns): headlines, standings and the decisions waiting for you. */
+function newspaper(store) {
+  const g = store.data.game;
+  const sc = g.scenario;
+  if (!sc || sc.kind !== 'campaign' || !sc.paper) return '';
+  const ui = store.ui;
+  const fresh = ui.paperSeen !== sc.paper.round && BUILD.includes(g.phase) && sc.paper.round === g.round;
+  if (!ui.paperOpen && !fresh) return '';
+  const lines = sc.paper.headlines || [];
+  const li = leadIndex(lines);
+  const lead = lines[li];
+  const rest = lines.filter((_, i) => i !== li);
+  const decisions = sc.decisions || [];
+  const vp = sc.paper.vp || sc.vp;
+  return `<div class="paper-backdrop" role="dialog" aria-modal="true" aria-label="The newspaper">
+  <article class="paper">
+    <header class="paper-mast">
+      <div class="paper-meta"><span>${esc(sc.paper.date)}</span><span>Round ${sc.paper.round} of the war</span><span>Two pence</span></div>
+      <h1>The Continental Herald</h1>
+    </header>
+    <h2 class="paper-lead">${lead ? esc(skinText(lead)) : 'A quiet season on every front'}</h2>
+    <div class="paper-cols">
+      ${rest.length ? `<ul class="paper-news">${rest.map((h) => `<li>${esc(skinText(h))}</li>`).join('')}</ul>` : '<p class="paper-news">No other news this season.</p>'}
+      <aside class="paper-box"><h3>Standings</h3><ul>${Object.entries(vp).map(([f, v]) => `<li>${sc.factions[f].icon} ${esc(sc.factions[f].name)} <b>★ ${v}</b></li>`).join('')}</ul><p>Victory points from key cities. The leading faction in mid-1945 wins.</p></aside>
+    </div>
+    ${decisions.length ? `<section class="paper-decide"><h3>${decisions.length === 1 ? 'Your decision' : 'Your decisions'}</h3>${decisions
+      .map((dec) => `<div class="decision"><h4>${esc(dec.title)}</h4><p>${esc(dec.text)}</p><div class="decision-opts">${dec.options
+        .map((o, i) => `<button class="btn decision-opt" data-act="answerEvent" data-key="${esc(dec.key)}" data-option="${i}"><b>${esc(o.label)}</b><small>${esc(skinText(o.summary))}${o.hist ? ' · <i>as in history</i>' : ''}</small></button>`)
+        .join('')}</div></div>`)
+      .join('')}</section>` : ''}
+    <footer class="paper-foot"><button class="btn ${decisions.length ? '' : 'primary'}" data-act="closePaper">${decisions.length ? 'Decide later' : 'To the map ▶'}</button></footer>
+  </article>
+</div>`;
 }
 
 /** Politics: your government, popularity of each ideology, propaganda, change of government, factions. */

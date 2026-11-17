@@ -224,7 +224,7 @@ test('server: a civil war seats a bot for the breakaway nation, and the save sti
     assert.ok((await b.call('loadGame', { save })).ok);
     const r = await b.call('action', { type: 'changeGovernment', ideology: 'communism' });
     assert.ok(r.ok, r.error);
-    await tick();
+    for (let i = 0; i < 100 && b.last.game.players.length < 24; i++) await tick(); // campaign screens refresh every ~150 ms
     assert.equal(b.last.game.players.length, 24);
     assert.equal(b.last.members.length, 24);
     assert.ok(b.last.members[23].bot, 'a bot leads the loyalists');
@@ -235,7 +235,7 @@ test('server: a civil war seats a bot for the breakaway nation, and the save sti
     await setup(c, 'Cy');
     const loaded = await c.call('loadGame', { save: after });
     assert.ok(loaded.ok, loaded.error);
-    await tick();
+    for (let i = 0; i < 100 && !(c.last.members && c.last.members.length === 24); i++) await tick();
     assert.equal(c.last.members.length, 24);
     assert.equal(c.last.game.scenario.nations[c.last.game.you].id, 'FRA');
     c.close();

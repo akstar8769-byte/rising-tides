@@ -873,3 +873,34 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .board .bunker-mark text { fill: #fff; font-size: 12px; font-weight: 700; text-anchor: middle; pointer-events: none; }
 .board .supply-mark circle { fill: #ffd54a; stroke: #7a4b00; stroke-width: 1.5; }
 .board .supply-mark text { font-size: 13px; text-anchor: middle; pointer-events: none; }
+
+/* ---- The newspaper (grand campaigns) ---- */
+.paper-pill { border: 0; cursor: pointer; font: inherit; font-size: 13px; }
+.pill-badge { background: #c0392b; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; margin-left: 4px; }
+.paper-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(10, 8, 4, 0.6); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; }
+.paper { width: 100%; max-width: 680px; background: #f4ecd8; color: #1d1a14; font-family: Georgia, 'Times New Roman', serif; padding: 20px 24px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); border-radius: 2px; }
+.paper-mast { border-bottom: 3px double #1d1a14; margin-bottom: 12px; text-align: center; }
+.paper-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #1d1a14; padding-bottom: 4px; }
+.paper-mast h1 { font-family: 'Old English Text MT', 'UnifrakturMaguntia', Georgia, serif; font-size: clamp(28px, 7vw, 46px); margin: 6px 0 4px; letter-spacing: 0.02em; color: #1d1a14; }
+.paper-lead { font-size: clamp(22px, 5vw, 32px); line-height: 1.15; margin: 4px 0 12px; text-transform: uppercase; color: #1d1a14; }
+.paper-cols { display: grid; grid-template-columns: 1fr 190px; gap: 16px; border-top: 1px solid #1d1a14; padding-top: 10px; }
+.paper-news { margin: 0; padding: 0; list-style: none; font-size: 15px; line-height: 1.4; }
+.paper-news li { padding: 6px 0; border-bottom: 1px dotted #8a7f66; }
+.paper-box { border: 1px solid #1d1a14; padding: 8px 10px; font-size: 13px; align-self: start; }
+.paper-box h3 { margin: 0 0 6px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; }
+.paper-box ul { list-style: none; margin: 0 0 6px; padding: 0; }
+.paper-box li { display: flex; justify-content: space-between; gap: 6px; padding: 2px 0; }
+.paper-box p { margin: 0; font-style: italic; font-size: 12px; }
+.paper-decide { margin-top: 16px; border-top: 3px double #1d1a14; padding-top: 10px; }
+.paper-decide h3 { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.05em; font-size: 15px; }
+.decision { margin-bottom: 12px; }
+.decision h4 { margin: 0 0 4px; font-size: 18px; }
+.decision p { margin: 0 0 8px; font-style: italic; }
+.decision-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.decision-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; background: #fffaf0; color: #1d1a14; border: 1.5px solid #1d1a14; font-family: inherit; padding: 8px 10px; white-space: normal; }
+.decision-opt:hover, .decision-opt:focus-visible { background: #1d1a14; color: #f4ecd8; }
+.decision-opt small { font-size: 12px; opacity: 0.85; }
+.paper-foot { margin-top: 14px; display: flex; justify-content: flex-end; }
+.decide-note { background: rgba(192, 57, 43, 0.12); border-radius: 6px; padding: 6px 8px; }
+@media (max-width: 560px) { .paper { padding: 14px 16px; } .paper-cols { grid-template-columns: 1fr; } .paper-meta span:last-child { display: none; } }
+@media (max-width: 700px) { .scen-pill.paper-pill { display: inline-flex; } }

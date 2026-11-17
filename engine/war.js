@@ -2362,7 +2362,7 @@ function conquerTW(s, taker, D, T, troops) {
   const res = BIOMES[T.biome].resource || leastHeld(A);
   A.materials[res] += cfg.warSpoils;
   A.stats.warSpoils = (A.stats.warSpoils || 0) + cfg.warSpoils;
-  addLog(s, `🏴 ${A.name} takes ${name}${T.role === 'capital' ? ' — A CAPITAL!' : '.'} Loot: ${describeBag(loot)}; war spoils: ${cfg.warSpoils} ${res}.`, { kind: 'good' });
+  addLog(s, `🏴 ${A.name} takes ${name}${T.role === 'capital' ? ' — A CAPITAL!' : '.'} Loot: ${describeBag(loot)}; war spoils: ${cfg.warSpoils} ${res}.`, { kind: 'good', ...(CAMP.isCampaign(s) && T.vp ? { event: 'capture', headline: `${CAMP.nationName(s, taker)} takes ${name}` } : {}) });
   // A player's own capital falls: the rest of their land surrenders with it.
   // (Scenarios: only a side's main capital counts — and taking it wins the war; a regional HQ falling doesn't surrender the region.)
   if (T.role === 'capital' && T.owner === D && cfg.capitalTakesAll !== false && !s.scenario) surrenderLand(s, [D], taker, T, `With their capital gone, ${Dp.name}'s whole territory`);
@@ -2927,7 +2927,27 @@ function settleGenerals(s, b, T, src) {
   }
 }
 
-const handlers = { propaganda, changeGovernment, joinFaction, declareWar, airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
+/** { key, option } — campaigns: answer an event in the newspaper. */
+function answerEvent(s, actor, { key, option } = {}) {
+  requireBuild(s);
+  const p = me(s, actor);
+  const i = (p.decisions || []).findIndex((x) => x.key === key);
+  if (i < 0) fail('There is no such decision waiting.');
+  const o = p.decisions[i].options[option];
+  if (!Number.isInteger(option) || !o) fail('Pick one of the options.');
+  p.decisions.splice(i, 1);
+  CAMP.resolveOption(s, actor, o);
+  syncUnits(s);
+}
+
+/** Ready — in campaigns, only once the round's decisions are answered. */
+function ready(s, actor) {
+  const p = s.players[actor];
+  if (p && !p.out && CAMP.isCampaign(s) && (p.decisions || []).length) fail(`Answer the news first: ${p.decisions[0].title}.`);
+  base.handlers.ready(s, actor);
+}
+
+const handlers = { ready, answerEvent, propaganda, changeGovernment, joinFaction, declareWar, airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
 
 
 

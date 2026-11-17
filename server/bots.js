@@ -507,6 +507,9 @@ function buildStep(g, me, P, mem, fresh) {
   const d = g.scenario ? null : diplomacyStep(g, me, P, mem, fresh);
   if (d) return d;
   if (me.ready) return null; // already done building this phase
+  // 1b2. Campaigns: a seat a bot took over may have news to answer — take the historical choice.
+  const news = g.scenario && g.scenario.decisions && g.scenario.decisions[0];
+  if (news) return { key: `news-${news.key}`, action: { type: 'answerEvent', key: news.key, option: Math.max(0, news.options.findIndex((o) => o.hist)) } };
 
   // 1c. Total War: research first, then upgrade old units — that's what wins wars.
   if (g.tw && g.war) {
