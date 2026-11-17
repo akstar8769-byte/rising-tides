@@ -74,7 +74,11 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
   if (!MODES.includes(mode)) fail(`Unknown mode "${mode}".`);
   const scenario = mode === 'totalwar' && settings.totalwar && settings.totalwar.scenario && settings.totalwar.scenario !== 'none' ? settings.totalwar.scenario : null;
   const minPlayers = scenario ? 2 : 3;
-  if (!Array.isArray(players) || players.length < minPlayers || players.length > 5) fail(scenario ? 'A scenario needs 2 to 5 players.' : 'Rising Tides needs 3 to 5 players.');
+  const campaignNations = scenario ? require('./campaign').nationsOf(scenario) : [];
+  if (campaignNations.length) {
+    // Grand campaigns: one player per nation (humans and bots), in the campaign's nation order.
+    if (!Array.isArray(players) || players.length !== campaignNations.length) fail(`This campaign needs one player for each of its ${campaignNations.length} nations.`);
+  } else if (!Array.isArray(players) || players.length < minPlayers || players.length > 5) fail(scenario ? 'A scenario needs 2 to 5 players.' : 'Rising Tides needs 3 to 5 players.');
   if (scenario && !SCEN.SCENARIOS[scenario]) fail(`Unknown scenario "${scenario}".`);
   for (const p of players) if (!BIOMES[p.biome]) fail(`Unknown biome "${p.biome}".`);
   if (mode === 'totalwar') settings = totalWarSettings(JSON.parse(JSON.stringify(settings)));
@@ -195,6 +199,13 @@ function createGame({ mode = 'base', settings, players, seed = 1 }) {
   // Total War: everyone starts with one general on their capital.
   if (mode === 'totalwar') for (const p of state.players) war.newGeneral(state, p.seat, p.homeTile);
   const modeName = { base: 'Base', war: 'War', empire: 'War + Empire', totalwar: 'Total War' }[mode];
+  if (scenario && campaignNations.length) {
+    const humans = state.players.filter((p) => !p.bot).map((p) => `${p.name} (${campaignNations[p.seat].name})`);
+    addLog(state, `🌍 ${SCEN.SCENARIOS[scenario].name}: ${campaignNations.length} nations${humans.length ? `; played by ${humans.join(', ')}` : ''}; bots play the rest.`, { kind: 'round' });
+    addLog(state, '📰 1 September 1939: Germany invades Poland. Britain and France declare war on Germany.', { kind: 'round' });
+    require('./campaign').roundStart(state); // round 1's events (rounds 2+ fire at upkeep)
+    return state;
+  }
   if (scenario) {
     const sc = SCEN.SCENARIOS[scenario];
     addLog(state, `Scenario: ${sc.name} (${sc.styles[state.scenario.style].label}). ${sc.sides.map((side) => `${side.name}: ${state.players.filter((p) => p.side === side.id).map((p) => `${p.name} (${p.nation})`).join(', ')}`).join(' vs ')}.`, { kind: 'round' });
@@ -214,15 +225,19 @@ function applyAction(state, actor, action) {
   const table = HANDLERS[state.mode];
   const handler = Object.prototype.hasOwnProperty.call(table, action.type) && table[action.type];
   if (!handler) fail(`Unknown action "${action.type}".`);
-  const next = structuredClone(state);
+  // The log is append-only (entries are never changed), so it is shared, not deep-copied:
+  // a campaign log runs to thousands of entries and copying it every action was the main cost.
+  const { log, ...rest } = state;
+  const next = structuredClone(rest);
+  next.log = log.slice();
   handler(next, actor, action);
   return next;
 }
 
 /** Seats the game is waiting on right now. */
 function waitingFor(state) {
-  if (base.BUILD_PHASES.includes(state.phase)) return state.players.filter((p) => !p.ready).map((p) => p.seat);
-  if (state.phase === 'choose') return state.players.filter((p) => !p.choice).map((p) => p.seat);
+  if (base.BUILD_PHASES.includes(state.phase)) return state.players.filter((p) => !p.ready && !p.out).map((p) => p.seat);
+  if (state.phase === 'choose') return state.players.filter((p) => !p.choice && !p.out).map((p) => p.seat);
   if (state.phase === 'loot' && state.pendingLoot) return [state.pendingLoot.raider];
   if (state.phase === 'battle') {
     const seats = new Set();
@@ -241,8 +256,12 @@ function waitingFor(state) {
  * during the Choose phase, other people's trade offers, the dice seed and
  * (if the setting is on) other players' exact materials.
  */
+/** How many recent log entries a player view carries (the full log stays in the game). */
+const VIEW_LOG = 500;
 function viewFor(state, seat) {
-  const v = structuredClone(state);
+  const { log, ...rest } = state;
+  const v = structuredClone(rest);
+  v.log = log.length > VIEW_LOG ? log.slice(-VIEW_LOG) : log.slice();
   delete v.rng;
   delete v.forcedDice;
   delete v.raidQueue;

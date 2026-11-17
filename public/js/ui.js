@@ -28,6 +28,27 @@ export const PLAYER_STYLE = [
   { color: '#F0E442', ink: '#000', label: 'P5' },
 ];
 
+const DEFAULT_STYLES = PLAYER_STYLE.map((x) => ({ ...x }));
+const DEFAULT_LABELS = { wood: 'Wood', stone: 'Stone', sandbag: 'Sandbag' };
+let SKIN = 'default';
+/**
+ * Grand campaigns: one colour and label per nation (many more than 5 seats), and the
+ * materials become steel, oil and manpower. Called at the start of every game render.
+ */
+export function applyGameStyles(g) {
+  const nations = g && g.scenario && g.scenario.kind === 'campaign' ? g.scenario.nations : null;
+  PLAYER_STYLE.length = 0;
+  if (nations) for (const n of nations) PLAYER_STYLE.push({ color: n.color, ink: n.ink, label: n.id });
+  else for (const x of DEFAULT_STYLES) PLAYER_STYLE.push({ ...x });
+  SKIN = nations ? 'europe' : 'default';
+  Object.assign(MAT_LABEL, nations ? { wood: 'Steel', stone: 'Oil', sandbag: 'Manpower' } : DEFAULT_LABELS);
+}
+/** Game-log text in the current material names ("3 wood" → "3 steel" in a campaign). */
+export function skinText(text) {
+  if (SKIN !== 'europe') return text;
+  return String(text).replace(/\bsandbags?\b/g, 'manpower').replace(/\bwood\b/g, 'steel').replace(/\bstone\b/g, 'oil');
+}
+
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
@@ -45,6 +66,14 @@ export function chip(seat, name) {
 }
 
 export function matIcon(m, size = 22) {
+  if (SKIN === 'europe') {
+    const eu = {
+      wood: `<rect x="3" y="8" width="18" height="9" rx="1.5" fill="#8f99a6" stroke="#4b535d" stroke-width="1.2"/><path d="M6 8 L8 5 H22 L20 8" fill="#b9c2cc" stroke="#4b535d" stroke-width="1.2"/>`,
+      stone: `<path d="M12 3 C8 9 6 12 6 15 a6 6 0 0 0 12 0 C18 12 16 9 12 3 Z" fill="#1f1f1f" stroke="#000" stroke-width="1"/><ellipse cx="10" cy="14" rx="1.4" ry="2.4" fill="#777"/>`,
+      sandbag: `<circle cx="12" cy="7" r="3.6" fill="#d9a066" stroke="#6b4a2b" stroke-width="1.1"/><path d="M5 21 C5 14 8 12 12 12 C16 12 19 14 19 21 Z" fill="#5b7a3a" stroke="#33461f" stroke-width="1.1"/>`,
+    };
+    return `<svg class="mat-icon" width="${size}" height="${size}" viewBox="0 0 24 24" role="img" aria-label="${MAT_LABEL[m]}">${eu[m]}</svg>`;
+  }
   const svgs = {
     wood: `<rect x="2" y="7" width="20" height="10" rx="5" fill="#8B5A2B"/><ellipse cx="18.5" cy="12" rx="3.2" ry="5" fill="#E2B07A"/><ellipse cx="18.5" cy="12" rx="1.4" ry="2.4" fill="none" stroke="#8B5A2B" stroke-width="1"/>`,
     stone: `<polygon points="3,16 6.5,7 14.5,4.5 20.5,10.5 19,18.5 9,20.5" fill="#8E949C" stroke="#555b63" stroke-width="1.2"/><path d="M7 11 L12 9" stroke="#c3c8ce" stroke-width="1.4"/>`,

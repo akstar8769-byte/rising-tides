@@ -16,6 +16,7 @@
 'use strict';
 
 const { addLog } = require('./util');
+const CAMP = require('./campaign');
 
 // Map picture, one character per hex (odd rows shifted right, as on the other maps):
 //   p plains   w woods   h hills   r river / marsh   . sea   f fishing ground   (space) no hex
@@ -680,7 +681,19 @@ const NORMANDY_44 = {
   economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
 };
 
-const SCENARIOS = { eastFront41: EAST_FRONT_41, france40: FRANCE_40, northAfrica41: AFRICA_41, normandy44: NORMANDY_44 };
+// ---------------------------------------------------------------- Europe, 1939 (a grand campaign: see campaign.js)
+const EUROPE_39 = {
+  id: 'europe39',
+  kind: 'campaign',
+  name: 'Europe, 1939',
+  rounds: 24, // Sept 1939 → mid-1945, three months a round
+  economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
+  styles: {
+    historical: { label: 'Historical', majorAttacks: 3, minorAttacks: 1, majorMaterials: 15, minorMaterials: 6, winter: null, reinforcements: [], income: {} },
+  },
+};
+
+const SCENARIOS = { eastFront41: EAST_FRONT_41, france40: FRANCE_40, northAfrica41: AFRICA_41, normandy44: NORMANDY_44, europe39: EUROPE_39 };
 
 // ---------------------------------------------------------------- helpers
 
@@ -698,7 +711,7 @@ function styleOf(s) {
 }
 /** A style, with anything it leaves out (null) taken from the historical style. */
 function withDefaults(sc, style) {
-  const st = sc.styles[style] || sc.styles.balanced;
+  const st = sc.styles[style] || sc.styles.balanced || Object.values(sc.styles)[0];
   const h = sc.styles.historical || st; // a scenario without a historical style uses its own
   return { ...st, research: st.research || h.research, armies: st.armies || h.armies, bunkers: st.bunkers || null, fleets: st.fleets || h.fleets || null };
 }
@@ -709,6 +722,7 @@ function sideIndex(seat) {
 /** Seats on the same side as `seat` (not counting `seat`). */
 function alliesOf(s, seat) {
   if (!s.scenario) return [];
+  if (CAMP.isCampaign(s)) return CAMP.alliesOf(s, seat);
   return s.players.filter((p) => p.seat !== seat && sideIndex(p.seat) === sideIndex(seat)).map((p) => p.seat);
 }
 function sideSeats(s, sideId) {
@@ -725,6 +739,7 @@ function cityTile(s, name) {
  * between its players, at least 1 each; the side's first player gets any remainder.
  */
 function attacksFor(s, seat) {
+  if (CAMP.isCampaign(s)) return CAMP.attacksFor(s, seat, styleOf(s));
   const total = sideAttacks(s, s.players[seat].side);
   const seats = s.players.filter((p) => sideIndex(p.seat) === sideIndex(seat)).map((p) => p.seat);
   const each = Math.floor(total / seats.length);
@@ -768,6 +783,11 @@ function winterNow(s) {
 function setupScenario(state, id, style) {
   const sc = SCENARIOS[id];
   if (!sc) throw new Error(`Unknown scenario "${id}".`);
+  if (sc.kind === 'campaign') {
+    const key = Object.keys(sc.styles)[0];
+    state.scenario = { id, style: key, name: sc.name };
+    return CAMP.setup(state, id, withDefaults(sc, key));
+  }
   state.scenario = { id, style: sc.styles[style] ? style : 'balanced', name: sc.name };
   const st = withDefaults(sc, state.scenario.style);
 
@@ -886,6 +906,7 @@ function setupScenario(state, id, style) {
 function roundStart(s, addTroops) {
   const sc = scenarioOf(s);
   if (!sc) return;
+  if (CAMP.isCampaign(s)) return CAMP.roundStart(s);
   const st = styleOf(s);
   for (const e of st.reinforcements.filter((x) => x.round === s.round)) {
     const seats = sideSeats(s, e.side);
@@ -948,6 +969,7 @@ function income(s, seat, tiles, leastHeld) {
 
 /** After a capture: does taking this city win the war at once? Returns the winning side or null. */
 function captureWins(s, T, taker) {
+  if (CAMP.isCampaign(s)) return null; // campaigns: a fallen capital means capitulation, not the end
   const sc = scenarioOf(s);
   if (!sc || !T.name) return null;
   const side = sc.victory.capture[T.name];
@@ -956,6 +978,7 @@ function captureWins(s, T, taker) {
 
 /** Victory cities held by each side. */
 function victoryHeld(s) {
+  if (CAMP.isCampaign(s)) return CAMP.vpHeld(s);
   const sc = scenarioOf(s);
   const held = Object.fromEntries(sc.sides.map((x) => [x.id, 0]));
   for (const name of sc.victory.cities) {
@@ -970,6 +993,7 @@ function victoryHeld(s) {
  * the reason — given the normal per-player results (for the points tie-break).
  */
 function decide(s, reason, results) {
+  if (CAMP.isCampaign(s)) return CAMP.decide(s);
   const sc = scenarioOf(s);
   if (s.scenario.winner) return { side: s.scenario.winner, why: s.scenario.why };
   const held = victoryHeld(s);
@@ -988,6 +1012,7 @@ function decide(s, reason, results) {
 function view(s, seat) {
   const sc = scenarioOf(s);
   if (!sc) return null;
+  if (CAMP.isCampaign(s)) return CAMP.view(s, seat, styleOf(s));
   const st = styleOf(s);
   const w = winterNow(s);
   return {

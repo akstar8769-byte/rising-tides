@@ -1,5 +1,5 @@
 // Event log (newest first) and room chat.
-import { esc, swatch } from './ui.js';
+import { esc, swatch, skinText } from './ui.js';
 
 export function renderLog(game, { limit = 400 } = {}) {
   const entries = game.log.slice(-limit).reverse();
@@ -10,7 +10,7 @@ export function renderLog(game, { limit = 400 } = {}) {
       out.push(`<li class="log-round">Round ${e.round}</li>`);
       lastRound = e.round;
     }
-    out.push(`<li class="log-entry ${e.kind || ''}">${esc(e.text)}</li>`);
+    out.push(`<li class="log-entry ${e.kind || ''}">${esc(skinText(e.text))}</li>`);
   }
   return `<ol class="log" data-keep-scroll="log">${out.join('')}</ol>`;
 }

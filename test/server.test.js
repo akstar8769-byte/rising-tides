@@ -165,3 +165,40 @@ test('server: the host can save a game and load it into a new room to carry on',
     await srv.close();
   }
 });
+
+test('server: a Europe 1939 campaign — pick a nation, bots take the other 22, save and reload', async () => {
+  const srv = await startServer(0);
+  const a = client(srv.port);
+  const a2 = client(srv.port);
+  try {
+    await a.call('createRoom', { name: 'Ana' });
+    assert.ok((await a.call('lobby', { op: 'setMode', mode: 'totalwar' })).ok);
+    assert.ok((await a.call('lobby', { op: 'setSetting', path: 'totalwar.scenario', value: 'europe39' })).ok);
+    await tick();
+    assert.equal(a.last.lobby.nations.length, 23);
+    assert.match((await a.call('startGame')).error, /Pick a nation/);
+    assert.ok((await a.call('lobby', { op: 'setNation', seat: 0, nation: 'UK' })).ok);
+    assert.ok((await a.call('startGame')).ok);
+    await tick();
+    const g = a.last.game;
+    assert.equal(g.players.length, 23);
+    assert.equal(g.scenario.nations[g.you].id, 'UK', 'Ana plays Britain');
+    assert.equal(a.last.members.filter((m) => m.bot).length, 22);
+    assert.equal(g.scenario.date, 'Sep 1939');
+    // Save, then load into a new room where Zed picks Britain.
+    const saved = await a.call('saveGame');
+    await a2.call('createRoom', { name: 'Zed' });
+    assert.ok((await a2.call('lobby', { op: 'setMode', mode: 'totalwar' })).ok);
+    assert.ok((await a2.call('lobby', { op: 'setSetting', path: 'totalwar.scenario', value: 'europe39' })).ok);
+    assert.ok((await a2.call('lobby', { op: 'setNation', seat: 0, nation: 'UK' })).ok);
+    const loaded = await a2.call('loadGame', { save: JSON.parse(JSON.stringify(saved.save)) });
+    assert.ok(loaded.ok, loaded.error);
+    await tick();
+    assert.equal(a2.last.game.players[a2.last.game.you].name, 'Zed');
+    assert.equal(a2.last.game.scenario.nations[a2.last.game.you].id, 'UK');
+  } finally {
+    a.close();
+    a2.close();
+    await srv.close();
+  }
+});

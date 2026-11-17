@@ -466,7 +466,7 @@ const OPTIONS = {
   'base.boardLayout': ['base37', 'standard19'],
   'totalwar.boardLayout': ['oceans', 'continent', 'random', 'sea37', 'standard19'],
   'totalwar.botDifficulty': ['normal', 'hard', 'brutal'],
-  'totalwar.scenario': ['none', 'eastFront41', 'france40', 'northAfrica41', 'normandy44'],
+  'totalwar.scenario': ['none', 'eastFront41', 'france40', 'northAfrica41', 'normandy44', 'europe39'],
   'totalwar.scenarioStyle': ['balanced', 'historical'],
   'totalwar.supplyLines': ['scenarios', 'always', 'off'],
 };
@@ -523,7 +523,7 @@ LABELS['totalwar.transportRange'] = 'Transport: how far ships carry troops (sea 
 LIMITS['totalwar.transportPerShip'] = [1, 20];
 LIMITS['totalwar.transportRange'] = [1, 20];
 LABELS['totalwar.convoyIntercept'] = 'Oceans board: enemy warships fire on troops crossing the sea';
-LABELS['totalwar.scenario'] = 'Historical scenario (none = the normal game; eastFront41 = Eastern Front 1941: Germany vs USSR; france40 = France 1940: Germany vs the Allies; northAfrica41 = North Africa 1941: the Axis vs the Allies; normandy44 = Normandy 1944: the Allied landings; 2-5 players on two sides — replaces the board)';
+LABELS['totalwar.scenario'] = 'Historical scenario (none = the normal game; eastFront41 = Eastern Front 1941: Germany vs USSR; france40 = France 1940: Germany vs the Allies; northAfrica41 = North Africa 1941: the Axis vs the Allies; normandy44 = Normandy 1944: the Allied landings; 2-5 players on two sides; europe39 = Europe 1939: the grand campaign, 23 nations, 1-5 humans on two sides — replaces the board)';
 LABELS['totalwar.scenarioStyle'] = 'Scenario style (historical = forces and timings as in the real campaign; balanced = either side can win)';
 LABELS['totalwar.scenarioAttacks'] = 'Scenarios: attacks per side per round (shared between the side\'s players)';
 LIMITS['totalwar.scenarioAttacks'] = [1, 12];

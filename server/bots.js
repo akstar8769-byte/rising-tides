@@ -285,7 +285,7 @@ function upgradeIdea(g, me, P) {
       }
       if (best) {
         // Upgrade several at once when we can afford it (hard/brutal bots modernise faster).
-        const count = Math.max(1, Math.min(n, Math.floor(spare / best.each), grit(g) > 1 ? n : 2));
+        const count = Math.max(1, Math.min(n, Math.floor(spare / best.each), grit(g) > 1 || campaign(g) ? n : 2));
         return { key: `upgrade-${g.round}-${t.id}-${from}-${n}`, action: { type: 'upgradeUnits', tile: t.id, from, to: best.u.type, count, materials: payFromLargest(me, best.each * count) } };
       }
     }
@@ -561,7 +561,9 @@ function buildStep(g, me, P, mem, fresh) {
     const unitCost = !unit ? Infinity : g.tw ? g.tw.units.find((u) => u.type === unit).cost : w.unitCost;
     const hasLand = !g.stationed || g.board.tiles.some((t) => t.kind === 'land' && t.controller === g.you);
     if (unit && hasLand && me.units < target && wallsOk && total(me.materials) - unitCost >= reserve(g, me, 1) && fresh(`recruit-${me.units}`)) {
-      const action = { type: 'recruit', count: 1, materials: payFromLargest(me, unitCost) };
+      // Campaigns (many bots): recruit a few at once, to keep the number of moves down.
+      const batch = campaign(g) ? Math.max(1, Math.min(4, Math.floor((total(me.materials) - reserve(g, me, 4)) / unitCost))) : 1;
+      const action = { type: 'recruit', count: batch, materials: payFromLargest(me, unitCost * batch) };
       if (g.tw) action.unit = unit;
       const cut = (id) => g.supply && g.supply.cut[id] != null;
       if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land' && !cut(id)) || me.homeTile;
@@ -681,7 +683,7 @@ function garrisonWanted(g, me, tile = null) {
     if (threat) return Math.max(threat + 2, 8);
   }
   // Enemy land units nearby, or enemy ships offshore that could land troops.
-  const enemyNear = g.board.tiles.some((t) => t.controller != null && !sideSeats(g).has(t.controller) && (t.kind === 'land' || Object.values((t.troops || {})[t.controller] || {}).some((n) => n > 0)) && Math.max(Math.abs(t.q - cap.q), Math.abs(t.r - cap.r), Math.abs(t.q + t.r - cap.q - cap.r)) <= 2);
+  const enemyNear = g.board.tiles.some((t) => t.controller != null && isEnemy(g, t.controller) && (t.kind === 'land' || Object.values((t.troops || {})[t.controller] || {}).some((n) => n > 0)) && Math.max(Math.abs(t.q - cap.q), Math.abs(t.r - cap.r), Math.abs(t.q + t.r - cap.q - cap.r)) <= 2);
   return enemyNear ? 8 : 4;
 }
 function capitalShort(g, me) {
@@ -692,6 +694,14 @@ function capitalShort(g, me) {
 function shortKeyTile(g, me) {
   return g.board.tiles.find((t) => t.kind === 'land' && t.controller === g.you && keyTile(g, me, t) && unitsOn(t, g.you) < garrisonWanted(g, me, t)) || null;
 }
+/** A grand campaign (many bot nations)? */
+const campaign = (g) => !!(g.scenario && g.scenario.kind === 'campaign');
+/** Is this seat an enemy? Campaigns: only nations we are at war with. Otherwise: not on our side. */
+function isEnemy(g, seat) {
+  if (seat == null || seat === g.you) return false;
+  if (g.scenario && g.scenario.kind === 'campaign') return g.scenario.atWar.includes(seat);
+  return !sideSeats(g).has(seat);
+}
 /** Our side's seats (scenarios), or just us. */
 function sideSeats(g) {
   return new Set(g.scenario ? g.scenario.sides.find((x) => x.seats.includes(g.you)).seats : [g.you]);
@@ -700,8 +710,7 @@ function sideSeats(g) {
 /** Is this tile of ours next to land held by someone we could be attacked by? */
 function exposed(g, id) {
   const t = tileById(g, id);
-  const allies = sideSeats(g);
-  return nb(g, t).some((n) => n.kind === 'land' && n.controller != null && !allies.has(n.controller));
+  return nb(g, t).some((n) => n.kind === 'land' && isEnemy(g, n.controller));
 }
 
 /** Our tiles that units on tile `id` can walk to over our own land (no sea crossing). */
@@ -728,7 +737,7 @@ function walkable(g, id) {
 function threatNear(g, t) {
   const allies = sideSeats(g);
   return g.board.tiles
-    .filter((o) => o.kind === 'land' && o.controller != null && !allies.has(o.controller) && hexDist(o, t) <= 2)
+    .filter((o) => o.kind === 'land' && isEnemy(g, o.controller) && hexDist(o, t) <= 2)
     .reduce((a, o) => a + unitsOn(o, o.controller), 0);
 }
 
@@ -779,7 +788,7 @@ function moveIdea(g, me, P) {
   // Scenarios: march armies sitting in the rear (reinforcements, a front that has moved
   // on) up to the front line, ideally next to an enemy city.
   if (g.scenario) {
-    const enemyNext = (t) => nb(g, t).filter((o) => o.kind === 'land' && o.controller != null && !sideSeats(g).has(o.controller));
+    const enemyNext = (t) => nb(g, t).filter((o) => o.kind === 'land' && isEnemy(g, o.controller));
     for (const t of withUnits) {
       if (exposed(g, t.id)) continue;
       const keep = keyTile(g, me, t) ? garrisonWanted(g, me, t) : t.fort || t.bunker ? 4 : 0;

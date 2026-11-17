@@ -1,6 +1,6 @@
 // Main game screen: phase bar, Flood track, my panel, players, trading, log.
 // On phones one tab is shown at a time; on wide screens everything is visible.
-import { esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, TERRAIN, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
+import { applyGameStyles, esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, TERRAIN, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
 import { renderBoard, center } from './board.js';
 import { renderLog, renderChat } from './log.js';
 import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest, targetNote } from './war-ui.js';
@@ -27,6 +27,7 @@ const DRAWER_TITLE = { turn: 'Your turn', build: 'Build & army', trade: 'Trade &
 export function renderGame(store) {
   const d = store.data;
   const g = d.game;
+  applyGameStyles(g); // nation colours and material names (grand campaigns)
   const ui = store.ui;
   const drawer = DRAWERS.some((x) => x.id === ui.drawer) ? ui.drawer : null;
   const incoming = g.trades.filter((t) => t.to === g.you).length + (g.pacts || []).filter((p) => p.status === 'proposed' && p.b === g.you).length + (g.treaties || []).filter((t) => t.invited.includes(g.you) && ![...t.signed, ...t.declined, ...t.broken].includes(g.you)).length;
@@ -104,7 +105,9 @@ function hud(store) {
     </div>
     <div class="hud-pills">
       ${
-        g.scenario
+        g.scenario && g.scenario.kind === 'campaign'
+          ? `<span class="scen-pill">🌍 ${esc(g.scenario.name)} · <b>${esc(g.scenario.date)}</b></span><span class="vic-pill" title="Victory points held by each faction (key cities)">★ ${Object.entries(g.scenario.vp).map(([f, v]) => `${esc(g.scenario.factions[f].name)} ${v}`).join(' · ')}</span>`
+          : g.scenario
           ? `<span class="scen-pill" title="${esc(g.scenario.sides.map((x) => x.goal).join(' '))}">⚔ ${esc(g.scenario.name)} · ${esc(g.scenario.styleLabel)}</span>${g.scenario.winter ? `<span class="winter-pill" title="Tanks move at ${g.scenario.winter.tankSpeedPct}% speed; attackers fight at ${g.scenario.winter.attackPct}%">❄ Winter</span>` : ''}<span class="vic-pill" title="Victory cities held: ${esc(g.scenario.sides.map((x) => `${x.name} ${g.scenario.held[x.id]}`).join(', '))}">★ ${g.scenario.sides.map((x) => `${esc(x.name)} ${g.scenario.held[x.id]}`).join(' · ')}</span>`
           : `<button class="flood-pill ${dangerClass(g)}" data-act="drawer" data-id="flood" title="Flood / catastrophe threshold">🌊 ${g.flood}/${g.threshold}</button>`
       }
@@ -149,7 +152,9 @@ function rivals(store) {
   const d = store.data;
   const g = d.game;
   const open = store.ui.rival;
+  const camp = g.scenario && g.scenario.kind === 'campaign' ? g.scenario : null;
   const banners = g.players
+    .filter((p) => !camp || p.seat === g.you || !(d.members[p.seat] || {}).bot || camp.nations[p.seat].major)
     .map((p) => {
       const member = d.members[p.seat];
       let status = '';
@@ -268,6 +273,15 @@ function tileActions(store, t) {
     if (t.kind === 'sea') for (const target of g.bombardTargets[id] || []) out.push(shell(id, target));
     else for (const [from, list] of Object.entries(g.bombardTargets)) if (list.includes(id)) out.push(shell(from, id));
   }
+  // Grand campaigns: declare war on the nation that holds this tile.
+  if (canBuild && g.scenario && g.scenario.kind === 'campaign' && t.controller != null && t.controller !== g.you) {
+    const sc = g.scenario;
+    const them = sc.nations[t.controller];
+    const mine = sc.nations[g.you];
+    if (!them.out && !mine.out && !sc.atWar.includes(t.controller) && !(mine.faction && mine.faction === them.faction)) {
+      out.push(`<button class="btn danger" data-act="declareWar" data-seat="${t.controller}">⚔ Declare war on ${esc(them.name)}<small>${them.faction ? `the whole ${esc(sc.factions[them.faction].name)} will be at war with you` : 'they are neutral'}</small></button>`);
+    }
+  }
   // Bombing raids: bombers on one of your tiles strike this enemy tile (knock its bunker down).
   if (canBuild && g.raidTargets && t.kind === 'land') {
     for (const [from, list] of Object.entries(g.raidTargets)) {
@@ -369,7 +383,7 @@ function phasePanel(store) {
       <p class="hint">Trade, give, build walls${g.factories ? ' and factories' : ''}, use the market, donate to the seawall${g.tw ? ', research, recruit and upgrade troops' : g.war ? ', recruit militia' : ''}${g.mode === 'empire' ? ', command your puppets' : ''}. ${next}</p>
       <p class="small">${me.ready ? '✔ You are Ready — tap the green button below to undo.' : 'When you are done, press <b>End turn</b> at the bottom right.'}</p>
       ${lastReveal(g)}
-      ${g.scenario ? scenarioCard(g) : ''}
+      ${g.scenario ? (g.scenario.kind === 'campaign' ? campaignCard(g) : scenarioCard(g)) : ''}
     </div>`;
   }
   if (g.phase === 'choose') return g.war ? warChoosePanel(store, { choiceLabel, capped, actionCard: makeCard(store.ui.choice) }) : choosePanel(store);
@@ -379,6 +393,25 @@ function phasePanel(store) {
 }
 
 /** Historical scenario briefing: sides, goals, victory cities, winter and what's coming. */
+/** Grand campaign briefing: your nation, its wars, the factions, victory points, what's coming. */
+function campaignCard(g) {
+  const sc = g.scenario;
+  const me = sc.nations[g.you];
+  const name = (seat) => esc(sc.nations[seat].name);
+  const factionLine = (f) => {
+    const members = sc.nations.filter((n) => n.faction === f && !n.out);
+    return `<li>${sc.factions[f].icon} <b>${esc(sc.factions[f].name)}</b> (★ ${sc.vp[f]}): ${members.length ? members.map((n) => `${n.major ? '<b>' : ''}${esc(n.name)}${n.major ? '</b>' : ''}${n.human ? ' 👤' : ''}`).join(', ') : '<span class="muted">none yet</span>'}</li>`;
+  };
+  const out = sc.nations.filter((n) => n.out);
+  return `<details class="scen-card" ${g.round === 1 ? 'open' : ''}>
+    <summary><b>🌍 ${esc(sc.name)} — ${esc(sc.date)}</b> <span class="muted small">you lead ${esc(me.name)}${me.faction ? ` (${esc(sc.factions[me.faction].name)})` : ' (neutral)'}</span></summary>
+    <p class="small">${me.out ? '🏳 Your nation has capitulated.' : sc.atWar.length ? `⚔ At war with: ${sc.atWar.map(name).join(', ')}.` : '🕊 You are at peace. Tap a foreign tile to declare war.'} You may launch up to <b>${sc.attacksPerRound}</b> attack${sc.attacksPerRound === 1 ? '' : 's'} a round. A nation whose capital falls capitulates.</p>
+    <ul class="plain goals">${Object.keys(sc.factions).map(factionLine).join('')}</ul>
+    <p class="small">★ Victory points come from key cities; the faction with the most at the end (mid-1945) wins.${out.length ? ` 🏳 Out of the war: ${out.map((n) => esc(n.name)).join(', ')}.` : ''}</p>
+    ${sc.next.length ? `<p class="small">📰 Coming: ${sc.next.map((e) => `${esc(e.text)}`).join('; ')} (if those nations are bots).</p>` : ''}
+  </details>`;
+}
+
 function scenarioCard(g) {
   const sc = g.scenario;
   const mine = sc.sides.find((x) => x.seats.includes(g.you));

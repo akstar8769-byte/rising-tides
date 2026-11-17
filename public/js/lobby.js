@@ -1,5 +1,5 @@
 // Lobby: players, mode, biomes, seats and every setting. Only the host can change things.
-import { esc, chip, BIOME } from './ui.js';
+import { esc, chip, BIOME, applyGameStyles } from './ui.js';
 import { renderChat } from './log.js';
 
 const MODE_INFO = {
@@ -14,6 +14,7 @@ const GROUP_TITLE = { general: 'General', base: 'Base game', war: 'War mode', em
 const j = (obj) => esc(JSON.stringify(obj));
 
 export function renderLobby(store) {
+  applyGameStyles(null); // back to the 5 seat colours after a campaign
   const d = store.data;
   const meta = store.meta;
   if (!meta) return '<p class="boot">Loading…</p>';
@@ -22,14 +23,29 @@ export function renderLobby(store) {
   const n = d.members.length;
   // Historical scenarios (Total War) need only 2 players: one per side.
   const scen = lobby.mode === 'totalwar' && lobby.settings.totalwar.scenario && lobby.settings.totalwar.scenario !== 'none' ? lobby.settings.totalwar.scenario : null;
-  const minPlayers = scen ? 2 : meta.minPlayers;
+  // Grand campaigns (Europe 1939): every human picks a nation; bots play all the others.
+  const nations = lobby.nations || [];
+  const campaign = nations.length > 0;
+  const picks = lobby.nationPicks || [];
+  const minPlayers = campaign ? 1 : scen ? 2 : meta.minPlayers;
   const SIDE_NAMES = { eastFront41: ['🟫 Germany', '🟥 USSR'], france40: ['🟫 Germany', '🟦 Allies'], northAfrica41: ['🟫 Axis', '🟦 Allies'], normandy44: ['🟫 Germany', '🟦 Allies'] };
   const canStart = n >= minPlayers && n <= meta.maxPlayers;
   const link = `${location.origin}/?room=${d.code}`;
 
   const players = d.members
     .map((m, i) => {
-      const biomePick = scen
+      const nationPick = campaign
+        ? m.bot
+          ? '<span class="tag">not needed: every nation without a human gets a bot</span>'
+          : isHost
+            ? `<select data-nation-seat="${i}" aria-label="Nation for ${esc(m.name)}"><option value="">Pick a nation…</option>${nations
+                .map((nn) => `<option value="${nn.id}" ${picks[i] === nn.id ? 'selected' : ''} ${picks.includes(nn.id) && picks[i] !== nn.id ? 'disabled' : ''}>${nn.major ? '★ ' : ''}${esc(nn.name)}</option>`)
+                .join('')}</select>`
+            : `<span class="tag side-tag">${picks[i] ? esc((nations.find((nn) => nn.id === picks[i]) || {}).name) : 'nation not picked yet'}</span>`
+        : null;
+      const biomePick = nationPick != null
+        ? nationPick
+        : scen
         ? `<span class="tag side-tag" title="Seats 1, 3, 5 play the first side; seats 2 and 4 the second. Move players up or down to change sides.">${(SIDE_NAMES[scen] || ['Side 1', 'Side 2'])[i % 2]}</span>`
         : lobby.biomeMode === 'manual'
           ? isHost
@@ -92,7 +108,7 @@ export function renderLobby(store) {
     </header>
 
     <section class="card">
-      <h2>Players <span class="muted">(${n} of ${meta.maxPlayers}, need ${minPlayers}+)</span></h2>${scen ? '<p class="hint">Scenario: seats 1, 3 and 5 play the first side, seats 2 and 4 the second. Use ▲ ▼ to change sides; empty seats can be bots.</p>' : ''}
+      <h2>Players <span class="muted">(${n} of ${meta.maxPlayers}, need ${minPlayers}+)</span></h2>${campaign ? '<p class="hint">🌍 Grand campaign: the host picks a nation for each human (★ = great power). Every other nation is played by a bot. 1 round = 3 months, September 1939 to 1945.</p>' : scen ? '<p class="hint">Scenario: seats 1, 3 and 5 play the first side, seats 2 and 4 the second. Use ▲ ▼ to change sides; empty seats can be bots.</p>' : ''}
       <ol class="lobby-players">${players}</ol>
       ${
         isHost
@@ -112,12 +128,12 @@ export function renderLobby(store) {
                   .join('')}</select>
               </label>
               <label class="toggle">Scenario:
-                <select data-setting="totalwar.scenario" aria-label="Historical scenario">${[['none', 'None (normal game)'], ['eastFront41', '⚔ Eastern Front, 1941'], ['france40', '⚔ France, 1940'], ['northAfrica41', '⚔ North Africa, 1941'], ['normandy44', '⚔ Normandy, 1944']]
+                <select data-setting="totalwar.scenario" aria-label="Historical scenario">${[['none', 'None (normal game)'], ['eastFront41', '⚔ Eastern Front, 1941'], ['france40', '⚔ France, 1940'], ['northAfrica41', '⚔ North Africa, 1941'], ['normandy44', '⚔ Normandy, 1944'], ['europe39', '🌍 Europe, 1939 (grand campaign)']]
                   .map(([v, l]) => `<option value="${v}" ${lobby.settings.totalwar.scenario === v ? 'selected' : ''}>${l}</option>`)
                   .join('')}</select>
               </label>
               ${
-                scen
+                scen && !campaign
                   ? `<label class="toggle">Style:
                 <select data-setting="totalwar.scenarioStyle" aria-label="Scenario style">${[['balanced', 'Balanced (either side can win)'], ['historical', 'Historical (as it happened)']]
                   .map(([v, l]) => `<option value="${v}" ${lobby.settings.totalwar.scenarioStyle === v ? 'selected' : ''}>${l}</option>`)

@@ -237,8 +237,8 @@ function cancelTrade(state, actor, { id } = {}) {
 
 /** When everyone is Ready, move on. */
 function maybeAdvanceBuildPhase(state) {
-  if (!state.players.every((p) => p.ready)) return;
-  state.players.forEach((p) => (p.ready = false));
+  if (!state.players.every((p) => p.ready || p.out)) return;
+  state.players.forEach((p) => (p.ready = !!p.out));
   if (state.phase === 'talk') startChoosing(state);
   else if (state.phase === 'trade') endRound(state);
 }
@@ -511,7 +511,7 @@ function lootTimeout(state, actor) {
 
 function startTradePhase(state) {
   state.phase = 'trade';
-  state.players.forEach((p) => (p.ready = false));
+  state.players.forEach((p) => (p.ready = !!p.out));
   addLog(state, 'Trade & build. Press Ready when you are done.', { kind: 'phase' });
 }
 

@@ -4,6 +4,7 @@
 // server says. Changing this code can't change the rules.
 
 import { renderLanding } from './landing.js';
+import { skinText } from './ui.js';
 import { renderLobby } from './lobby.js';
 import { renderGame } from './game.js';
 import { renderEnd } from './end.js';
@@ -163,7 +164,7 @@ function announceEvents(d) {
   }
   const fresh = log.filter((e) => e.id > lastAnnounced && (TOAST_KINDS[e.kind] || BIG_EVENTS.includes(e.event)));
   const show = fresh.slice(-3);
-  for (const e of show) toast(e.text, BIG_EVENTS.includes(e.event) ? 'event' : TOAST_KINDS[e.kind], 5000);
+  for (const e of show) toast(skinText(e.text), BIG_EVENTS.includes(e.event) || e.event === 'war' || e.event === 'capitulation' ? 'event' : TOAST_KINDS[e.kind], 5000);
   if (fresh.length > show.length) toast(`+${fresh.length - show.length} more in the 📜 Log`, 'info', 5000);
   lastAnnounced = maxId;
 }
@@ -356,6 +357,14 @@ const actions = {
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       toast('💾 Game saved to your downloads. Load it from the lobby later to carry on.');
     });
+  },
+  declareWar: (ds) => {
+    const g = store.data.game;
+    const n = g.scenario.nations[+ds.seat];
+    if (!confirm(`Declare war on ${n.name}?${n.faction ? ` Everyone in the ${g.scenario.factions[n.faction].name} will be at war with you${g.players[g.you].faction ? ', and your faction joins in' : ''}.` : ''}`)) return;
+    store.ui.tileMenu = null;
+    act({ type: 'declareWar', target: +ds.seat });
+    render();
   },
   bombard: (ds) => {
     store.ui.tileMenu = null;
@@ -846,6 +855,8 @@ document.addEventListener('change', (e) => {
       send('loadGame', { save }).then((r) => r.ok && toast('📂 Saved game loaded.'));
     });
     el.value = '';
+  } else if (el.dataset.nationSeat !== undefined) {
+    send('lobby', { op: 'setNation', seat: +el.dataset.nationSeat, nation: el.value || null });
   } else if (el.dataset.botSeat !== undefined) {
     send('lobby', { op: 'setBotPersonality', seat: +el.dataset.botSeat, personality: el.value });
   } else if (el.dataset.biomeMode !== undefined) {

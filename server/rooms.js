@@ -32,6 +32,7 @@ const bots = require('./bots');
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O (look like 1 and 0)
 const MAX_PLAYERS = 5;
 const MIN_PLAYERS = 3;
+const CAMP = require('../engine/campaign');
 const SAVE_FORMAT = 'rising-tides-save';
 
 /** Check a save file sent by a host; returns its game state (or throws a friendly error). */
@@ -46,7 +47,8 @@ function checkSave(save) {
   if (!engine.MODES.includes(save.mode)) throw bad('unknown game mode');
   const st = save.state;
   if (!st || !Array.isArray(st.players) || !st.board || !Array.isArray(st.board.tiles) || typeof st.phase !== 'string' || !Number.isInteger(st.round)) throw bad('the game data is incomplete');
-  if (st.players.length < 2 || st.players.length > MAX_PLAYERS) throw bad('wrong number of players');
+  const campaignNations = st.campaign ? CAMP.nationsOf(st.campaign.id).length : 0;
+  if (st.campaign ? st.players.length !== campaignNations : st.players.length < 2 || st.players.length > MAX_PLAYERS) throw bad('wrong number of players');
   if (st.mode !== save.mode) throw bad('mode mismatch');
   if (!Array.isArray(save.seats) || save.seats.length !== st.players.length) throw bad('seat list mismatch');
   // Fill in any settings added since the save was made.
@@ -102,6 +104,65 @@ function attachRooms(io) {
     return { room, member };
   }
 
+  /** The campaign the lobby is set to (Total War + a campaign scenario), or null. */
+  function campaignId(room) {
+    const id = room.mode === 'totalwar' && room.settings.totalwar.scenario;
+    return id && CAMP.nationsOf(id).length ? id : null;
+  }
+
+  /**
+   * Seat every nation: humans at the nation they picked, bots for all the rest. Returns
+   * the new members list (in nation order) — or throws if a human hasn't picked.
+   */
+  function campaignMembers(room, id) {
+    const nations = CAMP.nationsOf(id);
+    const humans = room.members.filter((m) => !m.bot);
+    const picks = room.nationPicks || {};
+    for (const h of humans) if (!picks[h.id]) throw friendly(`Pick a nation for ${h.name} first.`);
+    return nations.map((n) => {
+      const h = humans.find((m) => picks[m.id] === n.id);
+      if (h) return h;
+      return { id: crypto.randomUUID(), name: n.name, sockets: new Set(), bot: { personality: n.personality || 'balanced', tried: new Set(), phaseKey: null, failures: 0, nationBot: true } };
+    });
+  }
+
+  function startCampaign(room) {
+    const id = campaignId(room);
+    const humans = room.members.filter((m) => !m.bot);
+    if (!humans.length) throw friendly('A campaign needs at least one human player.');
+    if (humans.length > MAX_PLAYERS) throw friendly(`At most ${MAX_PLAYERS} human players.`);
+    room.members = campaignMembers(room, id);
+    room.state = engine.createGame({
+      mode: room.mode,
+      settings: room.settings,
+      players: room.members.map((m) => ({ name: m.name, biome: 'forest', bot: !!m.bot })),
+      seed: crypto.randomInt(2 ** 31),
+    });
+    room.startedAt = Date.now();
+    room.endedAt = null;
+    room.record = null;
+    room.paused = false;
+    systemChat(room, `The campaign begins: ${humans.map((h) => `${h.name} plays ${CAMP.nationsOf(id).find((n) => n.id === room.nationPicks[h.id]).name}`).join(', ')}. Bots play the other nations.`);
+    broadcast(room);
+  }
+
+  function loadCampaign(room, save, st) {
+    room.mode = save.mode;
+    room.settings = save.settings;
+    room.members = campaignMembers(room, st.campaign.id);
+    room.members.forEach((m, i) => {
+      if (!m.bot) st.players[i].name = m.name;
+      st.players[i].bot = !!m.bot;
+    });
+    room.state = st;
+    room.startedAt = Date.now();
+    room.endedAt = null;
+    room.record = null;
+    room.paused = false;
+    systemChat(room, `Loaded a saved campaign: ${CAMP.CAMPAIGNS[st.campaign.id].dateOf(st.round)} (round ${st.round}).`);
+    broadcast(room);
+  }
+
   function seatOf(room, member) {
     return room.members.indexOf(member);
   }
@@ -124,6 +185,8 @@ function attachRooms(io) {
         settings: room.settings,
         biomeMode: room.biomeMode,
         manualBiomes: room.members.map((m) => room.manualBiomes[m.id] || null),
+        nationPicks: room.members.map((m) => (room.nationPicks || {})[m.id] || null),
+        nations: CAMP.nationsOf(campaignId(room)).map((n) => ({ id: n.id, name: n.name, major: !!n.major, color: n.color })),
       },
       game: state ? engine.viewFor(state, seat) : null,
       paused: room.paused,
@@ -137,12 +200,33 @@ function attachRooms(io) {
     return out;
   }
 
-  function broadcast(room) {
-    room.lastActive = Date.now();
+  function sendState(room) {
     for (const m of room.members) {
       if (!m.sockets.size) continue;
       const data = payloadFor(room, m);
       for (const sid of m.sockets) io.to(sid).emit('state', data);
+    }
+  }
+  function broadcast(room) {
+    room.lastActive = Date.now();
+    // Campaigns: 20+ bots move in quick succession, so screens are refreshed at most about
+    // every 150 ms (the last change is always sent) instead of after every single bot move.
+    const many = room.state && room.state.players.length > MAX_PLAYERS;
+    if (!many) sendState(room);
+    else if (room.sendTimer) room.sendDirty = true;
+    else {
+      sendState(room);
+      room.sendDirty = false;
+      room.sendTimer = setTimeout(function flush() {
+        room.sendTimer = null;
+        if (room.sendDirty) {
+          room.sendDirty = false;
+          sendState(room);
+          room.sendTimer = setTimeout(flush, 150);
+          room.sendTimer.unref();
+        }
+      }, 150);
+      room.sendTimer.unref();
     }
     scheduleBots(room);
     botReactions(room);
@@ -153,21 +237,23 @@ function attachRooms(io) {
   function scheduleBots(room) {
     const s = room.state;
     if (!s || s.phase === 'ended' || room.paused) return;
+    // Checked straight from the game state: building a full view for every bot after every
+    // action gets very slow with many bot nations.
+    const waiting = new Set(engine.waitingFor(s));
     room.members.forEach((m, seat) => {
       if (!m.bot || room.botTimers[seat]) return;
-      const view = engine.viewFor(s, seat);
       // Offers waiting for this bot's answer (trades, pact offers, treaty invitations) also wake it up.
       const tried = (key) => m.bot.tried && m.bot.tried.has(key);
       const offers =
         engine.BUILD_PHASES.includes(s.phase) &&
-        (view.trades.some((t) => t.to === seat && !tried('trade-' + t.id)) ||
-          (view.pacts || []).some((p) => p.status === 'proposed' && p.b === seat && !tried('pact-' + p.id)) ||
-          (view.treaties || []).some((x) => x.invited.includes(seat) && ![...x.signed, ...x.declined, ...x.broken].includes(seat) && !tried('treaty-' + x.id)));
-      if (!view.waitingFor.includes(seat) && !offers) return;
+        ((s.trades || []).some((t) => t.to === seat && !tried('trade-' + t.id)) ||
+          (s.pacts || []).some((p) => p.status === 'proposed' && p.b === seat && !tried('pact-' + p.id)) ||
+          (s.treaties || []).some((x) => x.invited.includes(seat) && ![...x.signed, ...x.declined, ...x.broken].includes(seat) && !tried('treaty-' + x.id)));
+      if (!waiting.has(seat) && !offers) return;
       room.botTimers[seat] = setTimeout(() => {
         room.botTimers[seat] = null;
         botTurn(room, seat);
-      }, s.settings.general.botThinkMs);
+      }, s.players.length > MAX_PLAYERS ? Math.min(150, s.settings.general.botThinkMs) : s.settings.general.botThinkMs); // campaigns: many bots, short pauses
       room.botTimers[seat].unref();
     });
   }
@@ -189,7 +275,7 @@ function attachRooms(io) {
       }
     }
     // A bot that has run out of ideas (or keeps failing) is moved along like a skipped player.
-    if ((!idea || m.bot.failures > 12) && room.state.phase !== 'ended' && engine.viewFor(room.state, seat).waitingFor.includes(seat)) {
+    if ((!idea || m.bot.failures > 12) && room.state.phase !== 'ended' && engine.waitingFor(room.state).includes(seat)) {
       try {
         applyToRoom(room, 'host', { type: 'skip', seat });
       } catch (e) {
@@ -213,6 +299,9 @@ function attachRooms(io) {
   function botReactions(room) {
     const s = room.state;
     if (!s || s.phase === 'ended') return;
+    // Only when something new happened, and not in big games (20 nations chattering would bury the chat).
+    if (s.players.length > MAX_PLAYERS || room.lastReactSeq === s.seq) return;
+    room.lastReactSeq = s.seq;
     room.members.forEach((m, seat) => {
       if (!m.bot) return;
       const line = bots.react(engine.viewFor(s, seat), m.bot);
@@ -546,6 +635,17 @@ function attachRooms(io) {
           room.manualBiomes[m.id] = msg.biome;
           break;
         }
+        case 'setNation': {
+          // Campaigns: which nation a human plays (the host picks for everyone).
+          const m = room.members[msg.seat];
+          if (!m || m.bot) throw friendly('Pick a nation for a human player.');
+          const ids = CAMP.nationsOf(campaignId(room)).map((n) => n.id);
+          if (msg.nation && !ids.includes(msg.nation)) throw friendly('Unknown nation.');
+          room.nationPicks = room.nationPicks || {};
+          if (msg.nation && Object.entries(room.nationPicks).some(([id, n]) => n === msg.nation && id !== m.id && room.members.some((x) => x.id === id))) throw friendly('Someone already plays that nation.');
+          room.nationPicks[m.id] = msg.nation || null;
+          break;
+        }
         case 'moveSeat': {
           const i = msg.seat;
           const j = i + (msg.dir === 'up' ? -1 : 1);
@@ -596,6 +696,7 @@ function attachRooms(io) {
       const { room, member } = requireRoom(socket);
       requireHost(room, member);
       if (room.state) throw friendly('The game has already started.');
+      if (campaignId(room)) return startCampaign(room);
       const n = room.members.length;
       // Historical scenarios are fought by two sides, so 2 players is enough.
       const scenario = room.mode === 'totalwar' && room.settings.totalwar.scenario && room.settings.totalwar.scenario !== 'none';
@@ -648,6 +749,7 @@ function attachRooms(io) {
       requireHost(room, member);
       if (room.state) throw friendly('Load a saved game from the lobby (end this game first).');
       const st = checkSave(save);
+      if (st.campaign) return loadCampaign(room, save, st);
       const n = st.players.length;
       if (room.members.length !== n) {
         const want = save.seats.map((x) => `${x.name}${x.bot ? ' (bot)' : ''}`).join(', ');
@@ -690,6 +792,7 @@ function attachRooms(io) {
         room.record = null;
         room.paused = false;
         clearBotTimers(room);
+        room.members = room.members.filter((m) => !(m.bot && m.bot.nationBot)); // campaign bots go home
         syncLootTimer(room);
         broadcast(room);
         return;

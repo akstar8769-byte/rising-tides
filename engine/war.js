@@ -22,6 +22,7 @@ const { fail, MATERIALS, emptyBag, cleanBag, bagTotal, hasBag, addBag, subBag, d
 const { BIOMES, areAdjacent } = require('./board');
 const base = require('./base');
 const SCEN = require('./scenarios');
+const CAMP = require('./campaign');
 const diplomacy = require('./diplomacy');
 const battles = require('./totalwar');
 const ARS = require('./arsenal');
@@ -322,6 +323,8 @@ function attackTargets(s, seat) {
   // Sea-lane boards: only the sea hexes right next to your fleets.
   const held = seasHeld(s, seat).filter((t) => unitsAt(t, seat) > 0);
   const sea = TW(s) && hasShips ? s.board.tiles.filter((t) => t.kind === 'sea' && t.controller !== seat && !forbidden.has(t.controller) && !(t.controller != null && inTruce(s)) && (!LANES(s) || held.some((h) => areAdjacent(h, t)))).map((t) => t.id) : [];
+  // Campaigns: only nations you are at war with (empty land and sea are fine).
+  if (CAMP.isCampaign(s)) return [...land, ...sea].filter((id) => CAMP.canFight(s, seat, getAnyTile(s, id).controller));
   return [...land, ...sea];
 }
 
@@ -480,10 +483,12 @@ function planRelease(s, actor, { puppet } = {}) {
 function upkeepDue(s, p) {
   if (!TW(s)) return Math.floor(p.units / W(s).upkeepUnitsPerMaterial);
   const cfg = TWS(s);
+  // Read each tile's troops directly (no temporary objects): this runs for every nation in every view.
   let points = 0;
   for (const t of s.board.tiles) {
-    const c = troopsAt(t, p.seat);
-    for (const k of battles.TYPES) points += c[k] * cfg[k].upkeep;
+    const c = t.troops && t.troops[p.seat];
+    if (c) for (const k in c) points += (c[k] || 0) * ((cfg[k] && cfg[k].upkeep) || 0);
+    else if (t.units && t.units[p.seat]) points += t.units[p.seat] * cfg.militia.upkeep; // old saves: plain unit counts are militia
   }
   // Hard / Brutal bots keep their armies for less.
   if (p.bot && cfg.botDifficulty === 'hard') points = (points * (cfg.botUpkeepPctHard ?? 100)) / 100;
@@ -795,7 +800,10 @@ function choose(s, actor, { action, mix, target, aid, from, count, troops, extra
     ch.aid = MATERIALS.includes(aid) ? aid : leastHeld(p);
   }
   p.choice = ch;
-  if (s.players.every((x) => x.choice)) reveal(s);
+  if (s.players.every((x) => x.choice || x.out)) {
+    for (const x of s.players) if (x.out && !x.choice) x.choice = CAMP.outChoice();
+    reveal(s);
+  }
 }
 
 /** Used when the host skips a player. */
@@ -2047,7 +2055,8 @@ function suppliedTiles(s) {
     const ownSeaIds = new Set(ownSea.map((x) => x.id));
     const landIds = new Set(land.map((x) => x.id));
     const port = (t) => (s.scenario ? !!t.name : true) && nbrs(s, t).some((x) => ownSeaIds.has(x.id));
-    const sources = land.filter((t) => homes.has(t.id) || t.industry || port(t));
+    // Campaigns: every city is a supply depot (colonies and outposts aren't cut off from the start).
+    const sources = land.filter((t) => homes.has(t.id) || t.industry || port(t) || (CAMP.isCampaign(s) && t.name));
     const dist = new Map(sources.map((t) => [t.id, 0]));
     const queue = [...sources];
     while (queue.length) {
@@ -2103,7 +2112,7 @@ function raidTargets(s, seat) {
   for (const F of s.board.tiles) {
     if (F.kind !== 'land' || F.controller !== seat || !(troopsAt(F, seat).bomber > 0) || F.raidedRound === s.round) continue;
     const list = s.board.tiles
-      .filter((t) => t.kind === 'land' && t.controller != null && !friends.has(t.controller) && hexDistance(F, t) <= (TWS(s).bomberRange ?? 3) && !diplomacy.blockedBy(s, seat, 'attack', t.controller))
+      .filter((t) => t.kind === 'land' && t.controller != null && !friends.has(t.controller) && (!CAMP.isCampaign(s) || CAMP.canFight(s, seat, t.controller)) && hexDistance(F, t) <= (TWS(s).bomberRange ?? 3) && !diplomacy.blockedBy(s, seat, 'attack', t.controller))
       .map((t) => t.id);
     if (list.length) out[F.id] = list;
   }
@@ -2166,6 +2175,20 @@ function fortPct(s, T) {
   let pct = T.fort && sc && SCEN.fortPctOf(s) ? SCEN.fortPctOf(s) : 100;
   if (T.bunker) pct = (pct * Math.max(0, 100 - (TWS(s).bunkerPct ?? 15) * T.bunker)) / 100;
   return pct < 100 ? pct : null;
+}
+
+/** { target } — campaigns: declare war on another nation (factions join in). */
+function declareWar(s, actor, { target } = {}) {
+  requireBuild(s);
+  if (!CAMP.isCampaign(s)) fail('Declaring war is part of the grand campaigns.');
+  me(s, actor);
+  const b = Number(target);
+  if (!s.players[b] || b === actor) fail('Pick another nation.');
+  if (s.players[actor].out) fail('Your nation has capitulated.');
+  if (s.players[b].out) fail('That nation has already capitulated.');
+  if (CAMP.atWar(s, actor, b)) fail('You are already at war with them.');
+  if (s.players[actor].faction && s.players[actor].faction === s.players[b].faction) fail("You can't declare war on your own faction.");
+  CAMP.declareWar(s, actor, b);
 }
 
 /** { tile, materials } — build a bunker on your tile, or raise it a level (research Fortifications). */
@@ -2288,6 +2311,11 @@ function conquerTW(s, taker, D, T, troops) {
   // A player's own capital falls: the rest of their land surrenders with it.
   // (Scenarios: only a side's main capital counts — and taking it wins the war; a regional HQ falling doesn't surrender the region.)
   if (T.role === 'capital' && T.owner === D && cfg.capitalTakesAll !== false && !s.scenario) surrenderLand(s, [D], taker, T, `With their capital gone, ${Dp.name}'s whole territory`);
+  // Campaigns: a nation whose capital falls capitulates — its land goes to the conqueror.
+  if (CAMP.isCampaign(s) && T.role === 'capital' && T.owner === D && !s.players[D].out) {
+    surrenderLand(s, [D], taker, T, `${CAMP.nationName(s, D)}'s whole territory`);
+    CAMP.capitulate(s, D, taker);
+  }
   // Scenarios: taking the enemy's main capital (Paris, Cairo, Moscow…) wins the war —
   // and the whole losing side's land surrenders with it.
   const wins = SCEN.captureWins(s, T, taker);
@@ -2504,7 +2532,7 @@ function scoreTotalWar(s, reason) {
   });
   if (s.scenario) {
     const d = SCEN.decide(s, reason, results);
-    const winners = d.side ? s.players.filter((p) => p.side === d.side).map((p) => p.seat) : [];
+    const winners = CAMP.isCampaign(s) ? CAMP.winners(s, d.side) : d.side ? s.players.filter((p) => p.side === d.side).map((p) => p.seat) : [];
     return { reason, catastrophe: false, finalFlood: s.flood, threshold: base.threshold(s), results, winners, scenario: { side: d.side, why: d.why, held: SCEN.victoryHeld(s) } };
   }
   const best = catastrophe ? null : Math.max(...results.map((r) => r.score));
@@ -2633,7 +2661,7 @@ function interceptConvoy(s, seat, src, T, sent, what = 'convoy') {
   const lost = [];
   const shooters = new Set();
   for (const sea of s.board.tiles) {
-    if (sea.kind !== 'sea' || sea.controller == null || sea.controller === seat || chain.has(sea) || SCEN.alliesOf(s, seat).includes(sea.controller)) continue;
+    if (sea.kind !== 'sea' || sea.controller == null || sea.controller === seat || chain.has(sea) || SCEN.alliesOf(s, seat).includes(sea.controller) || (CAMP.isCampaign(s) && !CAMP.canFight(s, seat, sea.controller))) continue;
     if (![...chain].some((c) => areAdjacent(c, sea))) continue;
     const owner = sea.controller;
     const p = shotChance(s, sea, owner);
@@ -2708,7 +2736,7 @@ function bombardTargets(s, seat) {
   if (!TW(s) || inTruce(s)) return out;
   for (const S of seasHeld(s, seat)) {
     if (!gunShots(s, S, seat) || S.bombardedRound === s.round) continue;
-    const list = s.board.tiles.filter((t) => t.kind === 'land' && t.controller != null && t.controller !== seat && areAdjacent(S, t) && !puppetsOf(s, seat).includes(t.controller) && !SCEN.alliesOf(s, seat).includes(t.controller) && !diplomacy.blockedBy(s, seat, 'attack', t.controller)).map((t) => t.id);
+    const list = s.board.tiles.filter((t) => t.kind === 'land' && t.controller != null && t.controller !== seat && areAdjacent(S, t) && !puppetsOf(s, seat).includes(t.controller) && !SCEN.alliesOf(s, seat).includes(t.controller) && (!CAMP.isCampaign(s) || CAMP.canFight(s, seat, t.controller)) && !diplomacy.blockedBy(s, seat, 'attack', t.controller)).map((t) => t.id);
     if (list.length) out[S.id] = list;
   }
   return out;
@@ -2844,7 +2872,7 @@ function settleGenerals(s, b, T, src) {
   }
 }
 
-const handlers = { airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
+const handlers = { declareWar, airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
 
 
 
