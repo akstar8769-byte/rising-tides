@@ -109,3 +109,81 @@ test('victory: the faction with the most victory points at the end', () => {
   assert.equal(o.scenario.side, 'axis');
   assert.ok(o.winners.includes(seat('GER')));
 });
+
+// ---------------------------------------------------------------- politics (Phase 3)
+const rich = (s, n) => { s.players[n].materials = { wood: 30, stone: 30, sandbag: 30 }; return s; };
+const pay = { wood: 4, stone: 0, sandbag: 0 };
+
+test('every nation starts with a government and popularity that sums to 100', () => {
+  const s = europe();
+  assert.equal(s.players[seat('GER')].gov, 'fascism');
+  assert.equal(s.players[seat('USSR')].gov, 'communism');
+  assert.equal(s.players[seat('UK')].gov, 'democracy');
+  for (const p of s.players) assert.equal(Object.values(p.pop).reduce((a, b) => a + b, 0), 100, p.name);
+});
+
+test('propaganda: costs materials, raises support, at most twice a round', () => {
+  const fra = seat('FRA');
+  let s = rich(europe(['FRA']), fra);
+  const before = s.players[fra].pop.communism;
+  s = act(s, fra, 'propaganda', { ideology: 'communism', materials: pay });
+  assert.equal(s.players[fra].pop.communism, before + 5);
+  assert.equal(s.players[fra].materials.wood, 26);
+  assert.equal(Object.values(s.players[fra].pop).reduce((a, b) => a + b, 0), 100);
+  assert.throws(() => act(s, fra, 'propaganda', { ideology: 'communism', materials: { wood: 3, stone: 0, sandbag: 0 } }), /costs 4/);
+  s = act(s, fra, 'propaganda', { ideology: 'communism', materials: pay });
+  assert.throws(() => act(s, fra, 'propaganda', { ideology: 'communism', materials: pay }), /At most 2/);
+  assert.equal(engine.viewFor(s, fra).scenario.politics.usedThisRound, 2);
+});
+
+test('changing government: peaceful with 50%+, refused below 30%, and a faction that will not have you drops you', () => {
+  const fra = seat('FRA');
+  let s = europe(['FRA']);
+  assert.throws(() => act(s, fra, 'changeGovernment', { ideology: 'fascism' }), /Not enough support/);
+  assert.throws(() => act(s, fra, 'changeGovernment', { ideology: 'democracy' }), /already your government/);
+  s.players[fra].pop = { democracy: 30, fascism: 55, communism: 10, nonaligned: 5 };
+  s = act(s, fra, 'changeGovernment', { ideology: 'fascism' });
+  assert.equal(s.players[fra].gov, 'fascism');
+  assert.equal(s.players.length, 23, 'no civil war');
+  assert.equal(s.players[fra].faction, null, 'the Allies drop a fascist France');
+  // A fascist France can join the Axis only if it isn't at war with them.
+  assert.throws(() => act(s, fra, 'joinFaction', { faction: 'axis' }), /at war with/);
+  assert.throws(() => act(s, fra, 'joinFaction', { faction: 'comintern' }), /won't accept/);
+});
+
+test('civil war: the country splits, the old regime becomes a bot nation at war with you', () => {
+  const fra = seat('FRA');
+  let s = europe(['FRA']);
+  const landBefore = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === fra).length;
+  s.players[fra].pop = { democracy: 50, fascism: 10, communism: 35, nonaligned: 5 };
+  s = act(s, fra, 'changeGovernment', { ideology: 'communism' });
+  assert.equal(s.players.length, 24);
+  const rebel = s.players[23];
+  assert.equal(rebel.bot, true);
+  assert.equal(rebel.gov, 'democracy');
+  assert.equal(rebel.faction, 'allies', 'the loyalists stay in the Allies');
+  assert.equal(s.players[fra].gov, 'communism');
+  const mine = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === fra).length;
+  const theirs = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === 23).length;
+  assert.equal(mine + theirs, landBefore);
+  assert.ok(theirs > 0 && mine > 0);
+  assert.equal(city(s, 'Paris').controller, fra, 'you keep the capital');
+  assert.ok(rebel.units >= 3, 'the loyalists have an army');
+  assert.ok(CAMP.atWar(s, fra, 23));
+  assert.ok(CAMP.atWar(s, 23, seat('GER')), "they inherit France's wars");
+  const v = engine.viewFor(s, fra);
+  assert.equal(v.scenario.nations.length, 24);
+  assert.match(v.scenario.nations[23].name, /France \(Democracy\)/);
+  assert.ok(s.log.some((l) => /CIVIL WAR in France/.test(l.text)));
+});
+
+test('democracies need a reason to declare war; others do not', () => {
+  const s = europe(['UK', 'ITA']);
+  assert.throws(() => act(s, seat('UK'), 'declareWar', { target: seat('SPA') }), /Democracies need a reason/);
+  // Italy (fascist) may attack anyone.
+  act(s, seat('ITA'), 'declareWar', { target: seat('GRE') });
+  // Germany is already at war with Britain's faction: Britain may declare on Germany's friends-in-arms.
+  const s2 = europe(['UK']);
+  s2.campaign.wars.push([seat('ITA'), seat('FRA')].sort((a, b) => a - b).join('-'));
+  act(s2, seat('UK'), 'declareWar', { target: seat('ITA') });
+});

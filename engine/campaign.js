@@ -22,6 +22,11 @@ const CH_TERRAIN = { p: 'plains', w: 'woods', h: 'hills', r: 'river' };
 const T = (str) => Object.fromEntries(str.split(' ').filter(Boolean).map((x) => x.split(':')).map(([k, n]) => [k, +n]));
 const pairKey = (a, b) => (a < b ? `${a}-${b}` : `${b}-${a}`);
 
+/** A seat's nation: one of the campaign's nations, or a breakaway nation from a civil war. */
+function nationMeta(s, seat) {
+  return dataOf(s).NATIONS[seat] || (s.campaign.extra || {})[seat] || { id: s.players[seat].nation, name: s.players[seat].name, color: '#888', ink: '#fff' };
+}
+
 function dataOf(s) {
   return CAMPAIGNS[s.campaign && s.campaign.id] || null;
 }
@@ -41,7 +46,7 @@ function nationsOf(id) {
  */
 function setup(state, id, cfg = {}) {
   const d = CAMPAIGNS[id];
-  state.campaign = { id, wars: [] };
+  state.campaign = { id, wars: [], extra: {} };
   const seatOf = {};
   d.NATIONS.forEach((n, i) => {
     seatOf[n.letter] = i;
@@ -84,6 +89,9 @@ function setup(state, id, cfg = {}) {
     const cap = tiles.find((t) => t.name === n.capital);
     cap.role = 'capital';
     Object.assign(p, { nation: n.id, side: n.id, faction: n.faction || null, out: false, biome: 'mixed', homeTile: cap.id });
+    const pol = (d.POLITICS || {})[n.id] || ['nonaligned', 25, 25, 25, 25];
+    p.gov = pol[0];
+    p.pop = { democracy: pol[1], fascism: pol[2], communism: pol[3], nonaligned: pol[4] };
     const m = n.major ? cfg.majorMaterials ?? 15 : cfg.minorMaterials ?? 6;
     p.materials = { wood: Math.ceil(m / 3), stone: Math.floor(m / 3), sandbag: m - Math.ceil(m / 3) - Math.floor(m / 3) };
     p.research = { done: [...(d.RESEARCH[n.id] || d.RESEARCH.minor)], current: null };
@@ -169,8 +177,7 @@ function joinFaction(s, seat, faction, why = null) {
   return true;
 }
 function nationName(s, seat) {
-  const d = dataOf(s);
-  return d.NATIONS[seat] ? d.NATIONS[seat].name : s.players[seat].name;
+  return nationMeta(s, seat).name;
 }
 
 /** A nation whose capital has fallen leaves the war. */
@@ -191,7 +198,7 @@ const outChoice = () => ({ action: 'sustainable', mix: { wood: 0, stone: 0, sand
 
 /** Attacks a nation may launch per round: great powers more than minor nations. */
 function attacksFor(s, seat, cfg = {}) {
-  const n = dataOf(s).NATIONS[seat];
+  const n = nationMeta(s, seat);
   return n && n.major ? cfg.majorAttacks ?? 3 : cfg.minorAttacks ?? 1;
 }
 
@@ -208,7 +215,157 @@ function roundStart(s) {
       if (s.players[a].bot) joinFaction(s, a, e.join[1], e.text);
     }
   }
+  // Each government slowly gains support (up to 90%).
+  for (const p of s.players) if (!p.out && p.pop && p.pop[p.gov] < 90) shiftPop(p, p.gov, 1);
   addLog(s, `🗓 ${d.dateOf(s.round)}.`, { kind: 'round' });
+}
+
+// ---------------------------------------------------------------- politics
+// Each nation has a government and a popularity for each ideology (percent, sums to 100).
+
+/** Move `amount` points of popularity to `ideo`, taken from the others in proportion to their size. */
+function shiftPop(p, ideo, amount) {
+  const others = Object.keys(p.pop).filter((k) => k !== ideo);
+  let left = Math.min(amount, others.reduce((a, k) => a + p.pop[k], 0));
+  const take = left;
+  while (left > 0) {
+    const k = others.reduce((a, b) => (p.pop[b] > p.pop[a] ? b : a));
+    if (!p.pop[k]) break;
+    p.pop[k] -= 1;
+    left -= 1;
+  }
+  p.pop[ideo] += take - left;
+}
+
+/** Does this faction accept a nation with this government? */
+function fits(s, faction, gov) {
+  return !faction || (dataOf(s).FACTION_FIT[faction] || []).includes(gov);
+}
+
+/**
+ * Democracies need a reason to go to war: the target must already be at war with a member
+ * of their faction, or with any democracy. Everyone else may declare war freely.
+ */
+function mayDeclare(s, a, b) {
+  if (s.players[a].gov !== 'democracy') return true;
+  const friends = [a, ...alliesOf(s, a)];
+  return s.players.some((p) => !p.out && atWar(s, b, p.seat) && (friends.includes(p.seat) || p.gov === 'democracy'));
+}
+
+/** What changing to `ideo` would do now: 'same' | 'peaceful' | 'civilWar' | 'impossible'. */
+function changeOutcome(s, seat, ideo, cfg = {}) {
+  const p = s.players[seat];
+  if (p.gov === ideo) return 'same';
+  const v = p.pop[ideo] || 0;
+  if (v >= (cfg.peacefulPct ?? 50)) return 'peaceful';
+  if (v >= (cfg.civilWarPct ?? 30)) return 'civilWar';
+  return 'impossible';
+}
+
+/**
+ * Change a nation's government. With enough support it's peaceful; with partial support
+ * the country splits and the old regime fights on as a bot nation (a civil war).
+ * Returns the new seat of the breakaway nation (civil war) or null.
+ */
+function changeGovernment(s, seat, ideo, cfg = {}) {
+  const d = dataOf(s);
+  const p = s.players[seat];
+  const old = p.gov;
+  const how = changeOutcome(s, seat, ideo, cfg);
+  let rebel = null;
+  if (how === 'civilWar') rebel = splitNation(s, seat, ideo);
+  p.gov = ideo;
+  // Support rallies to the new government.
+  if (p.pop[ideo] < 55) shiftPop(p, ideo, 55 - p.pop[ideo]);
+  addLog(s, how === 'peaceful'
+    ? `📰 ${nationName(s, seat)} changes government: ${d.IDEOLOGIES[old].name} → ${d.IDEOLOGIES[ideo].name}.`
+    : `📰 CIVIL WAR in ${nationName(s, seat)}: the new ${d.IDEOLOGIES[ideo].name} government fights the ${d.IDEOLOGIES[old].name} loyalists!`, { kind: 'bad', event: 'war' });
+  // A government its faction won't accept leaves the faction.
+  if (p.faction && !fits(s, p.faction, ideo)) {
+    addLog(s, `📰 ${nationName(s, seat)} leaves the ${d.FACTIONS[p.faction].name}.`, { kind: 'round' });
+    p.faction = null;
+  }
+  return rebel;
+}
+
+const hexDist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+/** Darken a #rrggbb colour (for a breakaway nation). */
+const darker = (hex) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.6).toString(16).padStart(2, '0')).join('');
+
+/**
+ * Civil war: the nation splits. Its land nearest the capital — a share equal to the new
+ * ideology's support against the old one's — stays with the player under the new
+ * government; the rest (with the units on it, and half the materials) becomes a new
+ * nation of the old government, played by a bot, at war with the player and in all the
+ * player's existing wars.
+ */
+function splitNation(s, seat, ideo) {
+  const d = dataOf(s);
+  const p = s.players[seat];
+  const old = p.gov;
+  const meta = nationMeta(s, seat);
+  const home = s.board.tiles.find((t) => t.id === p.homeTile);
+  const land = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat).sort((a, b) => hexDist(a, home) - hexDist(b, home));
+  const keepShare = (p.pop[ideo] || 0) / Math.max(1, (p.pop[ideo] || 0) + (p.pop[old] || 0));
+  const keep = Math.max(1, Math.round(land.length * keepShare));
+  const theirs = land.slice(keep);
+  if (!theirs.length) return null;
+  // The new nation.
+  const ns = s.players.length;
+  const q = structuredClone(p);
+  for (const k of Object.keys(q.stats || {})) if (typeof q.stats[k] === 'number') q.stats[k] = 0;
+  const half = (n) => Math.floor(n / 2);
+  s.campaign.extra = s.campaign.extra || {};
+  Object.assign(q, {
+    seat: ns,
+    name: `${meta.name} (${d.IDEOLOGIES[old].name})`,
+    bot: true,
+    nation: `${meta.id}-${old.slice(0, 3).toUpperCase()}`,
+    side: `${meta.id}-${old.slice(0, 3).toUpperCase()}`,
+    gov: old,
+    pop: { democracy: 10, fascism: 10, communism: 10, nonaligned: 10, [old]: 70 },
+    faction: fits(s, p.faction, old) ? p.faction : null,
+    out: false,
+    ready: false,
+    choice: null,
+    units: 0,
+    hits: {},
+    plans: { withdraw: [], release: [] },
+    materials: { wood: half(p.materials.wood), stone: half(p.materials.stone), sandbag: half(p.materials.sandbag) },
+  });
+  for (const m of ['wood', 'stone', 'sandbag']) p.materials[m] -= q.materials[m];
+  // Their capital: their biggest city (victory points, then industry), else the farthest hex.
+  const cap = [...theirs].sort((a, b) => (b.vp || 0) - (a.vp || 0) || !!b.industry - !!a.industry || !!b.name - !!a.name)[0];
+  q.homeTile = cap.id;
+  s.players.push(q);
+  s.campaign.extra[ns] = { id: q.nation, name: q.name, color: darker(meta.color || '#888888'), ink: '#fff', major: false, capital: cap.name || cap.id, personality: 'balanced' };
+  for (const t of theirs) {
+    t.owner = ns;
+    t.controller = ns;
+    t.role = t === cap ? 'capital' : 'province';
+    if (t.troops && t.troops[seat]) {
+      t.troops[ns] = t.troops[seat];
+      delete t.troops[seat];
+    }
+    if (t.units && t.units[seat]) {
+      t.units[ns] = t.units[seat];
+      delete t.units[seat];
+    }
+  }
+  for (const g of s.generals || []) if (g.seat === seat && theirs.some((t) => t.id === g.tile)) g.seat = ns;
+  // Part of the army defects: the loyalists raise a militia at their new capital.
+  const before = s.board.tiles.reduce((a, t) => a + ((t.units || {})[seat] || 0), 0);
+  const militia = Math.max(3, Math.round((before * (1 - keepShare)) / 2));
+  cap.troops = cap.troops || {};
+  cap.units = cap.units || {};
+  cap.troops[ns] = cap.troops[ns] || {};
+  cap.troops[ns].infantry = (cap.troops[ns].infantry || 0) + militia;
+  cap.units[ns] = (cap.units[ns] || 0) + militia;
+  for (const x of [p, q]) x.units = s.board.tiles.reduce((a, t) => a + ((t.units || {})[x.seat] || 0), 0);
+  // The civil war, and the parent's wars (the loyalists fight the same enemies).
+  for (const e of enemiesOf(s, seat)) s.campaign.wars.push(pairKey(ns, e));
+  s.campaign.wars.push(pairKey(seat, ns));
+  return ns;
 }
 
 // ---------------------------------------------------------------- victory
@@ -243,7 +400,13 @@ function view(s, seat, cfg = {}) {
     id: s.campaign.id,
     name: 'Europe, 1939',
     date: d.dateOf(s.round),
-    nations: d.NATIONS.map((n, i) => ({ seat: i, id: n.id, name: n.name, color: n.color, ink: n.ink, major: !!n.major, faction: s.players[i].faction, out: !!s.players[i].out, human: !s.players[i].bot })),
+    nations: s.players.map((p, i) => {
+      const n = nationMeta(s, i);
+      return { seat: i, id: n.id, name: n.name, color: n.color, ink: n.ink, major: !!n.major, faction: p.faction, out: !!p.out, human: !p.bot, gov: p.gov, pop: p.pop };
+    }),
+    ideologies: d.IDEOLOGIES,
+    factionFit: d.FACTION_FIT,
+    politics: { propagandaCost: cfg.propagandaCost ?? 4, propagandaStep: cfg.propagandaStep ?? 5, propagandaPerRound: cfg.propagandaPerRound ?? 2, peaceful: cfg.peacefulPct ?? 50, civilWar: cfg.civilWarPct ?? 30, usedThisRound: me && me.propagandaRound === s.round ? me.propagandaUsed || 0 : 0 },
     factions: d.FACTIONS,
     wars: [...s.campaign.wars],
     atWar: me ? enemiesOf(s, seat) : [],
@@ -259,4 +422,17 @@ function view(s, seat, cfg = {}) {
   };
 }
 
-module.exports = { CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };
+/** Fill in what older saves lack (governments and popularity came in with Phase 3). */
+function upgradeSave(s) {
+  const d = dataOf(s);
+  s.campaign.extra = s.campaign.extra || {};
+  s.players.forEach((p, i) => {
+    if (p.gov && p.pop) return;
+    const pol = (d.POLITICS || {})[(d.NATIONS[i] || {}).id] || ['nonaligned', 25, 25, 25, 25];
+    p.gov = pol[0];
+    p.pop = { democracy: pol[1], fascism: pol[2], communism: pol[3], nonaligned: pol[4] };
+  });
+  return s;
+}
+
+module.exports = { upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };

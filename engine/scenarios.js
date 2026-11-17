@@ -689,7 +689,7 @@ const EUROPE_39 = {
   rounds: 24, // Sept 1939 → mid-1945, three months a round
   economy: { tilesPerMaterial: 2, city: 1, industry: 3 },
   styles: {
-    historical: { label: 'Historical', majorAttacks: 3, minorAttacks: 1, majorMaterials: 15, minorMaterials: 6, winter: null, reinforcements: [], income: {} },
+    historical: { label: 'Historical', majorAttacks: 3, minorAttacks: 1, majorMaterials: 15, minorMaterials: 6, winter: null, reinforcements: [], income: {}, propagandaCost: 4, propagandaStep: 5, propagandaPerRound: 2, peacefulPct: 50, civilWarPct: 30 },
   },
 };
 

@@ -409,6 +409,38 @@ function campaignCard(g) {
     <ul class="plain goals">${Object.keys(sc.factions).map(factionLine).join('')}</ul>
     <p class="small">★ Victory points come from key cities; the faction with the most at the end (mid-1945) wins.${out.length ? ` 🏳 Out of the war: ${out.map((n) => esc(n.name)).join(', ')}.` : ''}</p>
     ${sc.next.length ? `<p class="small">📰 Coming: ${sc.next.map((e) => `${esc(e.text)}`).join('; ')} (if those nations are bots).</p>` : ''}
+  </details>
+  ${me.out || !me.pop ? '' : politicsCard(g)}`;
+}
+
+/** Politics: your government, popularity of each ideology, propaganda, change of government, factions. */
+function politicsCard(g) {
+  const sc = g.scenario;
+  const me = sc.nations[g.you];
+  const P = sc.politics;
+  const ideos = Object.keys(sc.ideologies);
+  const left = P.propagandaPerRound - P.usedThisRound;
+  const mats = g.players[g.you].materials || {};
+  const total = Object.values(mats).reduce((a, b) => a + (b || 0), 0);
+  const outcome = (k) => (k === me.gov ? 'same' : me.pop[k] >= P.peaceful ? 'peaceful' : me.pop[k] >= P.civilWar ? 'civilWar' : 'impossible');
+  const row = (k) => {
+    const id = sc.ideologies[k];
+    const how = outcome(k);
+    return `<li class="pol-row">
+      <span class="pol-name">${id.icon} ${esc(id.name)}${k === me.gov ? ' <b>(government)</b>' : ''}</span>
+      <span class="pol-bar"><span style="width:${me.pop[k]}%"></span></span><b class="pol-pct">${me.pop[k]}%</b>
+      <span class="pol-btns">
+        <button class="btn small" data-act="propaganda" data-ideo="${k}" ${left <= 0 || total < P.propagandaCost || me.pop[k] >= 95 ? 'disabled' : ''} title="Spend ${P.propagandaCost} materials: +${P.propagandaStep}% ${esc(id.name)}">📣 +${P.propagandaStep}%</button>
+        ${how === 'same' ? '' : `<button class="btn small ${how === 'civilWar' ? 'danger' : ''}" data-act="changeGov" data-ideo="${k}" data-how="${how}" ${how === 'impossible' ? 'disabled' : ''} title="${how === 'peaceful' ? 'A peaceful change of government' : how === 'civilWar' ? 'Starts a civil war: part of your country breaks away' : `Needs ${P.civilWar}% support`}">${how === 'peaceful' ? '🏛 Change' : how === 'civilWar' ? '🔥 Civil war' : '🏛 Change'}</button>`}
+      </span>
+    </li>`;
+  };
+  const joinable = Object.keys(sc.factions).filter((f) => f !== me.faction && (sc.factionFit[f] || []).includes(me.gov) && !sc.nations.some((n) => n.faction === f && !n.out && sc.atWar.includes(n.seat)));
+  return `<details class="scen-card pol-card">
+    <summary><b>🏛 Politics</b> <span class="muted small">${sc.ideologies[me.gov].icon} ${esc(sc.ideologies[me.gov].name)}</span></summary>
+    <ul class="plain">${ideos.map(row).join('')}</ul>
+    <p class="small">📣 Propaganda costs ${P.propagandaCost} materials (${left} of ${P.propagandaPerRound} left this round). Your government gains 1% a round on its own. With ${P.peaceful}%+ support you can change government peacefully; with ${P.civilWar}%+ it means <b>civil war</b> — the land far from your capital breaks away as a bot nation of the old regime. ${me.gov === 'democracy' ? '🗳 As a democracy you can only declare war on nations already at war with your faction or another democracy.' : ''}</p>
+    ${joinable.length ? `<p class="small">Join a faction: ${joinable.map((f) => `<button class="btn small" data-act="joinFaction" data-faction="${f}">${sc.factions[f].icon} ${esc(sc.factions[f].name)}</button>`).join(' ')}</p>` : ''}
   </details>`;
 }
 

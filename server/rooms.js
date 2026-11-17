@@ -48,7 +48,7 @@ function checkSave(save) {
   const st = save.state;
   if (!st || !Array.isArray(st.players) || !st.board || !Array.isArray(st.board.tiles) || typeof st.phase !== 'string' || !Number.isInteger(st.round)) throw bad('the game data is incomplete');
   const campaignNations = st.campaign ? CAMP.nationsOf(st.campaign.id).length : 0;
-  if (st.campaign ? st.players.length !== campaignNations : st.players.length < 2 || st.players.length > MAX_PLAYERS) throw bad('wrong number of players');
+  if (st.campaign ? st.players.length < campaignNations || st.players.length > campaignNations * 2 : st.players.length < 2 || st.players.length > MAX_PLAYERS) throw bad('wrong number of players');
   if (st.mode !== save.mode) throw bad('mode mismatch');
   if (!Array.isArray(save.seats) || save.seats.length !== st.players.length) throw bad('seat list mismatch');
   // Fill in any settings added since the save was made.
@@ -150,6 +150,9 @@ function attachRooms(io) {
     room.mode = save.mode;
     room.settings = save.settings;
     room.members = campaignMembers(room, st.campaign.id);
+    CAMP.upgradeSave(st);
+    // Breakaway nations from civil wars are always bots.
+    for (let i = room.members.length; i < st.players.length; i++) room.members.push({ id: crypto.randomUUID(), name: st.players[i].name, sockets: new Set(), bot: { personality: 'balanced', tried: new Set(), phaseKey: null, failures: 0, nationBot: true } });
     room.members.forEach((m, i) => {
       if (!m.bot) st.players[i].name = m.name;
       st.players[i].bot = !!m.bot;
@@ -373,6 +376,12 @@ function attachRooms(io) {
   /** Run an action through the rules engine and handle side effects. */
   function applyToRoom(room, actor, action) {
     room.state = engine.applyAction(room.state, actor, action);
+    // A civil war created a new nation: a bot takes its seat.
+    while (room.members.length < room.state.players.length) {
+      const p = room.state.players[room.members.length];
+      room.members.push({ id: crypto.randomUUID(), name: p.name, sockets: new Set(), bot: { personality: 'balanced', tried: new Set(), phaseKey: null, failures: 0, nationBot: true } });
+      systemChat(room, `${p.name} (a bot) joins the war.`);
+    }
     if (room.state.phase === 'ended' && !room.endedAt) {
       room.endedAt = Date.now();
       room.record = engine.playtestRecord(room.state, { startedAt: room.startedAt, endedAt: room.endedAt });

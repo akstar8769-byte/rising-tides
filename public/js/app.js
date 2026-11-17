@@ -366,6 +366,32 @@ const actions = {
     act({ type: 'declareWar', target: +ds.seat });
     render();
   },
+  propaganda: (ds) => {
+    const g = store.data.game;
+    const mats = { ...g.players[g.you].materials };
+    const bag = { wood: 0, stone: 0, sandbag: 0 };
+    // Pay from whichever material you have most of.
+    for (let i = 0; i < g.scenario.politics.propagandaCost; i++) {
+      const k = Object.keys(bag).reduce((a, b) => ((mats[b] || 0) > (mats[a] || 0) ? b : a));
+      bag[k] += 1;
+      mats[k] -= 1;
+    }
+    act({ type: 'propaganda', ideology: ds.ideo, materials: bag });
+  },
+  changeGov: (ds) => {
+    const g = store.data.game;
+    const name = g.scenario.ideologies[ds.ideo].name;
+    const msg = ds.how === 'civilWar'
+      ? `Start a CIVIL WAR to make ${name} your government? Not enough people support it: the land far from your capital breaks away as a separate nation (a bot) and goes to war with you.`
+      : `Change your government to ${name}? Factions that don't accept it will drop you.`;
+    if (!confirm(msg)) return;
+    act({ type: 'changeGovernment', ideology: ds.ideo });
+  },
+  joinFaction: (ds) => {
+    const g = store.data.game;
+    if (!confirm(`Join the ${g.scenario.factions[ds.faction].name}? Their enemies become yours when they are attacked.`)) return;
+    act({ type: 'joinFaction', faction: ds.faction });
+  },
   bombard: (ds) => {
     store.ui.tileMenu = null;
     act({ type: 'bombard', from: ds.from, target: ds.target });

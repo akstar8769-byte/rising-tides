@@ -86,6 +86,44 @@ const NATIONS = [
   { id: 'TUR', name: 'Turkey', letter: 'K', color: '#b8733a', ink: '#fff', capital: 'Ankara', faction: null, personality: 'cautious' },
 ];
 
+/**
+ * Governments in September 1939, and how popular each ideology is (percent, sums to 100):
+ * [government, democracy, fascism, communism, non-aligned].
+ */
+const POLITICS = {
+  GER: ['fascism', 5, 80, 5, 10],
+  UK: ['democracy', 85, 5, 5, 5],
+  FRA: ['democracy', 65, 10, 15, 10],
+  USSR: ['communism', 5, 5, 85, 5],
+  ITA: ['fascism', 10, 70, 5, 15],
+  POL: ['nonaligned', 35, 10, 5, 50],
+  SPA: ['nonaligned', 10, 40, 5, 45],
+  POR: ['nonaligned', 15, 20, 5, 60],
+  IRE: ['democracy', 75, 5, 5, 15],
+  BEL: ['democracy', 75, 10, 5, 10],
+  NED: ['democracy', 80, 5, 5, 10],
+  DEN: ['democracy', 80, 5, 5, 10],
+  NOR: ['democracy', 80, 5, 5, 10],
+  SWE: ['democracy', 80, 5, 5, 10],
+  FIN: ['democracy', 65, 10, 5, 20],
+  BAL: ['nonaligned', 25, 10, 15, 50],
+  SWI: ['democracy', 85, 5, 5, 5],
+  HUN: ['nonaligned', 10, 35, 5, 50],
+  ROM: ['nonaligned', 15, 35, 5, 45],
+  YUG: ['nonaligned', 25, 15, 15, 45],
+  BUL: ['nonaligned', 15, 25, 15, 45],
+  GRE: ['nonaligned', 25, 20, 10, 45],
+  TUR: ['nonaligned', 20, 10, 5, 65],
+};
+const IDEOLOGIES = {
+  democracy: { name: 'Democracy', icon: '🗳' },
+  fascism: { name: 'Fascism', icon: '⚡' },
+  communism: { name: 'Communism', icon: '☭' },
+  nonaligned: { name: 'Non-aligned', icon: '👑' },
+};
+/** Which governments each faction accepts. */
+const FACTION_FIT = { allies: ['democracy', 'nonaligned'], axis: ['fascism', 'nonaligned'], comintern: ['communism'] };
+
 /** Cities: [col, row, name, flags] — ind: industrial (+3), vp: victory points, oil: an oil field. */
 const CITIES = [
   [3, 7, 'London', { ind: true, vp: 5 }],
@@ -285,4 +323,4 @@ const FACTIONS = {
   comintern: { name: 'Comintern', icon: '🟥' },
 };
 
-module.exports = { MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, TIMELINE, FACTIONS, dateOf };
+module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, TIMELINE, FACTIONS, dateOf };

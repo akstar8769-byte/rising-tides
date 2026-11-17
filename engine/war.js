@@ -2188,7 +2188,62 @@ function declareWar(s, actor, { target } = {}) {
   if (s.players[b].out) fail('That nation has already capitulated.');
   if (CAMP.atWar(s, actor, b)) fail('You are already at war with them.');
   if (s.players[actor].faction && s.players[actor].faction === s.players[b].faction) fail("You can't declare war on your own faction.");
+  if (!CAMP.mayDeclare(s, actor, b)) fail('Democracies need a reason to go to war: they can only declare war on a nation already at war with their faction or with a democracy.');
   CAMP.declareWar(s, actor, b);
+}
+
+/** Campaign style settings (propaganda cost etc.). */
+const campCfg = (s) => (SCEN.scenarioOf(s) && Object.values(SCEN.scenarioOf(s).styles)[0]) || {};
+const IDEOS = ['democracy', 'fascism', 'communism', 'nonaligned'];
+
+/** { ideology, materials } — campaigns: spend materials to raise an ideology's popularity. */
+function propaganda(s, actor, { ideology, materials } = {}) {
+  requireBuild(s);
+  if (!CAMP.isCampaign(s)) fail('Propaganda is part of the grand campaigns.');
+  const p = me(s, actor);
+  if (p.out) fail('Your nation has capitulated.');
+  if (!IDEOS.includes(ideology)) fail('Unknown ideology.');
+  const cfg = campCfg(s);
+  const per = cfg.propagandaPerRound ?? 2;
+  if (p.propagandaRound !== s.round) (p.propagandaRound = s.round), (p.propagandaUsed = 0);
+  if (p.propagandaUsed >= per) fail(`At most ${per} propaganda campaigns a round.`);
+  const cost = cfg.propagandaCost ?? 4;
+  const bag = cleanBag(materials);
+  if (bagTotal(bag) !== cost) fail(`A propaganda campaign costs ${cost} materials (any mix).`);
+  if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
+  if (p.pop[ideology] >= 95) fail('That ideology is already as popular as it can be.');
+  subBag(p.materials, bag);
+  p.propagandaUsed += 1;
+  CAMP.shiftPop(p, ideology, cfg.propagandaStep ?? 5);
+  addLog(s, `📣 ${CAMP.nationName(s, actor)} runs a propaganda campaign: ${ideology} support rises to ${p.pop[ideology]}%.`);
+}
+
+/** { ideology } — campaigns: change government (peacefully with enough support, else a civil war). */
+function changeGovernment(s, actor, { ideology } = {}) {
+  requireBuild(s);
+  if (!CAMP.isCampaign(s)) fail('Changing government is part of the grand campaigns.');
+  const p = me(s, actor);
+  if (p.out) fail('Your nation has capitulated.');
+  if (!IDEOS.includes(ideology)) fail('Unknown ideology.');
+  const cfg = campCfg(s);
+  const how = CAMP.changeOutcome(s, actor, ideology, cfg);
+  if (how === 'same') fail('That is already your government.');
+  if (how === 'impossible') fail(`Not enough support: ${ideology} needs at least ${cfg.civilWarPct ?? 30}% (a civil war) or ${cfg.peacefulPct ?? 50}% (a peaceful change).`);
+  CAMP.changeGovernment(s, actor, ideology, cfg);
+  syncUnits(s);
+}
+
+/** { faction } — campaigns: join a faction that accepts your government. */
+function joinFaction(s, actor, { faction } = {}) {
+  requireBuild(s);
+  if (!CAMP.isCampaign(s)) fail('Factions are part of the grand campaigns.');
+  const p = me(s, actor);
+  if (p.out) fail('Your nation has capitulated.');
+  if (!['allies', 'axis', 'comintern'].includes(faction)) fail('Unknown faction.');
+  if (p.faction === faction) fail('You are already in that faction.');
+  if (!CAMP.fits(s, faction, p.gov)) fail(`The ${faction} won't accept a ${p.gov} government.`);
+  if (s.players.some((q) => q.faction === faction && !q.out && CAMP.atWar(s, actor, q.seat))) fail("You can't join a faction you are at war with.");
+  if (!CAMP.joinFaction(s, actor, faction)) fail('You could not join that faction.');
 }
 
 /** { tile, materials } — build a bunker on your tile, or raise it a level (research Fortifications). */
@@ -2872,7 +2927,7 @@ function settleGenerals(s, b, T, src) {
   }
 }
 
-const handlers = { declareWar, airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
+const handlers = { propaganda, changeGovernment, joinFaction, declareWar, airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
 
 
 

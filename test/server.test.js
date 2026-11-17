@@ -202,3 +202,60 @@ test('server: a Europe 1939 campaign — pick a nation, bots take the other 22, 
     await srv.close();
   }
 });
+
+test('server: a civil war seats a bot for the breakaway nation, and the save still loads', async () => {
+  const srv = await startServer(0);
+  const a = client(srv.port);
+  const b = client(srv.port);
+  const setup = async (c, name) => {
+    await c.call('createRoom', { name });
+    assert.ok((await c.call('lobby', { op: 'setMode', mode: 'totalwar' })).ok);
+    assert.ok((await c.call('lobby', { op: 'setSetting', path: 'totalwar.scenario', value: 'europe39' })).ok);
+    assert.ok((await c.call('lobby', { op: 'setNation', seat: 0, nation: 'FRA' })).ok);
+  };
+  try {
+    await setup(a, 'Ana');
+    assert.ok((await a.call('startGame')).ok);
+    // Give France a strong communist movement via a doctored save, then load it.
+    const save = (await a.call('saveGame')).save;
+    const fra = save.state.players.findIndex((p) => p.nation === 'FRA');
+    save.state.players[fra].pop = { democracy: 50, fascism: 10, communism: 35, nonaligned: 5 };
+    await setup(b, 'Bea');
+    assert.ok((await b.call('loadGame', { save })).ok);
+    const r = await b.call('action', { type: 'changeGovernment', ideology: 'communism' });
+    assert.ok(r.ok, r.error);
+    await tick();
+    assert.equal(b.last.game.players.length, 24);
+    assert.equal(b.last.members.length, 24);
+    assert.ok(b.last.members[23].bot, 'a bot leads the loyalists');
+    // A save made after the civil war loads, with the breakaway nation still a bot.
+    const after = (await b.call('saveGame')).save;
+    await a.call('leaveRoom').catch(() => {});
+    const c = client(srv.port);
+    await setup(c, 'Cy');
+    const loaded = await c.call('loadGame', { save: after });
+    assert.ok(loaded.ok, loaded.error);
+    await tick();
+    assert.equal(c.last.members.length, 24);
+    assert.equal(c.last.game.scenario.nations[c.last.game.you].id, 'FRA');
+    c.close();
+  } finally {
+    a.close();
+    b.close();
+    await srv.close();
+  }
+});
+
+test('an old campaign save without governments gets them on load', () => {
+  const CAMP = require('../engine/campaign');
+  const { cloneDefaults } = require('../config');
+  const engine = require('../engine');
+  const st = cloneDefaults();
+  st.totalwar.scenario = 'europe39';
+  const s = engine.createGame({ mode: 'totalwar', settings: st, players: CAMP.nationsOf('europe39').map((n) => ({ name: n.name, biome: 'forest', bot: true })), seed: 2 });
+  for (const p of s.players) delete p.gov, delete p.pop;
+  delete s.campaign.extra;
+  CAMP.upgradeSave(s);
+  assert.equal(s.players[0].gov, 'fascism');
+  assert.ok(s.campaign.extra);
+});
