@@ -17,12 +17,13 @@ const j = (o) => esc(JSON.stringify(o));
 const DRAWERS = [
   { id: 'turn', icon: '🎯', label: 'Turn' },
   { id: 'build', icon: '🏗️', label: 'Build' },
+  { id: 'politics', icon: '🏛', label: 'Politics' }, // grand campaigns only
   { id: 'trade', icon: '🤝', label: 'Trade' },
   { id: 'flood', icon: '🌊', label: 'Flood' },
   { id: 'log', icon: '📜', label: 'Log' },
   { id: 'chat', icon: '💬', label: 'Chat' },
 ];
-const DRAWER_TITLE = { turn: 'Your turn', build: 'Build & army', trade: 'Trade & diplomacy', flood: 'The Flood', log: 'Event log', chat: 'Chat' };
+const DRAWER_TITLE = { turn: 'Your turn', build: 'Build & army', politics: 'Politics', trade: 'Trade & diplomacy', flood: 'The Flood', log: 'Event log', chat: 'Chat' };
 
 export function renderGame(store) {
   const d = store.data;
@@ -61,7 +62,7 @@ export function renderGame(store) {
   }
   ${tileMenu(store)}
   <nav class="dock" aria-label="Panels">
-    <div class="dock-btns">${DRAWERS.filter((x) => !(g.scenario && x.id === 'flood')).map(
+    <div class="dock-btns">${DRAWERS.filter((x) => !(g.scenario && x.id === 'flood') && (x.id !== 'politics' || (g.scenario && g.scenario.kind === 'campaign'))).map(
       (x) => `<button class="dock-btn ${drawer === x.id ? 'active' : ''}" data-act="drawer" data-id="${x.id}" aria-pressed="${drawer === x.id}">
         <span aria-hidden="true">${x.icon}</span><small>${x.label}</small>${badges[x.id] ? `<span class="badge">${badges[x.id]}</span>` : ''}</button>`,
     ).join('')}</div>
@@ -86,6 +87,7 @@ function drawerBody(store, id) {
   const me = g.players[g.you];
   if (id === 'turn') return phasePanel(store) || '<p class="muted">Nothing to do right now.</p>';
   if (id === 'build') return myPanel(store);
+  if (id === 'politics') return politicsPanel(store);
   if (id === 'trade') return tradePanel(store) + diplomacyPanel(store);
   if (id === 'flood') return `<div class="card">${floodTrack(g, me)}</div>`;
   if (id === 'log') return `<div class="card">${renderLog(g)}</div>`;
@@ -416,7 +418,7 @@ function campaignCard(g) {
     <p class="small">★ Victory points come from key cities; the faction with the most at the end (mid-1945) wins.${out.length ? ` 🏳 Out of the war: ${out.map((n) => esc(n.name)).join(', ')}.` : ''}</p>
     ${sc.next.length ? `<p class="small">📰 Coming: ${sc.next.map((e) => `${esc(e.text)}`).join('; ')} (bots follow history; human players decide for themselves).</p>` : ''}
   </details>
-  ${me.out || !me.pop ? '' : politicsCard(g)}`;
+  ${me.out || !me.pop ? '' : '<p class="small">🏛 Government, propaganda and factions: tap <b>Politics</b> in the bottom bar.</p>'}`;
 }
 
 /** Campaigns: what the army's machines burn, where the oil comes from, and how last round went. */
@@ -474,7 +476,21 @@ function newspaper(store) {
 }
 
 /** Politics: your government, popularity of each ideology, propaganda, change of government, factions. */
-function politicsCard(g) {
+/** The Politics drawer (grand campaigns). */
+function politicsPanel(store) {
+  const g = store.data.game;
+  const sc = g.scenario;
+  if (!sc || sc.kind !== 'campaign') return '';
+  const me = sc.nations[g.you];
+  if (me.out) return '<p class="muted">🏳 Your nation has capitulated.</p>';
+  if (!me.pop) return '<p class="muted">This game was started before politics existed — start a new Europe, 1939 game to use it.</p>';
+  const canAct = BUILD.includes(g.phase);
+  return `${sc.decisions.length ? `<p class="small decide-note">📰 <b>Waiting for your answer:</b> ${sc.decisions.map((x) => esc(x.title)).join(', ')}. <button class="btn small primary" data-act="openPaper">Open the newspaper</button></p>` : ''}
+  ${canAct ? '' : '<p class="small muted">You can run propaganda, change government or join a faction during <b>Talk &amp; build</b> and <b>Trade &amp; build</b>.</p>'}
+  ${politicsCard(g, canAct)}`;
+}
+
+function politicsCard(g, canAct = true) {
   const sc = g.scenario;
   const me = sc.nations[g.you];
   const P = sc.politics;
@@ -496,12 +512,14 @@ function politicsCard(g) {
     </li>`;
   };
   const joinable = Object.keys(sc.factions).filter((f) => f !== me.faction && (sc.factionFit[f] || []).includes(me.gov) && !sc.nations.some((n) => n.faction === f && !n.out && sc.atWar.includes(n.seat)));
-  return `<details class="scen-card pol-card">
-    <summary><b>🏛 Politics</b> <span class="muted small">${sc.ideologies[me.gov].icon} ${esc(sc.ideologies[me.gov].name)}</span></summary>
+  return `<div class="card pol-card">
+    <h3>${sc.ideologies[me.gov].icon} ${esc(me.name)}: ${esc(sc.ideologies[me.gov].name)}${me.faction ? ` · ${sc.factions[me.faction].icon} ${esc(sc.factions[me.faction].name)}` : ' · no faction'}</h3>
+    <fieldset class="pol-fs" ${canAct ? '' : 'disabled'}>
     <ul class="plain">${ideos.map(row).join('')}</ul>
     <p class="small">📣 Propaganda costs ${P.propagandaCost} materials (${left} of ${P.propagandaPerRound} left this round). Your government gains 1% a round on its own. With ${P.peaceful}%+ support you can change government peacefully; with ${P.civilWar}%+ it means <b>civil war</b> — the land far from your capital breaks away as a bot nation of the old regime. ${me.gov === 'democracy' ? '🗳 As a democracy you can only declare war on nations already at war with your faction or another democracy.' : ''}</p>
     ${joinable.length ? `<p class="small">Join a faction: ${joinable.map((f) => `<button class="btn small" data-act="joinFaction" data-faction="${f}">${sc.factions[f].icon} ${esc(sc.factions[f].name)}</button>`).join(' ')}</p>` : ''}
-  </details>`;
+    </fieldset>
+  </div>`;
 }
 
 function scenarioCard(g) {

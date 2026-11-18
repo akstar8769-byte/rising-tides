@@ -904,3 +904,6 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .decide-note { background: rgba(192, 57, 43, 0.12); border-radius: 6px; padding: 6px 8px; }
 @media (max-width: 560px) { .paper { padding: 14px 16px; } .paper-cols { grid-template-columns: 1fr; } .paper-meta span:last-child { display: none; } }
 @media (max-width: 700px) { .scen-pill.paper-pill { display: inline-flex; } }
+.pol-fs { border: 0; margin: 0; padding: 0; min-width: 0; }
+.pol-fs:disabled .btn { opacity: 0.5; }
+.pol-card h3 { margin: 0 0 6px; }
