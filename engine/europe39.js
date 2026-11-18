@@ -443,10 +443,13 @@ const OIL = {
   importNote: { GER: 'synthetic fuel and Romanian oil', UK: 'oil from the Empire and America', FRA: 'oil from overseas', ITA: 'Italy has almost no oil of its own', USSR: 'on top of Baku and the Caucasus fields' },
 };
 
+/** Most land units one nation may keep on a single hex: armies hold fronts, not doom stacks. */
+const STACK_LIMIT = 30;
+
 const FACTIONS = {
   allies: { name: 'Allies', icon: '🟦' },
   axis: { name: 'Axis', icon: '⬛' },
   comintern: { name: 'Comintern', icon: '🟥' },
 };
 
-module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, OIL, DOCTRINES, WAR_PLANS, OPENING, EVENTS, UNREST, FACTIONS, dateOf };
+module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, STACK_LIMIT, OIL, DOCTRINES, WAR_PLANS, OPENING, EVENTS, UNREST, FACTIONS, dateOf };

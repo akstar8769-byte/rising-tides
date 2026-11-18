@@ -83,6 +83,8 @@ function setup(state, id, cfg = {}) {
   }
   // Oil country: Romania's fields and the Caucasus.
   for (const t of tiles) if (t.kind === 'land' && ((t.owner === seatOf.A && t.r >= 10) || (t.owner === seatOf.R && t.r >= 12 && t.c >= 24))) t.biome = 'quarry';
+  // The vast Russian countryside (not its cities or oil fields) yields half as much: 1 material per 4 hexes.
+  for (const t of tiles) if (t.kind === 'land' && t.owner === seatOf.R && !t.name && t.biome !== 'quarry') t.sparse = true;
 
   d.NATIONS.forEach((n, seat) => {
     const p = state.players[seat];
@@ -372,14 +374,7 @@ function applyEffects(s, seat, o) {
   }
   if (o.units) {
     const cap = s.board.tiles.find((t) => t.id === p.homeTile);
-    if (cap && cap.controller === seat) {
-      cap.troops = cap.troops || {};
-      cap.units = cap.units || {};
-      cap.troops[seat] = cap.troops[seat] || {};
-      cap.troops[seat].infantry = (cap.troops[seat].infantry || 0) + o.units;
-      cap.units[seat] = (cap.units[seat] || 0) + o.units;
-      p.units = (p.units || 0) + o.units;
-    }
+    if (cap && cap.controller === seat) p.units = (p.units || 0) + placeInfantry(s, seat, cap, o.units);
   }
 }
 
@@ -533,11 +528,7 @@ function splitNation(s, seat, ideo) {
   // Part of the army defects: the loyalists raise a militia at their new capital.
   const before = s.board.tiles.reduce((a, t) => a + ((t.units || {})[seat] || 0), 0);
   const militia = Math.max(3, Math.round((before * (1 - keepShare)) / 2));
-  cap.troops = cap.troops || {};
-  cap.units = cap.units || {};
-  cap.troops[ns] = cap.troops[ns] || {};
-  cap.troops[ns].infantry = (cap.troops[ns].infantry || 0) + militia;
-  cap.units[ns] = (cap.units[ns] || 0) + militia;
+  placeInfantry(s, ns, cap, militia);
   for (const x of [p, q]) x.units = s.board.tiles.reduce((a, t) => a + ((t.units || {})[x.seat] || 0), 0);
   // The civil war, and the parent's wars (the loyalists fight the same enemies).
   for (const e of enemiesOf(s, seat)) s.campaign.wars.push(pairKey(ns, e));
@@ -599,6 +590,7 @@ function view(s, seat, cfg = {}) {
     paper: s.campaign.paper || null,
     plan: me && me.bot ? planFor(s, seat) : null,
     doctrine: me ? doctrine(s, seat) : null,
+    stackLimit: stackLimit(s),
     fuel: me && d.OIL ? { need: fuelNeed(s, seat), used: fuelPoints(s, seat), land: landOil(s, seat), imports: oilImports(s, seat), note: (d.OIL.importNote || {})[me.nation] || '', pct: me.fuelPct ?? 100, strength: fuelStrength(s, seat), perOil: d.OIL.perOil, points: d.OIL.points } : null,
     decisions: me ? (me.decisions || []).map((x) => ({ key: x.key, title: x.title, text: x.text, options: x.options.map((o) => ({ label: o.label, summary: o.summary, hist: !!o.hist })) })) : [],
   };
@@ -615,6 +607,37 @@ function upgradeSave(s) {
     p.pop = { democracy: pol[1], fascism: pol[2], communism: pol[3], nonaligned: pol[4] };
   });
   return s;
+}
+
+// ---------------------------------------------------------------- stacking
+/** Most land units one nation may have on a hex (campaigns), or null for no limit. */
+function stackLimit(s) {
+  if (!isCampaign(s)) return null;
+  return dataOf(s).STACK_LIMIT || null;
+}
+/** How many more land units `seat` may put on tile T (Infinity when there's no limit). */
+function stackRoom(s, T, seat) {
+  const lim = stackLimit(s);
+  if (lim == null || !T || T.kind !== 'land') return Infinity;
+  return Math.max(0, lim - ((T.units || {})[seat] || 0));
+}
+/** Put n infantry of `seat` on tile T, spilling over to its own neighbouring land when T is full. Returns how many were placed. */
+function placeInfantry(s, seat, T, n) {
+  const spots = [T, ...s.board.tiles.filter((x) => x.kind === 'land' && x.controller === seat && x !== T && hexDist(x, T) === 1)];
+  let left = n;
+  for (const x of spots) {
+    if (left <= 0) break;
+    if (x.controller !== seat) continue;
+    const k = Math.min(left, stackRoom(s, x, seat));
+    if (k <= 0) continue;
+    x.troops = x.troops || {};
+    x.units = x.units || {};
+    x.troops[seat] = x.troops[seat] || {};
+    x.troops[seat].infantry = (x.troops[seat].infantry || 0) + k;
+    x.units[seat] = (x.units[seat] || 0) + k;
+    left -= k;
+  }
+  return n - left;
 }
 
 // ---------------------------------------------------------------- oil
@@ -725,4 +748,4 @@ function planFor(s, seat) {
   };
 }
 
-module.exports = { invaded, threatened, landOil, fuelPoints, fuelNeed, oilImports, fuelStrength, payFuel, doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };
+module.exports = { stackLimit, stackRoom, placeInfantry, invaded, threatened, landOil, fuelPoints, fuelNeed, oilImports, fuelStrength, payFuel, doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };

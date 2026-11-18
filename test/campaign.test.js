@@ -434,3 +434,41 @@ test('France fights back: invaded, it mobilises and its bot rallies the army on 
   const to = s.board.tiles.find((t) => t.id === move.action.to);
   assert.ok(to.id === paris.id || areAdjacent(to, paris), `${to.id} is at Paris`);
 });
+
+test('stacking limit: at most 30 land units of one nation on a hex', () => {
+  let s = europe(['USSR']);
+  const u = seat('USSR');
+  const moscow = city(s, 'Moscow');
+  s.players[u].materials = { wood: 400, stone: 400, sandbag: 400 };
+  const room = CAMP.stackRoom(s, moscow, u);
+  assert.equal(room, 30 - moscow.units[u]);
+  assert.throws(() => act(s, u, 'recruit', { count: room + 1, unit: 'infantry', tile: moscow.id, materials: { wood: 4 * (room + 1), stone: 0, sandbag: 0 } }), /is full: at most 30/);
+  s = act(s, u, 'recruit', { count: room, unit: 'infantry', tile: moscow.id, materials: { wood: 4 * room, stone: 0, sandbag: 0 } });
+  assert.equal(city(s, 'Moscow').units[u], 30);
+  // Moving more onto a full hex is refused too.
+  const next = s.board.tiles.find((t) => t.kind === 'land' && t.controller === u && areAdjacent(t, city(s, 'Moscow')));
+  s = act(s, u, 'recruit', { count: 2, unit: 'infantry', tile: next.id, materials: { wood: 8, stone: 0, sandbag: 0 } });
+  assert.throws(() => act(s, u, 'moveUnits', { from: next.id, to: city(s, 'Moscow').id, count: 1 }), /is full/);
+  // Event troops that don't fit spill over to neighbouring hexes.
+  const placed = CAMP.placeInfantry(s, u, city(s, 'Moscow'), 5);
+  assert.equal(placed, 5);
+  assert.equal(city(s, 'Moscow').units[u], 30);
+  // Other modes have no limit.
+  assert.equal(CAMP.stackLimit({ campaign: null, scenario: null }), null);
+});
+
+test('the Russian countryside yields half as much; cities and the oil fields in full', () => {
+  const s = europe();
+  const SC = require('../engine/scenarios');
+  const u = seat('USSR');
+  const tiles = s.board.tiles.filter((t) => t.kind === 'land' && t.controller === u);
+  assert.ok(tiles.filter((t) => t.sparse).length > 80);
+  assert.ok(!city(s, 'Moscow').sparse && !city(s, 'Baku').sparse);
+  const least = (b) => ['wood', 'stone', 'sandbag'].reduce((a, x) => (b[x] < b[a] ? x : a), 'wood');
+  const total = (b) => b.wood + b.stone + b.sandbag;
+  const now = total(SC.income(s, u, tiles, least));
+  for (const t of tiles) delete t.sparse;
+  const before = total(SC.income(s, u, tiles, least));
+  assert.ok(now < before - 20, `${now} vs ${before}`);
+  assert.ok(now > total(SC.income(s, seat('GER'), s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat('GER')), least)), 'still out-produces Germany');
+});

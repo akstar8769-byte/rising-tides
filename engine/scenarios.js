@@ -944,8 +944,11 @@ function income(s, seat, tiles, leastHeld) {
   const eco = sc.economy;
   const bag = { wood: 0, stone: 0, sandbag: 0 };
   const res = (t) => ({ forest: 'wood', quarry: 'stone', riverbank: 'sandbag' })[t.biome] || leastHeld(bag);
-  tiles.forEach((t, i) => {
-    if ((i + 1) % eco.tilesPerMaterial === 0) bag[res(t)] += 1;
+  // Sparse land (e.g. the Russian countryside in a campaign) yields half as much as ordinary land.
+  let plain = 0;
+  let sparse = 0;
+  tiles.forEach((t) => {
+    if (t.sparse ? ++sparse % (eco.tilesPerMaterial * 2) === 0 : ++plain % eco.tilesPerMaterial === 0) bag[res(t)] += 1;
     if (t.name) bag[res(t)] += eco.city;
     if (t.industry) bag[res(t)] += eco.industry;
   });

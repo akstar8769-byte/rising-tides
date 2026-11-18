@@ -470,6 +470,13 @@ function fuelRoom(g) {
   if (!F) return Infinity;
   return (F.imports + F.land) * F.perOil - F.used;
 }
+/** Campaigns: how many more of our land units fit on this hex (the stacking limit). */
+function roomOn(g, id) {
+  const lim = campaign(g) && g.scenario.stackLimit;
+  const t = tileById(g, id);
+  if (!lim || !t || t.kind !== 'land') return Infinity;
+  return Math.max(0, lim - unitsOn(t, g.you));
+}
 const fuelOf = (g, type) => (campaign(g) && g.scenario.fuel ? g.scenario.fuel.points[type] || 0 : 0);
 
 /** Pay n materials from the biggest piles. */
@@ -592,15 +599,38 @@ function buildStep(g, me, P, mem, fresh) {
       if (g.stationed) action.tile = frontier(g).find((id) => g.board.tiles.find((t) => t.id === id).kind === 'land' && !cut(id)) || me.homeTile;
       // Scenarios: losing the capital loses the war — keep a real garrison there first.
       if (g.scenario && shortKeyTile(g, me)) action.tile = shortKeyTile(g, me).id;
+      // Campaigns: a full hex can't take more — recruit on the nearest of our hexes with room.
+      if (g.stationed && roomOn(g, action.tile) < (action.count || 1)) {
+        const from = tileById(g, action.tile) || tileById(g, me.homeTile);
+        const alt = g.board.tiles
+          .filter((t) => t.kind === 'land' && t.controller === g.you && !cut(t.id) && roomOn(g, t.id) > 0)
+          .sort((a, b) => hexDist(a, from) - hexDist(b, from))[0];
+        if (!alt) {
+          // Nowhere to put them: skip recruiting this time and carry on with the rest of the turn.
+          mem.tried.add(`recruit-${me.units}`);
+          return buildStep(g, me, P, mem, fresh);
+        }
+        action.tile = alt.id;
+        const n = Math.min(action.count || 1, roomOn(g, alt.id));
+        if (n !== action.count) {
+          action.count = n;
+          action.materials = payFromLargest(me, unitCost * n);
+        }
+      }
       return { key: `recruit-${me.units}`, action };
     }
     // 4. Stationed units: put units where they're useful.
     if (g.stationed) {
       // Each move at most once a phase, and a cap, so two rules can never pass troops back and forth for ever.
-      const mv = (mem.moves || 0) < 80 ? moveIdea(g, me, P) : null;
-      if (mv && fresh(mv.key)) {
-        mem.moves = (mem.moves || 0) + 1;
+      for (let tries = 0; tries < 12 && (mem.moves || 0) < 80; tries++) {
+        const mv = moveIdea(g, me, P);
+        if (!mv || !fresh(mv.key)) break;
         mem.tried.add(mv.key);
+        // Campaigns: never more than the destination hex has room for.
+        const room = mv.action.type === 'moveUnits' ? roomOn(g, mv.action.to) : Infinity;
+        if (room < 1) continue;
+        if (mv.action.count > room) mv.action.count = room;
+        mem.moves = (mem.moves || 0) + 1;
         return mv;
       }
       const fm = g.tw ? fleetMoveIdea(g, me, P) : null;

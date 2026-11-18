@@ -423,6 +423,7 @@ function recruit(s, actor, { count = 1, materials, tile, unit = 'militia' } = {}
     } else if (T.kind !== 'land') fail('Only ships can go to sea.');
     else if (T.controller !== actor) fail('Recruit onto a tile you control.');
     else if (!inSupply(s, T)) fail(`${tileName(s, T)} is out of supply: recruit on a tile in supply (near your capital, an industrial city or a port).`);
+    if (T.kind === 'land' && count > CAMP.stackRoom(s, T, actor)) fail(`${tileName(s, T)} is full: at most ${CAMP.stackLimit(s)} units on one hex (room for ${CAMP.stackRoom(s, T, actor)}).`);
     addTroops(T, actor, { ...zeroTroops(), [unit]: count });
     where = ` on ${tileName(s, T)}`;
   }
@@ -1594,6 +1595,7 @@ function moveUnits(s, actor, { from, to, count = 1, troops = null } = {}) {
   if (exact) count = battles.sum(exact);
   checkSend(A, actor, count);
   if (!canStand(s, actor, B)) fail("Your units can't go there.");
+  if (count > CAMP.stackRoom(s, B, actor)) fail(`${tileName(s, B)} is full: at most ${CAMP.stackLimit(s)} units on one hex (room for ${CAMP.stackRoom(s, B, actor)}).`);
   // Over your own land first; failing that (Total War), also across the sea along your ships —
   // the same chain of ships an invasion crosses, so troops can follow up a landing.
   let route = landRoute(s, actor, A, B, false);
