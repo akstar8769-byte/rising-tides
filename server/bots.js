@@ -1094,6 +1094,11 @@ function pickTarget(g, me, P, used = null) {
     }
     if (sent < 1) continue;
     if (t.controller != null && (g.limits.protectedSeats[t.controller] || !willHit(g, t.controller, P))) continue;
+    // Anti-air guns and fighters can't take ground: don't attack with only them.
+    if (g.tw && from && t.kind === 'land' && t.controller != null) {
+      const tr = (g.board.tiles.find((x) => x.id === from).troops || {})[g.you] || {};
+      if (!Object.entries(tr).some(([k, n]) => n > 0 && !['antiair', 'interceptor'].includes(k))) continue;
+    }
     // The troops we'd send (Total War), trimmed to what the ships carry when crossing by sea.
     let troops = g.tw && from ? { ...((g.board.tiles.find((x) => x.id === from).troops || {})[g.you] || {}) } : null;
     // Scenarios: the capital and fortified / bunkered tiles keep their garrison (send only what's above it).

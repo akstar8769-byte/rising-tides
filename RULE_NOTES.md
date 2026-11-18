@@ -671,3 +671,9 @@ Total War lobby → **Scenario: 🌍 Europe, 1939 (grand campaign)**.
 
 ## Oil: purchases keep the fuel oil (18 November 2026)
 - Every purchase (recruits, research, upgrades, bunkers, agenda projects) pays from your largest pile — and when oil was the largest, it spent the oil your fuel needed, so tanks ran dry the next round. In campaigns, purchases now leave the oil next round's fuel needs (beyond imports) untouched, and only dip into it when nothing else can pay. The campaign card shows how much oil is kept, and warns when your army burns more oil than you make.
+
+## Battles — no more 2-minute stand-offs (18 November 2026)
+- **Stalled attacks end early.** If nobody does any damage and nothing moves, the attack has stalled and the defenders hold — after 8 seconds when both sides are run by the computer (bots, auto-battle), after 30 seconds when a player commands a side. (A bot attacked with three anti-air guns, which can't hurt infantry, and both sides sat still until the 2-minute limit.)
+- **Bots don't attack with only anti-air guns or fighters** — they can't take ground.
+- **Bot-vs-bot battles run 4× faster** (any battle where nobody is commanding either side), so players aren't kept waiting.
+- Watching someone else's battle no longer shows "Tap one of your units first".

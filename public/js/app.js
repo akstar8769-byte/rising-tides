@@ -968,6 +968,8 @@ document.addEventListener('pointerdown', (e) => {
     return;
   }
   const sel = store.ui.battleSel;
+  const g = store.data.game;
+  if (b.attacker !== g.you && b.defender !== g.you) return; // just watching
   if (!sel.length) return toast('Tap one of your units first (or use Select all).');
   act({ type: 'battleOrder', battle: b.id, dots: [...sel], x: p.x, y: p.y });
 });

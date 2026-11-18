@@ -840,6 +840,7 @@ function stepBattle(b, dt, cfg) {
     if (ARS.GUNS.includes(t.type) && contact.get(t).length) mult *= (cfg.artilleryMeleeDamageTakenPct ?? 150) / 100; // overrun guns
     t.hp -= dmg * mult;
   }
+  if (damage.size) b.hitT = b.time; // someone is still landing blows
   b.dots = b.dots.filter((d) => {
     if (d.hp > 0) return true;
     b.losses[d.side][d.type]++;
@@ -879,6 +880,16 @@ function stepBattle(b, dt, cfg) {
   const onFlag = (side) => b.dots.some((d) => d.side === side && !isAir(d) && dist(d, b.obj) <= b.obj.r);
   if (onFlag('A') && !onFlag('D')) b.capture += dt;
   else b.capture = Math.max(0, b.capture - dt * 0.5);
+
+  // Stalemate: nobody has done any damage and nothing has moved for a while (e.g. anti-air
+  // guns attacking infantry they can't hurt) — the attack has stalled; the defenders hold.
+  let sig = 0;
+  for (const d of b.dots) sig += d.x * 1.37 + d.y * 2.11;
+  const still = b.posSig != null && Math.abs(sig - b.posSig) < 0.05;
+  b.posSig = sig;
+  b.stillT = still && b.time - (b.hitT ?? 0) > 0.5 ? (b.stillT || 0) + dt : 0;
+  const stallLimit = b.auto && b.auto.A && b.auto.D ? cfg.stalemateBotSeconds ?? 8 : cfg.stalemateSeconds ?? 30;
+  if (b.stillT >= stallLimit && b.capture <= 0) return finish(b, 'D', 'the attack stalled: neither side could hurt the other');
 
   // Has someone won?
   if (!left('A')) return finish(b, 'D', left('D') ? 'the attack was destroyed' : 'both sides were destroyed');

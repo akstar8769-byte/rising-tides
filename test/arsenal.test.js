@@ -834,3 +834,28 @@ test('generals left alone on a tile that falls are captured', () => {
   assert.ok(!s.generals.some((g) => g.id === g1.id), 'captured');
   assert.ok(s.log.some((e) => /is captured/.test(e.text)));
 });
+
+const PLAIN = { id: 'X', biome: 'quarry' };
+test('a battle where nobody can hurt anyone ends early: the attack stalls and the defenders hold', () => {
+  const T = PLAIN;
+  // Anti-air guns attacking infantry (the guns only hit planes; the infantry sits on the flag).
+  const b = tw.createBattle({ id: 9, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { antiair: 3 }, dTroops: { infantry: 3 }, cfg: CFG, rand: () => 0.5 });
+  b.auto = { A: true, D: true };
+  let t = 0;
+  while (b.status === 'live' && t < CFG.battleSeconds) {
+    tw.stepBattle(b, 0.1, CFG);
+    t += 0.1;
+  }
+  assert.equal(b.status, 'done');
+  assert.equal(b.winner, 'D');
+  assert.ok(t < CFG.battleSeconds - 30, `ended after ${t.toFixed(1)} s, not at the time limit`);
+});
+
+test('a normal fight is not cut short by the stalemate rule', () => {
+  const T = PLAIN;
+  const b = tw.createBattle({ id: 10, kind: 'land', tile: T, from: T, attacker: 0, defender: 1, aTroops: { infantry: 6 }, dTroops: { infantry: 2 }, cfg: CFG, rand: () => 0.5 });
+  b.auto = { A: true, D: true };
+  while (b.status === 'live') tw.stepBattle(b, 0.1, CFG);
+  assert.equal(b.winner, 'A');
+  assert.ok(!/stalled/.test(b.reason), b.reason);
+});

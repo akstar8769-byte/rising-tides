@@ -231,7 +231,8 @@ test('battle: if the attackers never come, the defenders hold out', () => {
   b.ordered = { A: true, D: true };
   run(b, CFG.battleSeconds + 1);
   assert.equal(b.winner, 'D');
-  assert.match(b.reason, /held out/);
+  // Nothing happening at all ends it early (a stalled attack); otherwise at the time limit.
+  assert.match(b.reason, /held out|stalled/);
 });
 
 test('battle: hitting a unit from two sides does more damage than from one side', () => {

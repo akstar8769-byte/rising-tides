@@ -2546,7 +2546,11 @@ function stepBattles(s, dt) {
   let ended = false;
   for (const b of s.battles) {
     if (b.status !== 'live') continue;
-    if (battles.stepBattle(b, dt * (b.speed || 1), TWS(s))) {
+    // Battles between two computer-run sides (bots, or players who left) run several steps a tick.
+    const reps = b.fast ? TWS(s).botBattleSpeed ?? 4 : 1;
+    let over = false;
+    for (let i = 0; i < reps && !over; i++) over = battles.stepBattle(b, dt * (b.speed || 1), TWS(s));
+    if (over) {
       ended = true;
       finishBattleTW(s, b);
       if (s.phase === 'ended') return true;

@@ -418,6 +418,8 @@ function attachRooms(io) {
       const away = (seat) => room.members[seat] && (room.members[seat].bot || room.members[seat].sockets.size === 0);
       if (away(b.attacker)) b.auto.A = true;
       if (away(b.defender)) b.auto.D = true;
+      // Nobody is commanding either side: fast-forward it, so players aren't kept waiting.
+      b.fast = away(b.attacker) && away(b.defender);
     }
     let ended = false;
     try {
