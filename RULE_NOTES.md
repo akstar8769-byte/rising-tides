@@ -668,3 +668,6 @@ Total War lobby → **Scenario: 🌍 Europe, 1939 (grand campaign)**.
 
 ## Battles — lasso selection (18 November 2026)
 - With a mouse, hold the **right button and draw around** your units on the battlefield to select them all at once (Shift/Ctrl adds to the selection); then left-click where to send them. A dashed outline follows the cursor, a toast says how many units were picked, and the browser's right-click menu is blocked on the battlefield. Tapping units, the type buttons and Select all work as before (touch screens keep using those).
+
+## Oil: purchases keep the fuel oil (18 November 2026)
+- Every purchase (recruits, research, upgrades, bunkers, agenda projects) pays from your largest pile — and when oil was the largest, it spent the oil your fuel needed, so tanks ran dry the next round. In campaigns, purchases now leave the oil next round's fuel needs (beyond imports) untouched, and only dip into it when nothing else can pay. The campaign card shows how much oil is kept, and warns when your army burns more oil than you make.

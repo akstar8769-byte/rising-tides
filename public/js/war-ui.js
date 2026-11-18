@@ -414,7 +414,25 @@ function generalSummary(g) {
 }
 
 /** Pay n materials from the biggest piles (research and upgrades). */
+/**
+ * Campaigns: oil to leave untouched when paying (next round's fuel, beyond imports).
+ * Set on every render from the game state; 0 elsewhere.
+ */
+let oilKeep = 0;
+export function setOilKeep(n) {
+  oilKeep = Math.max(0, n || 0);
+}
+
+/** Pay n materials from the largest piles — keeping the fuel oil if the rest can cover it. */
 export function payLargest(mats, n) {
+  if (oilKeep && mats) {
+    const rest = { ...mats, stone: Math.max(0, (mats.stone || 0) - oilKeep) };
+    const pay = payLargestFrom(rest, n);
+    if (pay) return pay;
+  }
+  return payLargestFrom(mats, n);
+}
+function payLargestFrom(mats, n) {
   const pool = { ...mats };
   const out = { wood: 0, stone: 0, sandbag: 0 };
   for (let i = 0; i < n; i++) {

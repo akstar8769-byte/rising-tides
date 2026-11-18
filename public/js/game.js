@@ -3,7 +3,7 @@
 import { applyGameStyles, skinText, esc, chip, swatch, matIcon, bagInline, bagText, bagTotal, bagEditor, stepper, MATS, MAT_LABEL, BIOME, TERRAIN, PHASE_LABEL, PLAYER_STYLE, plural } from './ui.js';
 import { renderBoard, center } from './board.js';
 import { renderLog, renderChat } from './log.js';
-import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest, targetNote } from './war-ui.js';
+import { accordPill, accordCard, warTags, warMyPanel, warChoosePanel, tileLabel, payLargest, targetNote, setOilKeep } from './war-ui.js';
 export { tileLabel };
 import { diplomacyPanel, diploTags, limitsNote, myPactWith } from './diplomacy-ui.js';
 import { battlePanel } from './battle-ui.js';
@@ -30,6 +30,8 @@ export function renderGame(store) {
   const d = store.data;
   const g = d.game;
   applyGameStyles(g); // nation colours and material names (grand campaigns)
+  // Campaigns: purchases leave the oil next round's fuel needs (beyond imports).
+  setOilKeep(g.scenario && g.scenario.fuel ? g.scenario.fuel.need - g.scenario.fuel.imports : 0);
   const ui = store.ui;
   const drawer = DRAWERS.some((x) => x.id === ui.drawer) ? ui.drawer : null;
   const incoming = g.trades.filter((t) => t.to === g.you).length + (g.pacts || []).filter((p) => p.status === 'proposed' && p.b === g.you).length + (g.treaties || []).filter((t) => t.invited.includes(g.you) && ![...t.signed, ...t.declined, ...t.broken].includes(g.you)).length;
@@ -429,7 +431,9 @@ function fuelLine(sc) {
   if (!F) return '';
   const source = [F.imports ? `${F.imports} imported${F.note ? ` (${esc(F.note)})` : ''}` : '', F.land ? `about ${F.land} from your oil fields` : ''].filter(Boolean).join(' + ') || 'none — capture oil fields (Ploiești, Baku) or trade for it';
   const status = F.pct < 100 ? ` <b class="bad">Short of fuel last round: ${F.pct}% paid — your tanks, planes and ships fight at ${F.strength}%.</b>` : '';
-  return `<p class="small">⛽ <b>Fuel:</b> your tanks, motorised troops, planes and ships burn <b>${F.need} oil</b> a round, paid at the start of the next round. Oil each round: ${source}. Keep enough oil unspent.${status}</p>`;
+  const keep = Math.max(0, F.need - F.imports);
+  const short = F.need > F.imports + F.land;
+  return `<p class="small">⛽ <b>Fuel:</b> your tanks, motorised troops, planes and ships burn <b>${F.need} oil</b> a round, paid at the start of the next round. Oil each round: ${source}.${keep ? ` Purchases leave <b>${keep} oil</b> unspent for fuel when they can.` : ''}${short ? ` <b class="bad">Your army burns more oil than you make (${F.need} vs about ${F.imports + F.land}):</b> fewer tanks and planes, take oil fields (Ploiești, Baku), or run Synthetic fuel / Trade agreements on your 📋 Agenda.` : ''}${status}</p>`;
 }
 
 /** Pick the most dramatic headline for the front page. */
