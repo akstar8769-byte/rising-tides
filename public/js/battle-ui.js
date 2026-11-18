@@ -442,7 +442,7 @@ export function battlePanel(store) {
             ? `<p class="hint">Tap your ships, then tap where to sail. <b>${mySide === 'A' ? 'Hold the flag ⚑ with no enemy ship on it' : 'Keep their ships off the flag ⚑ until time runs out'}.</b> Cruisers and battleships fire at range; destroyers are fast. Hit a ship from two sides for bonus damage. The winner holds the sea bay.</p>`
             : ''
       }
-      <p class="hint" ${kind === 'land' ? '' : 'hidden'}>Tap a unit (or a type button), then tap the map to send it. Several units move together and keep their formation — tap ⬢ Whole army to move everything. Your artillery follows the army by itself until you move it by hand (picking a formation sends it back to following). <b>${mySide === 'A' ? 'Hold the flag ⚑ with nobody defending it' : 'Keep attackers off the flag ⚑ until time runs out'}.</b> Ground you move through becomes yours (tinted); the dark line is the <b>frontline</b>. Your supply runs through your own ground back to your edge of the map — units cut off (red outline, red pocket) take heavy damage and surrender. Hit enemies from two sides for bonus damage. Cavalry struggles against infantry — until you encircle them. Tanks ignore rifle fire but fear anti-tank guns; only anti-air can hit planes.</p>`
+      <p class="hint" ${kind === 'land' ? '' : 'hidden'}>Tap a unit (or a type button), then tap the map to send it. With a mouse, hold the <b>right button and draw around</b> several units to select them all. Several units move together and keep their formation — tap ⬢ Whole army to move everything. Your artillery follows the army by itself until you move it by hand (picking a formation sends it back to following). <b>${mySide === 'A' ? 'Hold the flag ⚑ with nobody defending it' : 'Keep attackers off the flag ⚑ until time runs out'}.</b> Ground you move through becomes yours (tinted); the dark line is the <b>frontline</b>. Your supply runs through your own ground back to your edge of the map — units cut off (red outline, red pocket) take heavy damage and surrender. Hit enemies from two sides for bonus damage. Cavalry struggles against infantry — until you encircle them. Tanks ignore rifle fire but fear anti-tank guns; only anti-air can hit planes.</p>`
         : `<p class="hint">You're watching. ${typesIn.map((t) => `${shapeOf(g, t)} ${esc(nameOf(g, t).toLowerCase())}`).join(' ')} (each unit is a group of dots). Tinted ground = territory, dark line = frontline, red = cut off.</p>`
     }
   </div>`;
@@ -549,6 +549,33 @@ export function selectUnit(store, b, unit, add) {
     const onlyThis = already && sel.size === ids.length;
     store.ui.battleSel = onlyThis ? [] : ids;
   }
+}
+
+/**
+ * Lasso selection: the units of ours with a dot inside the polygon `poly` (map coordinates),
+ * as the list of all their dots' ids.
+ */
+export function dotsInLasso(store, b, poly) {
+  const g = store.data.game;
+  const mySide = b.attacker === g.you ? 'A' : b.defender === g.you ? 'D' : null;
+  if (!mySide || poly.length < 3) return [];
+  const now = performance.now();
+  const inside = (x, y) => {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i];
+      const c = poly[j];
+      if (a.y > y !== c.y > y && x < ((c.x - a.x) * (y - a.y)) / (c.y - a.y) + a.x) hit = !hit;
+    }
+    return hit;
+  };
+  const units = new Set();
+  for (const d of b.dots) {
+    if (d.side !== mySide) continue;
+    const pos = (anim.battle === b.id && drawnPos(d.id, now)) || d;
+    if (inside(pos.x, pos.y)) units.add(d.unit);
+  }
+  return b.dots.filter((d) => d.side === mySide && units.has(d.unit)).map((d) => d.id);
 }
 
 /** Turn a click on the battlefield into map coordinates. */

@@ -665,3 +665,6 @@ Total War lobby → **Scenario: 🌍 Europe, 1939 (grand campaign)**.
 - **⭐ National projects:** Germany — the Four-Year Plan, the Westwall; Britain — Shadow factories, the radar chain (defence +15%); France — Extend the Maginot Line; the USSR — the Five-Year Plan, Deep battle; Italy — Autarky.
 - Finished projects stack with doctrines (Blitzkrieg + Modern tactics = attacks at 143%). Majors' completions make the newspaper.
 - **Bots** work through a historical path (Germany: Four-Year Plan → reserves → Modern tactics → Westwall → industry…; Britain: Shadow factories → radar…; the USSR: Five-Year Plan → reserves → Defence in depth → Deep battle…) whenever they can spare the cost. All-bot games keep the historical arc (Paris round 8; the USSR survives; the eastern front swings around Minsk and Kiev).
+
+## Battles — lasso selection (18 November 2026)
+- With a mouse, hold the **right button and draw around** your units on the battlefield to select them all at once (Shift/Ctrl adds to the selection); then left-click where to send them. A dashed outline follows the cursor, a toast says how many units were picked, and the browser's right-click menu is blocked on the battlefield. Tapping units, the type buttons and Select all work as before (touch screens keep using those).

@@ -13,7 +13,7 @@ import { onState as diceOnState } from './dice.js';
 import { payLargest, upkeepWarning } from './war-ui.js';
 import { installMapControls, justDragged, zoomAt } from './mapview.js';
 import { initTutorial, afterRender as tutorialAfterRender, startTutorial } from './tutorial.js';
-import { addShells, refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation } from './battle-ui.js';
+import { addShells, refreshBattle, svgPoint, liveBattle, unitAt, selectUnit, startBattleAnimation, dotsInLasso } from './battle-ui.js';
 
 /* global io */
 const socket = io();
@@ -903,6 +903,54 @@ const actions = {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   },
 };
+
+// Lasso: hold the right mouse button on the battlefield and draw around units to select
+// them all (Shift/Ctrl adds to the selection). The outline is drawn in a fixed overlay so
+// the battlefield redrawing every frame doesn't wipe it.
+let lasso = null;
+function lassoOverlay() {
+  let el = document.getElementById('lasso-overlay');
+  if (!el) {
+    el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    el.id = 'lasso-overlay';
+    el.innerHTML = '<polygon/>';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest && e.target.closest('#battle-svg')) e.preventDefault();
+});
+document.addEventListener('pointerdown', (e) => {
+  const svg = e.target.closest && e.target.closest('#battle-svg');
+  if (!svg || e.pointerType !== 'mouse' || e.button !== 2) return;
+  e.preventDefault();
+  lasso = { svg, battle: Number(svg.dataset.battle), screen: [[e.clientX, e.clientY]], add: e.shiftKey || e.ctrlKey || e.metaKey };
+  const ov = lassoOverlay();
+  ov.style.display = 'block';
+  ov.firstChild.setAttribute('points', `${e.clientX},${e.clientY}`);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!lasso) return;
+  const last = lasso.screen[lasso.screen.length - 1];
+  if (Math.hypot(e.clientX - last[0], e.clientY - last[1]) < 4) return;
+  lasso.screen.push([e.clientX, e.clientY]);
+  lassoOverlay().firstChild.setAttribute('points', lasso.screen.map((p) => p.join(',')).join(' '));
+});
+document.addEventListener('pointerup', (e) => {
+  if (!lasso || e.button !== 2) return;
+  const { svg, battle, screen, add } = lasso;
+  lasso = null;
+  lassoOverlay().style.display = 'none';
+  const b = liveBattle(store, battle);
+  if (!b || screen.length < 3) return;
+  const poly = screen.map(([x, y]) => svgPoint(svg, { clientX: x, clientY: y })).filter(Boolean);
+  const ids = dotsInLasso(store, b, poly);
+  store.ui.battleSel = add ? [...new Set([...store.ui.battleSel, ...ids])] : ids;
+  refreshBattle(store);
+  const units = new Set(b.dots.filter((d) => store.ui.battleSel.includes(d.id)).map((d) => d.unit)).size;
+  toast(units ? `${units} unit${units === 1 ? '' : 's'} selected — left-click the map to send them.` : 'No units of yours inside — draw around them.');
+});
 
 // Battlefield taps use pointerdown: the dots are redrawn every animation frame, so a
 // normal click often loses its target between press and release.

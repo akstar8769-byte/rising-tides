@@ -916,3 +916,6 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .ag-tag.done { background: #2e8b57; color: #fff; }
 .ag-tag.cur { background: #f3c623; color: #3b2a00; }
 .ag-current { margin: 6px 0; font-size: 15px; }
+/* Battle lasso (right-drag to select several units) */
+#lasso-overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 80; display: none; }
+#lasso-overlay polygon { fill: rgba(255, 255, 255, 0.12); stroke: #fff; stroke-width: 2; stroke-dasharray: 6 4; }
