@@ -209,7 +209,8 @@ function attacksFor(s, seat, cfg = {}) {
 function roundStart(s) {
   const d = dataOf(s);
   // Each government slowly gains support (up to 90%).
-  for (const p of s.players) if (!p.out && p.pop && p.pop[p.gov] < 90) shiftPop(p, p.gov, 1);
+  tickAgenda(s);
+  for (const p of s.players) if (!p.out && p.pop && p.pop[p.gov] < 90) shiftPop(p, p.gov, 1 + agendaBonus(s, p.seat).popPerRound);
   // The opening headlines (the war as it stood when the game starts).
   if (s.round === 1 && !s.campaign.opened) {
     s.campaign.opened = true;
@@ -218,7 +219,7 @@ function roundStart(s) {
   runEvents(s);
   // Doctrines that produce (e.g. Soviet industry beyond the Urals).
   for (const p of s.players) {
-    const n = p.out ? 0 : doctrine(s, p.seat).materials || 0;
+    const n = p.out ? 0 : (doctrine(s, p.seat).materials || 0) + agendaBonus(s, p.seat).income;
     for (let i = 0; i < n; i++) p.materials[['wood', 'stone', 'sandbag'][i % 3]] += 1;
   }
   addLog(s, `🗓 ${d.dateOf(s.round)}.`, { kind: 'round' });
@@ -589,8 +590,10 @@ function view(s, seat, cfg = {}) {
     next: (d.EVENTS || []).filter((e) => e.round > s.round && e.round <= s.round + 2 && !e.when).map((e) => ({ round: e.round, text: e.faction ? e.news : ((e.options.find((o) => o.hist) || e.options[0]).news || e.title) })),
     paper: s.campaign.paper || null,
     plan: me && me.bot ? planFor(s, seat) : null,
+    agendaPath: me && me.bot && d.AGENDA_PATHS ? d.AGENDA_PATHS[me.nation] || d.AGENDA_PATHS.default : null,
     doctrine: me ? doctrine(s, seat) : null,
     stackLimit: stackLimit(s),
+    agenda: me && d.AGENDA ? agendaView(s, seat) : null,
     fuel: me && d.OIL ? { need: fuelNeed(s, seat), used: fuelPoints(s, seat), land: landOil(s, seat), imports: oilImports(s, seat), note: (d.OIL.importNote || {})[me.nation] || '', pct: me.fuelPct ?? 100, strength: fuelStrength(s, seat), perOil: d.OIL.perOil, points: d.OIL.points } : null,
     decisions: me ? (me.decisions || []).map((x) => ({ key: x.key, title: x.title, text: x.text, options: x.options.map((o) => ({ label: o.label, summary: o.summary, hist: !!o.hist })) })) : [],
   };
@@ -607,6 +610,102 @@ function upgradeSave(s) {
     p.pop = { democracy: pol[1], fascism: pol[2], communism: pol[3], nonaligned: pol[4] };
   });
   return s;
+}
+
+// ---------------------------------------------------------------- national agenda
+const agendaOf = (p) => p.agenda || (p.agenda = { current: null, done: [] });
+
+/** The projects this nation could ever work on (shared ones plus its own). */
+function agendaFor(s, seat) {
+  const nid = s.players[seat].nation;
+  return (dataOf(s).AGENDA || []).filter((x) => !x.nation || x.nation === nid);
+}
+
+/** Why a project can't be started now, or null. */
+function agendaBlock(s, seat, x) {
+  const p = s.players[seat];
+  const a = agendaOf(p);
+  if (a.done.includes(x.id)) return 'done';
+  if (a.current && a.current.id === x.id) return 'in progress';
+  const missing = (x.requires || []).filter((r) => !a.done.includes(r));
+  if (missing.length) return `needs ${missing.map((r) => (agendaFor(s, seat).find((y) => y.id === r) || { name: r }).name).join(' and ')} first`;
+  if (x.join) {
+    if (p.faction === x.join) return 'already a member';
+    if (!fits(s, x.join, p.gov)) return `they won't accept a ${{ democracy: 'democratic', fascism: 'fascist', communism: 'communist', nonaligned: 'non-aligned' }[p.gov] || p.gov} government`;
+    if (s.players.some((q) => q.faction === x.join && !q.out && atWar(s, seat, q.seat))) return "you're at war with them";
+  }
+  return null;
+}
+
+/** Lasting bonuses from finished projects. */
+function agendaBonus(s, seat) {
+  const out = { income: 0, oil: 0, popPerRound: 0, attack: 100, defence: 100 };
+  const p = s.players[seat];
+  if (!p || !p.agenda || !p.agenda.done.length) return out;
+  for (const x of agendaFor(s, seat)) {
+    if (!p.agenda.done.includes(x.id)) continue;
+    out.income += x.income || 0;
+    out.oil += x.oil || 0;
+    out.popPerRound += x.popPerRound || 0;
+    if (x.attack) out.attack = Math.round((out.attack * x.attack) / 100);
+    if (x.defence) out.defence = Math.round((out.defence * x.defence) / 100);
+  }
+  return out;
+}
+
+/** Start (or switch to) a project; the caller has checked and taken the cost. */
+function startProject(s, seat, id) {
+  const x = agendaFor(s, seat).find((y) => y.id === id);
+  const a = agendaOf(s.players[seat]);
+  const dropped = a.current && agendaFor(s, seat).find((y) => y.id === a.current.id);
+  a.current = { id, left: x.rounds };
+  addLog(s, `📋 ${nationName(s, seat)} starts work on ${x.name}${dropped ? ` (dropping ${dropped.name})` : ''}: ready in ${x.rounds} round${x.rounds === 1 ? '' : 's'}.`, { seat });
+}
+
+/** Start of each round: projects move on one round; finished ones take effect. */
+function tickAgenda(s) {
+  const d = dataOf(s);
+  for (const p of s.players) {
+    if (p.out || !p.agenda || !p.agenda.current) continue;
+    const a = p.agenda;
+    a.current.left -= 1;
+    if (a.current.left > 0) continue;
+    const x = agendaFor(s, p.seat).find((y) => y.id === a.current.id);
+    a.current = null;
+    if (!x) continue;
+    a.done.push(x.id);
+    if (x.units) {
+      const cap = s.board.tiles.find((t) => t.id === p.homeTile);
+      if (cap && cap.controller === p.seat) p.units = (p.units || 0) + placeInfantry(s, p.seat, cap, x.units);
+    }
+    if (x.popGov && p.pop) shiftPop(p, p.gov, x.popGov);
+    if (x.bunker) {
+      const cap = s.board.tiles.find((t) => t.id === p.homeTile);
+      if (cap && cap.controller === p.seat) cap.bunker = Math.max(cap.bunker || 0, x.bunker);
+    }
+    if (x.join && !agendaBlockJoin(s, p.seat, x.join)) joinFaction(s, p.seat, x.join);
+    const major = (d.NATIONS[p.seat] || {}).major;
+    addLog(s, `${major ? '📰 ' : '📋 '}${nationName(s, p.seat)} completes ${x.name}: ${x.text}.`, major ? { kind: 'round', event: 'news' } : { kind: 'round', seat: p.seat });
+  }
+}
+const agendaBlockJoin = (s, seat, faction) => s.players[seat].faction === faction || !fits(s, faction, s.players[seat].gov) || s.players.some((q) => q.faction === faction && !q.out && atWar(s, seat, q.seat));
+
+/** For the view: the agenda as the player sees it. */
+function agendaView(s, seat) {
+  const d = dataOf(s);
+  const p = s.players[seat];
+  const a = agendaOf(p);
+  const cur = a.current && agendaFor(s, seat).find((y) => y.id === a.current.id);
+  return {
+    branches: d.AGENDA_BRANCHES,
+    current: cur ? { id: cur.id, name: cur.name, left: a.current.left, rounds: cur.rounds, text: cur.text } : null,
+    done: a.done.slice(),
+    bonus: agendaBonus(s, seat),
+    projects: agendaFor(s, seat).map((x) => {
+      const why = agendaBlock(s, seat, x);
+      return { id: x.id, branch: x.branch, name: x.name, rounds: x.rounds, cost: x.cost, text: x.text, national: !!x.nation, status: why === 'done' ? 'done' : why === 'in progress' ? 'current' : why ? 'locked' : 'ready', why: why && why !== 'done' && why !== 'in progress' ? why : null };
+    }),
+  };
 }
 
 // ---------------------------------------------------------------- stacking
@@ -659,7 +758,7 @@ function fuelNeed(s, seat) {
 /** Oil a nation gets from imports each round. */
 function oilImports(s, seat) {
   const O = dataOf(s).OIL;
-  return O ? O.imports[s.players[seat].nation] || 0 : 0;
+  return O ? (O.imports[s.players[seat].nation] || 0) + agendaBonus(s, seat).oil : 0;
 }
 /** Oil a nation's land makes a round (oil-field land: 1 per 2 hexes, +1 per oil city), roughly. */
 function landOil(s, seat) {
@@ -727,6 +826,10 @@ function doctrine(s, seat) {
     out.materials = (out.materials || 0) + (x.materials || 0);
     out.active.push({ name: x.name, text: x.text, until: d.dateOf(x.to) });
   }
+  // Finished agenda projects (e.g. Modern tactics) add their lasting battle bonuses.
+  const a = agendaBonus(s, seat);
+  out.attack = Math.round((out.attack * a.attack) / 100);
+  out.defence = Math.round((out.defence * a.defence) / 100);
   return out;
 }
 
@@ -748,4 +851,4 @@ function planFor(s, seat) {
   };
 }
 
-module.exports = { stackLimit, stackRoom, placeInfantry, invaded, threatened, landOil, fuelPoints, fuelNeed, oilImports, fuelStrength, payFuel, doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };
+module.exports = { agendaFor, agendaBlock, agendaBonus, startProject, tickAgenda, agendaView, stackLimit, stackRoom, placeInfantry, invaded, threatened, landOil, fuelPoints, fuelNeed, oilImports, fuelStrength, payFuel, doctrine, isWinter, planFor, resolveOption, runEvents, printPaper, describeOption, upgradeSave, nationMeta, shiftPop, fits, mayDeclare, changeOutcome, changeGovernment, splitNation, CAMPAIGNS, isCampaign, nationsOf, setup, atWar, alliesOf, enemiesOf, canFight, declareWar, joinFaction, capitulate, outChoice, attacksFor, roundStart, vpHeld, decide, winners, view, nationName, gridId };

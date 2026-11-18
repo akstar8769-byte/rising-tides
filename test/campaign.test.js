@@ -472,3 +472,65 @@ test('the Russian countryside yields half as much; cities and the oil fields in 
   assert.ok(now < before - 20, `${now} vs ${before}`);
   assert.ok(now > total(SC.income(s, seat('GER'), s.board.tiles.filter((t) => t.kind === 'land' && t.controller === seat('GER')), least)), 'still out-produces Germany');
 });
+
+// ---------------------------------------------------------------- national agenda
+test('national agenda: start a project, it finishes after its rounds, and its bonuses apply', () => {
+  const ger = seat('GER');
+  let s = europe(['GER']);
+  s.players[ger].materials = { wood: 30, stone: 30, sandbag: 30 };
+  const v = engine.viewFor(s, ger).scenario.agenda;
+  assert.ok(v.projects.some((x) => x.id === 'fourYearPlan' && x.national), 'Germany has its own projects');
+  assert.ok(!v.projects.some((x) => x.id === 'shadowFactories'), "but not Britain's");
+  assert.throws(() => act(s, ger, 'startProject', { id: 'tactics', materials: { wood: 8, stone: 0, sandbag: 0 } }), /needs Call up the reserves first/);
+  assert.throws(() => act(s, ger, 'startProject', { id: 'joinAllies', materials: { wood: 4, stone: 0, sandbag: 0 } }), /won't accept a fascist government/);
+  assert.throws(() => act(s, ger, 'startProject', { id: 'reserves', materials: { wood: 3, stone: 0, sandbag: 0 } }), /costs 4/);
+  s = act(s, ger, 'startProject', { id: 'reserves', materials: { wood: 4, stone: 0, sandbag: 0 } });
+  const units = s.players[ger].units;
+  CAMP.tickAgenda(s);
+  assert.deepEqual(s.players[ger].agenda.done, ['reserves']);
+  assert.equal(s.players[ger].units, units + 4, '+4 infantry');
+  // Modern tactics: three rounds, then attacks 10% stronger (on top of Blitzkrieg).
+  s = act(s, ger, 'startProject', { id: 'tactics', materials: { wood: 8, stone: 0, sandbag: 0 } });
+  CAMP.tickAgenda(s);
+  CAMP.tickAgenda(s);
+  assert.equal(CAMP.doctrine(s, ger).attack, 130);
+  CAMP.tickAgenda(s);
+  assert.equal(CAMP.doctrine(s, ger).attack, 143);
+  assert.ok(s.log.some((l) => /Germany completes Modern tactics/.test(l.text)));
+});
+
+test('national agenda: switching drops the current project; income and oil projects pay every round', () => {
+  const uk = seat('UK');
+  let s = europe(['UK']);
+  s.players[uk].materials = { wood: 30, stone: 30, sandbag: 30 };
+  s = act(s, uk, 'startProject', { id: 'shadowFactories', materials: { wood: 8, stone: 0, sandbag: 0 } });
+  s = act(s, uk, 'startProject', { id: 'trade', materials: { wood: 4, stone: 0, sandbag: 0 } });
+  assert.equal(s.players[uk].agenda.current.id, 'trade');
+  assert.ok(s.log.some((l) => /dropping Shadow factories/.test(l.text)));
+  const imports = CAMP.oilImports(s, uk);
+  CAMP.tickAgenda(s);
+  CAMP.tickAgenda(s);
+  assert.deepEqual(CAMP.agendaBonus(s, uk).income, 1);
+  assert.equal(CAMP.oilImports(s, uk), imports + 1);
+});
+
+test('national agenda: bots work through their historical path', () => {
+  const bots = require('../server/bots');
+  let s = europe();
+  for (const id of ['GER', 'USSR']) {
+    const n = seat(id);
+    s.players[n].materials = { wood: 30, stone: 30, sandbag: 30 }; // enough to spare the cost
+    const mem = { personality: 'balanced', tried: new Set(), phaseKey: null, failures: 0 };
+    for (let i = 0; i < 40 && !(s.players[n].agenda && s.players[n].agenda.current); i++) {
+      const idea = bots.decide(engine.viewFor(s, n), mem);
+      if (!idea) break;
+      try {
+        s = engine.applyAction(s, n, idea.action);
+      } catch (e) {
+        mem.tried.add(idea.key);
+      }
+    }
+  }
+  assert.equal(s.players[seat('GER')].agenda.current.id, 'fourYearPlan');
+  assert.equal(s.players[seat('USSR')].agenda.current.id, 'fiveYearPlan');
+});

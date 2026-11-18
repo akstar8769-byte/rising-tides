@@ -18,12 +18,13 @@ const DRAWERS = [
   { id: 'turn', icon: '🎯', label: 'Turn' },
   { id: 'build', icon: '🏗️', label: 'Build' },
   { id: 'politics', icon: '🏛', label: 'Politics' }, // grand campaigns only
+  { id: 'agenda', icon: '📋', label: 'Agenda' }, // grand campaigns only
   { id: 'trade', icon: '🤝', label: 'Trade' },
   { id: 'flood', icon: '🌊', label: 'Flood' },
   { id: 'log', icon: '📜', label: 'Log' },
   { id: 'chat', icon: '💬', label: 'Chat' },
 ];
-const DRAWER_TITLE = { turn: 'Your turn', build: 'Build & army', politics: 'Politics', trade: 'Trade & diplomacy', flood: 'The Flood', log: 'Event log', chat: 'Chat' };
+const DRAWER_TITLE = { turn: 'Your turn', build: 'Build & army', politics: 'Politics', agenda: 'National agenda', trade: 'Trade & diplomacy', flood: 'The Flood', log: 'Event log', chat: 'Chat' };
 
 export function renderGame(store) {
   const d = store.data;
@@ -62,7 +63,7 @@ export function renderGame(store) {
   }
   ${tileMenu(store)}
   <nav class="dock" aria-label="Panels">
-    <div class="dock-btns">${DRAWERS.filter((x) => !(g.scenario && x.id === 'flood') && (x.id !== 'politics' || (g.scenario && g.scenario.kind === 'campaign'))).map(
+    <div class="dock-btns">${DRAWERS.filter((x) => !(g.scenario && x.id === 'flood') && (!['politics', 'agenda'].includes(x.id) || (g.scenario && g.scenario.kind === 'campaign'))).map(
       (x) => `<button class="dock-btn ${drawer === x.id ? 'active' : ''}" data-act="drawer" data-id="${x.id}" aria-pressed="${drawer === x.id}">
         <span aria-hidden="true">${x.icon}</span><small>${x.label}</small>${badges[x.id] ? `<span class="badge">${badges[x.id]}</span>` : ''}</button>`,
     ).join('')}</div>
@@ -88,6 +89,7 @@ function drawerBody(store, id) {
   if (id === 'turn') return phasePanel(store) || '<p class="muted">Nothing to do right now.</p>';
   if (id === 'build') return myPanel(store);
   if (id === 'politics') return politicsPanel(store);
+  if (id === 'agenda') return agendaPanel(store);
   if (id === 'trade') return tradePanel(store) + diplomacyPanel(store);
   if (id === 'flood') return `<div class="card">${floodTrack(g, me)}</div>`;
   if (id === 'log') return `<div class="card">${renderLog(g)}</div>`;
@@ -476,6 +478,32 @@ function newspaper(store) {
 }
 
 /** Politics: your government, popularity of each ideology, propaganda, change of government, factions. */
+/** The national agenda drawer (grand campaigns): one project at a time, in four branches. */
+function agendaPanel(store) {
+  const g = store.data.game;
+  const sc = g.scenario;
+  const A = sc && sc.agenda;
+  if (!A) return '<p class="muted">This game was started before the national agenda existed — start a new Europe, 1939 game to use it.</p>';
+  if (sc.nations[g.you].out) return '<p class="muted">🏳 Your nation has capitulated.</p>';
+  const canAct = BUILD.includes(g.phase);
+  const mats = Object.values(g.players[g.you].materials || {}).reduce((a, b) => a + (b || 0), 0);
+  const b = A.bonus;
+  const lasting = [b.income ? `+${b.income} materials` : '', b.oil ? `+${b.oil} oil` : '', b.popPerRound ? `+${b.popPerRound}% support` : ''].filter(Boolean).join(', ');
+  const battle = [b.attack !== 100 ? `attacks ${b.attack}%` : '', b.defence !== 100 ? `defence ${b.defence}%` : ''].filter(Boolean).join(', ');
+  const item = (x) => {
+    const tag = x.status === 'done' ? '<span class="ag-tag done">✔ done</span>' : x.status === 'current' ? `<span class="ag-tag cur">⏳ ${A.current.left} round${A.current.left === 1 ? '' : 's'} left</span>` : '';
+    const btn = x.status === 'ready' ? `<button class="btn small ${A.current ? '' : 'primary'}" data-act="startProject" data-id="${x.id}" data-name="${esc(x.name)}" data-cost="${x.cost}" ${!canAct || mats < x.cost ? 'disabled' : ''}>Start · ${x.cost} materials, ${x.rounds} round${x.rounds === 1 ? '' : 's'}</button>` : '';
+    return `<li class="ag-item ${x.status}"><div><b>${x.national ? '⭐ ' : ''}${esc(x.name)}</b> ${tag}<br><span class="small">${esc(skinText(x.text))}</span>${x.why ? `<br><span class="small muted">🔒 ${esc(x.why)}</span>` : ''}</div>${btn}</li>`;
+  };
+  return `<div class="card">
+    <p class="small">Work on one project at a time: pay when you start, and it's done after a few rounds. Starting another drops the current one (its cost is lost). ⭐ = only your nation has it.</p>
+    ${A.current ? `<p class="ag-current">⏳ Working on <b>${esc(A.current.name)}</b>: ${A.current.left} of ${A.current.rounds} round${A.current.rounds === 1 ? '' : 's'} left — ${esc(skinText(A.current.text))}.</p>` : '<p class="ag-current">💤 No project under way — pick one below.</p>'}
+    ${lasting || battle ? `<p class="small">From finished projects: ${[lasting && `${lasting} a round`, battle].filter(Boolean).join('; ')}.</p>` : ''}
+    ${canAct ? '' : '<p class="small muted">You can start projects during <b>Talk &amp; build</b> and <b>Trade &amp; build</b>.</p>'}
+  </div>
+  ${Object.entries(A.branches).map(([k, br]) => `<div class="card ag-branch"><h3>${br.icon} ${esc(br.name)}</h3><ul class="plain">${A.projects.filter((x) => x.branch === k).map(item).join('')}</ul></div>`).join('')}`;
+}
+
 /** The Politics drawer (grand campaigns). */
 function politicsPanel(store) {
   const g = store.data.game;

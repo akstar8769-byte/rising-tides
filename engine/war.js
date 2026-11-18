@@ -2202,6 +2202,23 @@ function declareWar(s, actor, { target } = {}) {
 const campCfg = (s) => (SCEN.scenarioOf(s) && Object.values(SCEN.scenarioOf(s).styles)[0]) || {};
 const IDEOS = ['democracy', 'fascism', 'communism', 'nonaligned'];
 
+/** { id, materials } — campaigns: start a national agenda project (switching drops the current one). */
+function startProject(s, actor, { id, materials } = {}) {
+  requireBuild(s);
+  if (!CAMP.isCampaign(s)) fail('The national agenda is part of the grand campaigns.');
+  const p = me(s, actor);
+  if (p.out) fail('Your nation has capitulated.');
+  const x = CAMP.agendaFor(s, actor).find((y) => y.id === id);
+  if (!x) fail('Unknown project.');
+  const why = CAMP.agendaBlock(s, actor, x);
+  if (why) fail(`You can't start ${x.name}: ${why}.`);
+  const bag = cleanBag(materials);
+  if (bagTotal(bag) !== x.cost) fail(`${x.name} costs ${x.cost} materials (any mix).`);
+  if (!hasBag(p.materials, bag)) fail("You don't have those materials.");
+  subBag(p.materials, bag);
+  CAMP.startProject(s, actor, id);
+}
+
 /** { ideology, materials } — campaigns: spend materials to raise an ideology's popularity. */
 function propaganda(s, actor, { ideology, materials } = {}) {
   requireBuild(s);
@@ -2974,7 +2991,7 @@ function ready(s, actor) {
   base.handlers.ready(s, actor);
 }
 
-const handlers = { ready, answerEvent, propaganda, changeGovernment, joinFaction, declareWar, airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
+const handlers = { ready, answerEvent, startProject, propaganda, changeGovernment, joinFaction, declareWar, airRaid, buildBunker, choose, recruit, setCommand, planWithdraw, planRelease, moveUnits, battleOrder, battleAuto, battleFormation, research, upgradeUnits, bombard, trainGeneral, promoteGeneral, moveGeneral };
 
 
 

@@ -443,6 +443,53 @@ const OIL = {
   importNote: { GER: 'synthetic fuel and Romanian oil', UK: 'oil from the Empire and America', FRA: 'oil from overseas', ITA: 'Italy has almost no oil of its own', USSR: 'on top of Baku and the Caucasus fields' },
 };
 
+/**
+ * The national agenda: projects a nation works on, one at a time. You pay `cost` materials
+ * to start; it's done after `rounds` rounds. `requires`: projects to finish first;
+ * `nation`: only that nation. Effects — lasting: income (materials a round), oil (a round),
+ * popPerRound (extra government support a round), attack / defence (battle strength %);
+ * once: units (infantry at the capital), popGov (support), bunker (level at the capital),
+ * join (a faction that accepts your government).
+ */
+const AGENDA_BRANCHES = {
+  industry: { name: 'Industry', icon: '⚙' },
+  army: { name: 'Army', icon: '🪖' },
+  politics: { name: 'Politics', icon: '🏛' },
+  diplomacy: { name: 'Diplomacy', icon: '🤝' },
+};
+const AGENDA = [
+  { id: 'industry', branch: 'industry', name: 'Expand industry', rounds: 2, cost: 6, income: 2, text: '+2 materials a round' },
+  { id: 'synthFuel', branch: 'industry', name: 'Synthetic fuel', rounds: 2, cost: 6, requires: ['industry'], oil: 2, text: '+2 oil a round' },
+  { id: 'warEconomy', branch: 'industry', name: 'War economy', rounds: 3, cost: 10, requires: ['industry'], income: 4, text: '+4 materials a round' },
+  { id: 'reserves', branch: 'army', name: 'Call up the reserves', rounds: 1, cost: 4, units: 4, text: '+4 infantry at your capital' },
+  { id: 'tactics', branch: 'army', name: 'Modern tactics', rounds: 3, cost: 8, requires: ['reserves'], attack: 110, text: 'your attacks are 10% stronger' },
+  { id: 'depth', branch: 'army', name: 'Defence in depth', rounds: 2, cost: 6, requires: ['reserves'], defence: 110, text: 'your defenders are 10% stronger' },
+  { id: 'rally', branch: 'politics', name: 'Rally the nation', rounds: 1, cost: 3, popGov: 8, text: '+8% support for your government' },
+  { id: 'ministry', branch: 'politics', name: 'Ministry of information', rounds: 2, cost: 5, requires: ['rally'], popPerRound: 1, text: 'your government gains 1% more support every round' },
+  { id: 'fortCapital', branch: 'politics', name: 'Fortify the capital', rounds: 2, cost: 6, requires: ['rally'], bunker: 2, text: 'a level-2 bunker in your capital' },
+  { id: 'trade', branch: 'diplomacy', name: 'Trade agreements', rounds: 2, cost: 4, income: 1, oil: 1, text: '+1 material and +1 oil a round' },
+  { id: 'joinAllies', branch: 'diplomacy', name: 'Join the Allies', rounds: 2, cost: 4, join: 'allies', text: 'become one of the Allies (democracies and non-aligned nations)' },
+  { id: 'joinAxis', branch: 'diplomacy', name: 'Join the Axis', rounds: 2, cost: 4, join: 'axis', text: 'become one of the Axis (fascist and non-aligned nations)' },
+  { id: 'joinComintern', branch: 'diplomacy', name: 'Join the Comintern', rounds: 2, cost: 4, join: 'comintern', text: 'become one of the Comintern (communist nations)' },
+  { id: 'fourYearPlan', nation: 'GER', branch: 'industry', name: 'The Four-Year Plan', rounds: 2, cost: 8, income: 3, oil: 1, text: '+3 materials and +1 oil a round' },
+  { id: 'westwall', nation: 'GER', branch: 'army', name: 'The Westwall', rounds: 2, cost: 6, defence: 110, text: 'your defenders are 10% stronger' },
+  { id: 'shadowFactories', nation: 'UK', branch: 'industry', name: 'Shadow factories', rounds: 2, cost: 8, income: 3, text: '+3 materials a round' },
+  { id: 'radar', nation: 'UK', branch: 'army', name: 'The radar chain', rounds: 2, cost: 6, defence: 115, text: 'your defenders are 15% stronger' },
+  { id: 'maginotExt', nation: 'FRA', branch: 'army', name: 'Extend the Maginot Line', rounds: 2, cost: 6, defence: 110, text: 'your defenders are 10% stronger' },
+  { id: 'fiveYearPlan', nation: 'USSR', branch: 'industry', name: 'The Five-Year Plan', rounds: 3, cost: 8, income: 4, text: '+4 materials a round' },
+  { id: 'deepBattle', nation: 'USSR', branch: 'army', name: 'Deep battle', rounds: 3, cost: 8, requires: ['reserves'], attack: 110, text: 'your attacks are 10% stronger' },
+  { id: 'autarky', nation: 'ITA', branch: 'industry', name: 'Autarky', rounds: 2, cost: 6, income: 2, oil: 1, text: '+2 materials and +1 oil a round' },
+];
+/** The projects bot nations work through, in order (others: `default`). */
+const AGENDA_PATHS = {
+  GER: ['fourYearPlan', 'reserves', 'tactics', 'westwall', 'industry', 'synthFuel', 'warEconomy'],
+  UK: ['shadowFactories', 'radar', 'reserves', 'industry', 'warEconomy'],
+  FRA: ['maginotExt', 'reserves', 'industry', 'depth'],
+  USSR: ['fiveYearPlan', 'reserves', 'depth', 'deepBattle', 'industry', 'warEconomy'],
+  ITA: ['autarky', 'reserves', 'rally', 'industry'],
+  default: ['industry', 'rally', 'reserves', 'depth', 'trade', 'warEconomy'],
+};
+
 /** Most land units one nation may keep on a single hex: armies hold fronts, not doom stacks. */
 const STACK_LIMIT = 30;
 
@@ -452,4 +499,4 @@ const FACTIONS = {
   comintern: { name: 'Comintern', icon: '🟥' },
 };
 
-module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, STACK_LIMIT, OIL, DOCTRINES, WAR_PLANS, OPENING, EVENTS, UNREST, FACTIONS, dateOf };
+module.exports = { POLITICS, IDEOLOGIES, FACTION_FIT, MAP, TERRAIN, NATIONS, CITIES, ARMIES, MINOR_GARRISON, FLEETS, RESEARCH, AGENDA_BRANCHES, AGENDA, AGENDA_PATHS, STACK_LIMIT, OIL, DOCTRINES, WAR_PLANS, OPENING, EVENTS, UNREST, FACTIONS, dateOf };

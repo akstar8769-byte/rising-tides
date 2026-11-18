@@ -479,6 +479,19 @@ function roomOn(g, id) {
 }
 const fuelOf = (g, type) => (campaign(g) && g.scenario.fuel ? g.scenario.fuel.points[type] || 0 : 0);
 
+/** Campaigns: start the next project on our agenda path when idle and we can spare the cost. */
+function agendaIdea(g, me) {
+  const A = campaign(g) && g.scenario.agenda;
+  if (!A || A.current || !g.scenario.agendaPath) return null;
+  for (const id of g.scenario.agendaPath) {
+    const x = A.projects.find((y) => y.id === id);
+    if (!x || x.status !== 'ready') continue;
+    if (total(me.materials) - x.cost < reserve(g, me) + 4) return null;
+    return { key: `agenda-${g.round}-${id}`, action: { type: 'startProject', id, materials: payFromLargest(me, x.cost) } };
+  }
+  return null;
+}
+
 /** Pay n materials from the biggest piles. */
 function payFromLargest(me, n) {
   const left = { ...me.materials };
@@ -537,6 +550,10 @@ function buildStep(g, me, P, mem, fresh) {
   // 1b2. Campaigns: a seat a bot took over may have news to answer — take the historical choice.
   const news = g.scenario && g.scenario.decisions && g.scenario.decisions[0];
   if (news) return { key: `news-${news.key}`, action: { type: 'answerEvent', key: news.key, option: Math.max(0, news.options.findIndex((o) => o.hist)) } };
+
+  // 1b3. Campaigns: keep the national agenda busy, along the nation's historical path.
+  const ag = agendaIdea(g, me);
+  if (ag && fresh(ag.key)) return ag;
 
   // 1c. Total War: research first, then upgrade old units — that's what wins wars.
   if (g.tw && g.war) {

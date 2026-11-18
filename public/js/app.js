@@ -452,6 +452,12 @@ const actions = {
     act({ type: 'declareWar', target: +ds.seat });
     render();
   },
+  startProject: (ds) => {
+    const g = store.data.game;
+    const cur = g.scenario.agenda && g.scenario.agenda.current;
+    if (cur && !confirm(`Start ${ds.name} instead? Work on ${cur.name} (${cur.left} round${cur.left === 1 ? '' : 's'} left) will be dropped and its cost lost.`)) return;
+    act({ type: 'startProject', id: ds.id, materials: payLargest(g.players[g.you].materials, +ds.cost) });
+  },
   openPaper: () => {
     store.ui.paperOpen = true;
     render();

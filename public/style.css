@@ -907,3 +907,12 @@ sup.lv { font-size: 0.65rem; font-weight: 800; color: var(--brass-dark); margin-
 .pol-fs { border: 0; margin: 0; padding: 0; min-width: 0; }
 .pol-fs:disabled .btn { opacity: 0.5; }
 .pol-card h3 { margin: 0 0 6px; }
+.ag-branch h3 { margin: 0 0 6px; }
+.ag-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(127, 127, 127, 0.2); }
+.ag-item:last-child { border-bottom: 0; }
+.ag-item.done { opacity: 0.7; }
+.ag-item .btn { flex-shrink: 0; white-space: normal; max-width: 150px; }
+.ag-tag { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 8px; }
+.ag-tag.done { background: #2e8b57; color: #fff; }
+.ag-tag.cur { background: #f3c623; color: #3b2a00; }
+.ag-current { margin: 6px 0; font-size: 15px; }
